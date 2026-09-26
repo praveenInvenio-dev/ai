@@ -1,0 +1,95 @@
+# Usage: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Requires: an NVIDIA driver on the host new enough for CUDA 12.4, and (on
+# Windows) Docker Desktop running on the WSL2 backend. Check with:
+#   docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
+#
+# VRAM matters more than raw speed here. Rough guide:
+#   >= 8 GB : SDXL at 1024x1024, or SD1.5 at anything.
+#    4-6 GB : SD1.5 comfortably; SDXL only with --lowvram and patience.
+#    2-3 GB : SD1.5 at 512x512 ONLY, with --lowvram (see COMFYUI_EXTRA_CLI_ARGS).
+# This file does NOT change the model or image size - those stay in .env, so
+# whatever works on CPU keeps working here.
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  comfyui:
+    # cu124-slim is a retired tag. Its runner script git-clones ComfyUI at HEAD,
+    # so it pairs a current ComfyUI (which needs comfy_aimdo, blake3, etc.)
+    # with a Python environment frozen in 2024, and main.py dies on:
+    #   ModuleNotFoundError: No module named 'comfy_aimdo'
+    # Use a maintained tag so the bundled dependencies match the ComfyUI it
+    # pulls. cu128 covers Turing (MX450/GTX 16xx) through Blackwell.
+    image: ${COMFYUI_GPU_IMAGE:-yanwk/comfyui-boot:cu128-slim}
+    environment:
+      # Overrides the base file's "--cpu": no --cpu here, and previews are
+      # cheap on a GPU. Extra flags still come from COMFYUI_EXTRA_CLI_ARGS.
+      #
+      # ON A 2-4 GB CARD, set this in .env:
+      #   COMFYUI_EXTRA_CLI_ARGS=--lowvram
+      # --lowvram keeps only the block being computed resident and swaps the
+      # rest to system RAM. It costs some speed but is what makes SD1.5 fit at
+      # all below ~4 GB. Use --novram if --lowvram still OOMs.
+      CLI_ARGS: ${COMFYUI_EXTRA_CLI_ARGS:-}
+      # GPU generation still offloads some work to CPU on small cards. An empty
+      # OMP_NUM_THREADS is invalid to libgomp and produces:
+      #   libgomp: Invalid value for environment variable OMP_NUM_THREADS
+      # Keep a small explicit value instead of exporting an empty string.
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-4}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-4}
+    # The :cpu image ships ComfyUI inside the image. The :cu124-slim image does
+    # NOT - it git-clones ComfyUI into /root on first start. Inheriting the base
+    # file's volumes would pre-create /root/ComfyUI/models and /root/ComfyUI/output,
+    # and git refuses to clone into a non-empty directory:
+    #   fatal: destination path 'ComfyUI' already exists and is not an empty directory
+    #   /runner-scripts/download.sh: cd: /root/ComfyUI/custom_nodes: No such file or directory
+    # So this REPLACES the volume list (!override) with a single empty volume at
+    # /root, which is the layout these images expect.
+    #
+    # Consequence: the GPU stack has its own model store, separate from the CPU
+    # stack's comfyui-data volume. Download checkpoints again AFTER ComfyUI has
+    # started once and finished its first-run setup:
+    #   docker compose exec comfyui aria2c -c -x4 -d /root/ComfyUI/models/checkpoints
+    #     -o DreamShaper8_LCM.safetensors
+    #     https://huggingface.co/Lykon/dreamshaper-8-lcm/resolve/main/DreamShaper8_LCM.safetensors
+    volumes: !override
+      - comfyui-gpu-root:/root
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Model, size, steps, cfg and sampler are deliberately NOT overridden here -
+  # they come from .env, the same as on CPU. An earlier version defaulted this
+  # block to SDXL at 1024x576, which out-of-memories instantly on a 2-4 GB card.
+  # Only the timeouts change, because a GPU that hasn't finished in 5 minutes
+  # has hit a real problem rather than just being slow.
+  #
+  # On 8 GB+ you can raise quality in .env:
+  #   COMFYUI_MODEL=sd_xl_base_1.0.safetensors
+  #   COMFYUI_WIDTH=1024
+  #   COMFYUI_HEIGHT=1024
+  #   COMFYUI_STEPS=25
+  #   COMFYUI_CFG=7.0
+  #   COMFYUI_SAMPLER=dpmpp_2m
+  #   COMFYUI_SCHEDULER=karras
+  backend:
+    environment:
+      COMFYUI_TIMEOUT_SECONDS: ${COMFYUI_TIMEOUT_SECONDS:-300}
+      COMFYUI_QUEUE_WAIT_SECONDS: ${COMFYUI_QUEUE_WAIT_SECONDS:-1800}
+
+volumes:
+  comfyui-gpu-root:
+    name: ${COMFYUI_GPU_VOLUME:-ai-story-studio_comfyui-gpu-root}

@@ -1,0 +1,10 @@
+{
+  "id": "default",
+  "category": "CUSTOM",
+  "defaultAspectRatio": "VERTICAL_9_16",
+  "minShotSeconds": 1.5,
+  "maxShotSeconds": 6.0,
+  "preferredTechniques": ["hard_cut", "cut_on_action", "cross_dissolve", "slow_zoom"],
+  "avoidTechniques": [],
+  "notes": "Fallback when no template matches the category."
+}

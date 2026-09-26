@@ -1,0 +1,158 @@
+/*
+  AI Story Studio — visual identity
+  Concept: a night-time editing bay for a children's-story production studio.
+  A deep plum-black stage lit by one warm spotlight accent; storyboard cards
+  carry literal film-strip perforations because the product's core object
+  IS a strip of scenes, not a decorative afterthought.
+*/
+
+:root {
+  --bg: #14121a;
+  --surface: #1c1926;
+  --surface-raised: #242032;
+  --border: #332e40;
+  --text: #f4f0e6;
+  --muted: #938da3;
+  --accent: #eea23b;       /* spotlight amber — primary actions */
+  --accent-ink: #241705;
+  --teal: #49c9bd;         /* universe / continuity accent, used sparingly */
+  --danger: #e2665b;
+  --font-display: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-image:
+    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(238, 162, 59, 0.10), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 100% 10%, rgba(73, 201, 189, 0.06), transparent 55%);
+  background-attachment: fixed;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.15;
+  margin: 0 0 0.4em;
+  letter-spacing: 0.2px;
+}
+
+p { line-height: 1.6; color: var(--text); }
+a { color: inherit; }
+
+::selection { background: rgba(238, 162, 59, 0.35); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  padding: 0.65em 1.2em;
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+.btn:hover { border-color: var(--accent); }
+.btn:active { transform: translateY(1px); }
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.btn-primary:hover { background: #f5b153; border-color: #f5b153; }
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+.btn-ghost:hover { color: var(--text); border-color: var(--border); }
+
+.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+input, select, textarea {
+  font-family: var(--font-body);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.6em 0.8em;
+  font-size: 0.95rem;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 0.35em;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.4rem;
+}
+
+/* Film-strip perforation edge, used only on storyboard/scene cards
+   where the content literally IS a strip of frames. */
+.filmstrip-edge::before,
+.filmstrip-edge::after {
+  content: "";
+  display: block;
+  height: 8px;
+  background-image: radial-gradient(circle, var(--bg) 3px, transparent 3.2px);
+  background-size: 18px 8px;
+  background-position: 4px center;
+  background-repeat: repeat-x;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.tag-teal { border-color: rgba(73, 201, 189, 0.5); color: var(--teal); }
+.tag-amber { border-color: rgba(238, 162, 59, 0.5); color: var(--accent); }
+
+.container {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }

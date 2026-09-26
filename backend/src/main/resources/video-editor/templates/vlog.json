@@ -1,0 +1,11 @@
+{
+  "id": "vlog",
+  "category": "VLOG",
+  "defaultAspectRatio": "LANDSCAPE_16_9",
+  "minShotSeconds": 1.5,
+  "maxShotSeconds": 8.0,
+  "preferredTechniques": ["hard_cut", "j_cut", "l_cut", "speed_ramp"],
+  "avoidTechniques": ["punch_zoom", "whip_pan"],
+  "colorGrade": "warm_vlog",
+  "notes": "Dialogue continuity first. J/L cuts keep speech flowing over picture changes."
+}

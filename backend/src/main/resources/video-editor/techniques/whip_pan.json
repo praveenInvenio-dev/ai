@@ -1,0 +1,12 @@
+{
+  "id": "whip_pan",
+  "name": "Whip pan",
+  "category": "TRANSITION",
+  "purpose": "Fast horizontal wipe between two high-motion shots. Energetic; wrong for calm material.",
+  "minSourceDuration": 0.8,
+  "intensity": "aggressive",
+  "requires": ["currentHasMotion", "nextHasMotion"],
+  "incompatibleWith": ["cross_dissolve", "dip_to_black"],
+  "parameters": { "durationSeconds": { "min": 0.15, "max": 0.5, "default": 0.25 } },
+  "render": { "kind": "XFADE", "xfadeTransition": "wiperight", "durationSeconds": "$durationSeconds" }
+}

@@ -1,0 +1,561 @@
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { environment } from '../../environments/environment';
+import {
+  Project, Universe, Character, Episode, SceneDto,
+  StoryDraftResponse, CreateStoryRequest, JobStatusResponse, OllamaModelsResponse, CharacterReference,
+  ResourceStatus
+} from '../models/models';
+
+@Injectable({ providedIn: 'root' })
+export class ApiService {
+  private base = environment.apiBaseUrl;
+
+  constructor(private http: HttpClient) {}
+
+  // Projects
+  listProjects(): Observable<Project[]> {
+    return this.http.get<Project[]>(`${this.base}/projects`);
+  }
+  createProject(name: string, description?: string): Observable<Project> {
+    return this.http.post<Project>(`${this.base}/projects`, { name, description });
+  }
+  getProject(id: string): Observable<Project> {
+    return this.http.get<Project>(`${this.base}/projects/${id}`);
+  }
+
+  // Universes
+  listUniverses(projectId: string): Observable<Universe[]> {
+    return this.http.get<Universe[]>(`${this.base}/universes`, { params: { projectId } });
+  }
+  createUniverse(payload: Partial<Universe> & { projectId: string; name: string }): Observable<Universe> {
+    return this.http.post<Universe>(`${this.base}/universes`, payload);
+  }
+
+  // Characters
+  listCharacters(universeId: string): Observable<Character[]> {
+    return this.http.get<Character[]>(`${this.base}/characters`, { params: { universeId } });
+  }
+  createCharacter(payload: Partial<Character> & { name: string; canonicalDescription: string }): Observable<Character> {
+    return this.http.post<Character>(`${this.base}/characters`, payload);
+  }
+  lockCharacter(id: string, locked: boolean): Observable<Character> {
+    return this.http.post<Character>(`${this.base}/characters/${id}/lock`, {}, { params: { locked } });
+  }
+
+  // Episodes / stories
+  listEpisodes(projectId: string): Observable<Episode[]> {
+    return this.http.get<Episode[]>(`${this.base}/episodes`, { params: { projectId } });
+  }
+  getEpisode(id: string): Observable<Episode> {
+    return this.http.get<Episode>(`${this.base}/episodes/${id}`);
+  }
+  getScenes(episodeId: string): Observable<SceneDto[]> {
+    return this.http.get<SceneDto[]>(`${this.base}/episodes/${episodeId}/scenes`);
+  }
+
+  createDraft(req: CreateStoryRequest): Observable<StoryDraftResponse> {
+    return this.http.post<StoryDraftResponse>(`${this.base}/stories/draft`, req);
+  }
+  regenerateDraft(episodeId: string, characterIds: string[] = []): Observable<StoryDraftResponse> {
+    return this.http.post<StoryDraftResponse>(`${this.base}/stories/${episodeId}/regenerate`, characterIds);
+  }
+
+  generateStoryImages(episodeId: string): Observable<{ id: string }> {
+    return this.http.post<{ id: string }>(`${this.base}/episodes/${episodeId}/generate-images`, {});
+  }
+
+  updateSceneVoices(episodeId: string, sceneId: string, segments: VoiceSegment[]): Observable<SceneDto> {
+    return this.http.put<SceneDto>(`${this.base}/episodes/${episodeId}/scenes/${sceneId}/voice-segments`, segments);
+  }
+
+  setSceneLock(episodeId: string, sceneId: string, locked: boolean): Observable<SceneDto> {
+    return this.http.post<SceneDto>(`${this.base}/episodes/${episodeId}/scenes/${sceneId}/lock?locked=${locked}`, {});
+  }
+
+  regenerateSceneImage(episodeId: string, sceneId: string): Observable<SceneDto> {
+    return this.http.post<SceneDto>(`${this.base}/episodes/${episodeId}/scenes/${sceneId}/regenerate-image`, {});
+  }
+
+  setNarrationLock(episodeId: string, sceneId: string, locked: boolean): Observable<SceneDto> {
+    return this.http.post<SceneDto>(`${this.base}/episodes/${episodeId}/scenes/${sceneId}/lock-narration?locked=${locked}`, {});
+  }
+
+  regenerateSceneNarration(episodeId: string, sceneId: string): Observable<SceneDto> {
+    return this.http.post<SceneDto>(`${this.base}/episodes/${episodeId}/scenes/${sceneId}/regenerate-narration`, {});
+  }
+
+  setAnimationMode(episodeId: string, sceneId: string, mode: string): Observable<SceneDto> {
+    return this.http.post<SceneDto>(`${this.base}/episodes/${episodeId}/scenes/${sceneId}/animation-mode`, {}, { params: { mode } });
+  }
+
+  setMusicPreset(episodeId: string, preset: string | null): Observable<Episode> {
+    const options = preset ? { params: { preset } } : {};
+    return this.http.post<Episode>(`${this.base}/episodes/${episodeId}/music-preset`, {}, options);
+  }
+
+  setMusicLock(episodeId: string, locked: boolean): Observable<Episode> {
+    return this.http.post<Episode>(`${this.base}/episodes/${episodeId}/music-lock`, {}, { params: { locked } });
+  }
+
+  resourceStatus(): Observable<ResourceStatus> {
+    return this.http.get<ResourceStatus>(`${this.base}/system/resources`);
+  }
+
+  attachMusic(episodeId: string, file: File): Observable<any> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post(`${this.base}/storyboard/episodes/${episodeId}/music`, form);
+  }
+
+  approveAndProduce(episodeId: string): Observable<{ id: string }> {
+    return this.http.post<{ id: string }>(`${this.base}/episodes/${episodeId}/approve`, {});
+  }
+
+  getJobStatus(jobId: string): Observable<JobStatusResponse> {
+    return this.http.get<JobStatusResponse>(`${this.base}/jobs/${jobId}`);
+  }
+
+  getLatestJobForEpisode(episodeId: string): Observable<JobStatusResponse> {
+    return this.http.get<JobStatusResponse>(`${this.base}/episodes/${episodeId}/latest-job`);
+  }
+
+  streamJob(jobId: string): EventSource {
+    return new EventSource(`${this.base}/jobs/${jobId}/stream`);
+  }
+
+  downloadPackageUrl(episodeId: string): string {
+    return `${this.base}/episodes/${episodeId}/package`;
+  }
+
+  sceneImageUrl(sceneId: string): string {
+    return `${this.base}/scenes/${sceneId}/image`;
+  }
+
+  sceneAudioUrl(sceneId: string): string {
+    return `${this.base}/scenes/${sceneId}/audio`;
+  }
+
+  episodeVideoUrl(episodeId: string): string {
+    return `${this.base}/episodes/${episodeId}/video`;
+  }
+
+  episodeThumbnailUrl(episodeId: string): string {
+    return `${this.base}/episodes/${episodeId}/thumbnail`;
+  }
+
+  health(): Observable<any> {
+    return this.http.get(`${this.base}/health`);
+  }
+
+  listOllamaModels(): Observable<OllamaModelsResponse> {
+    return this.http.get<OllamaModelsResponse>(`${this.base}/models/ollama`);
+  }
+
+  generateCharacterReference(characterId: string, visualStyle?: string): Observable<CharacterReference> {
+    return this.http.post<CharacterReference>(`${this.base}/characters/${characterId}/generate-reference`, { visualStyle });
+  }
+
+  listCharacterReferences(characterId: string): Observable<CharacterReference[]> {
+    return this.http.get<CharacterReference[]>(`${this.base}/characters/${characterId}/references`);
+  }
+
+  characterReferenceImageUrl(referenceId: string): string {
+    return `${this.base}/character-references/${referenceId}/image`;
+  }
+
+  // Voice library
+  listVoices(): Observable<VoiceListResponse> {
+    return this.http.get<VoiceListResponse>(`${this.base}/tts/voices`);
+  }
+
+  installVoice(voiceId: string): Observable<any> {
+    return this.http.post(`${this.base}/tts/voices/${voiceId}`, {});
+  }
+
+  /**
+   * Returns the WAV as a Blob rather than a URL string: the preview is a POST
+   * (the text can be long and is not URL-safe), so it cannot be handed to an
+   * <audio src> directly. The caller wraps it with URL.createObjectURL.
+   */
+  previewVoice(text: string, voice: string, speed: number, pitch: number): Observable<Blob> {
+    return this.http.post(`${this.base}/tts/preview`, { text, voice, speed, pitch }, { responseType: 'blob' });
+  }
+
+  // Video editor
+  videoEditorCapabilities(): Observable<VideoEditorCapabilities> {
+    return this.http.get<VideoEditorCapabilities>(`${this.base}/video-editor/capabilities`);
+  }
+
+  createVideoEditorProject(body: Partial<VideoEditorProject>): Observable<VideoEditorProject> {
+    return this.http.post<VideoEditorProject>(`${this.base}/video-editor/projects`, body);
+  }
+
+  listVideoEditorProjects(): Observable<VideoEditorProject[]> {
+    return this.http.get<VideoEditorProject[]>(`${this.base}/video-editor/projects`);
+  }
+
+  getVideoEditorProject(id: string): Observable<VideoEditorProjectDetail> {
+    return this.http.get<VideoEditorProjectDetail>(`${this.base}/video-editor/projects/${id}`);
+  }
+
+  deleteVideoEditorProject(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/video-editor/projects/${id}`);
+  }
+
+  /** Multipart upload. Angular sets the boundary itself, so no Content-Type
+   *  header is passed - setting it manually omits the boundary and the server
+   *  rejects the request. */
+  uploadVideoClips(projectId: string, files: File[]): Observable<VideoClip[]> {
+    const form = new FormData();
+    files.forEach(f => form.append('files', f, f.name));
+    return this.http.post<VideoClip[]>(`${this.base}/video-editor/projects/${projectId}/upload`, form);
+  }
+
+  completeVideoUpload(projectId: string): Observable<VideoEditorProject> {
+    return this.http.post<VideoEditorProject>(`${this.base}/video-editor/projects/${projectId}/upload/complete`, {});
+  }
+
+  updateVideoEditorProject(projectId: string, body: Partial<VideoEditorProject>): Observable<VideoEditorProject> {
+    return this.http.patch<VideoEditorProject>(`${this.base}/video-editor/projects/${projectId}`, body);
+  }
+
+  removeVideoClip(projectId: string, clipId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/video-editor/projects/${projectId}/clips/${clipId}`);
+  }
+
+  reorderVideoClips(projectId: string, clipIds: string[]): Observable<VideoClip[]> {
+    return this.http.post<VideoClip[]>(`${this.base}/video-editor/projects/${projectId}/clips/reorder`, { clipIds });
+  }
+
+  renameVideoClip(projectId: string, clipId: string, name: string): Observable<VideoClip> {
+    return this.http.patch<VideoClip>(`${this.base}/video-editor/projects/${projectId}/clips/${clipId}`, { name });
+  }
+
+  analyzeVideoProject(projectId: string): Observable<VideoJobStart> {
+    return this.http.post<VideoJobStart>(`${this.base}/video-editor/projects/${projectId}/analyze`, {});
+  }
+
+  aiEditVideoProject(projectId: string, useAiDirector = true): Observable<VideoJobStart> {
+    return this.http.post<VideoJobStart>(
+      `${this.base}/video-editor/projects/${projectId}/ai-edit`, { useAiDirector });
+  }
+
+  previewVideoProject(projectId: string): Observable<VideoJobStart> {
+    return this.http.post<VideoJobStart>(`${this.base}/video-editor/projects/${projectId}/preview`, {});
+  }
+
+  renderVideoProject(projectId: string): Observable<VideoJobStart> {
+    return this.http.post<VideoJobStart>(`${this.base}/video-editor/projects/${projectId}/render`, {});
+  }
+
+  videoTimeline(projectId: string): Observable<VideoTimelineClip[]> {
+    return this.http.get<VideoTimelineClip[]>(`${this.base}/video-editor/projects/${projectId}/timeline`);
+  }
+
+  replaceVideoTimeline(projectId: string, timeline: Array<{ clipId: string; sourceStartSec: number; sourceEndSec: number; techniqueIn?: string | null; techniqueOut?: string | null; transitionSec?: number | null; speed?: number; volume?: number; muted?: boolean; locked?: boolean }>): Observable<VideoTimelineClip[]> {
+    return this.http.put<VideoTimelineClip[]>(`${this.base}/video-editor/projects/${projectId}/timeline`, { timeline });
+  }
+
+  videoEditorVersions(projectId: string): Observable<VideoEditorVersion[]> {
+    return this.http.get<VideoEditorVersion[]>(`${this.base}/video-editor/projects/${projectId}/versions`);
+  }
+
+  restoreVideoEditorVersion(projectId: string, planId: string): Observable<VideoTimelineClip[]> {
+    return this.http.post<VideoTimelineClip[]>(`${this.base}/video-editor/projects/${projectId}/versions/${planId}/restore`, {});
+  }
+
+  sourceVideoUrl(projectId: string, clipId: string): string {
+    return `${this.base}/video-editor/projects/${projectId}/clips/${clipId}/file`;
+  }
+
+  videoClipThumbnailUrl(projectId: string, clipId: string): string {
+    return `${this.base}/video-editor/projects/${projectId}/clips/${clipId}/thumbnail`;
+  }
+
+  videoJob(jobId: string): Observable<VideoRenderJob> {
+    return this.http.get<VideoRenderJob>(`${this.base}/video-editor/jobs/${jobId}`);
+  }
+
+  uploadVideoMusic(projectId: string, file: File): Observable<any> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return this.http.post(`${this.base}/video-editor/projects/${projectId}/music`, form);
+  }
+
+  /** Direct URL for a <video src>. The endpoint supports byte ranges so the
+   *  browser can scrub without downloading the whole file first. */
+  renderedVideoUrl(projectId: string, jobId: string): string {
+    return `${this.base}/video-editor/projects/${projectId}/renders/${jobId}/file`;
+  }
+
+  renderedVideoDownloadUrl(projectId: string, jobId: string): string {
+    return `${this.base}/video-editor/projects/${projectId}/renders/${jobId}/download`;
+  }
+
+  /** SSE progress. EventSource is used directly rather than HttpClient because
+   *  HttpClient buffers the whole response, which never completes on a stream. */
+  videoProgressStream(jobId: string): EventSource {
+    return new EventSource(`${this.base}/video-editor/jobs/${jobId}/progress`);
+  }
+
+  // Storyboard
+  createStoryboard(body: { projectId?: string; title: string; visualStyle?: string; language?: string }):
+      Observable<StoryboardEpisode> {
+    return this.http.post<StoryboardEpisode>(`${this.base}/storyboard/episodes`, body);
+  }
+
+  storyboardScenes(episodeId: string): Observable<StoryboardScene[]> {
+    return this.http.get<StoryboardScene[]>(`${this.base}/storyboard/episodes/${episodeId}/scenes`);
+  }
+
+  addStoryboardScene(episodeId: string, body: Partial<StoryboardScene>): Observable<StoryboardScene> {
+    return this.http.post<StoryboardScene>(`${this.base}/storyboard/episodes/${episodeId}/scenes`, body);
+  }
+
+  updateStoryboardScene(episodeId: string, sceneId: string, body: Partial<StoryboardScene>):
+      Observable<StoryboardScene> {
+    return this.http.put<StoryboardScene>(
+      `${this.base}/storyboard/episodes/${episodeId}/scenes/${sceneId}`, body);
+  }
+
+  deleteStoryboardScene(episodeId: string, sceneId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/storyboard/episodes/${episodeId}/scenes/${sceneId}`);
+  }
+
+  reorderStoryboardScenes(episodeId: string, sceneIds: string[]): Observable<StoryboardScene[]> {
+    return this.http.post<StoryboardScene[]>(
+      `${this.base}/storyboard/episodes/${episodeId}/scenes/reorder`, { sceneIds });
+  }
+
+  uploadSceneImage(episodeId: string, sceneId: string, file: File): Observable<any> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return this.http.post(`${this.base}/storyboard/episodes/${episodeId}/scenes/${sceneId}/image`, form);
+  }
+
+  /** Bulk upload. Order is the contract: files are matched to scenes in the
+   *  order appended here, not by filename. */
+  uploadSceneImagesInOrder(episodeId: string, files: File[]): Observable<any[]> {
+    const form = new FormData();
+    files.forEach(f => form.append('files', f, f.name));
+    return this.http.post<any[]>(`${this.base}/storyboard/episodes/${episodeId}/images`, form);
+  }
+
+  assembleStoryboard(episodeId: string, voice?: string): Observable<{ status: string; fileName: string }> {
+    return this.http.post<{ status: string; fileName: string }>(
+      `${this.base}/storyboard/episodes/${episodeId}/assemble`, { voice: voice ?? null });
+  }
+
+  // --- Video generation (standalone page) -----------------------------
+
+  videoGenerationStatus(): Observable<VideoGenerationStatus> {
+    return this.http.get<VideoGenerationStatus>(`${this.base}/video-generation/status`);
+  }
+
+  createVideoGenerationJob(
+    image: File, prompt: string, negativePrompt: string, durationSeconds: number
+  ): Observable<{ jobId: string }> {
+    const form = new FormData();
+    form.append('image', image, image.name);
+    form.append('prompt', prompt);
+    if (negativePrompt) { form.append('negativePrompt', negativePrompt); }
+    form.append('durationSeconds', String(durationSeconds));
+    return this.http.post<{ jobId: string }>(`${this.base}/video-generation/jobs`, form);
+  }
+
+  getVideoGenerationJob(jobId: string): Observable<VideoGenerationJob> {
+    return this.http.get<VideoGenerationJob>(`${this.base}/video-generation/jobs/${jobId}`);
+  }
+
+  videoGenerationResultUrl(jobId: string): string {
+    return `${this.base}/video-generation/jobs/${jobId}/video`;
+  }
+}
+
+export interface Voice {
+  id: string;
+  label: string;
+  accent: string;
+  gender: string;
+  quality: string;
+  notes: string;
+  installed: boolean;
+  /** 'piper' | 'edge' | 'indicf5' - which engine actually speaks this voice. */
+  engine?: string;
+  isDefault: boolean;
+}
+
+// ---- Storyboard (user-supplied images) ------------------------------------
+
+export interface StoryboardEpisode {
+  id: string;
+  title: string;
+  status: string;
+  language: string | null;
+  visualStyle: string | null;
+  durationTargetSec: number | null;
+}
+
+export interface StoryboardScene {
+  id: string;
+  sceneNumber: number;
+  narration: string | null;
+  action: string | null;
+  location: string | null;
+  emotion: string | null;
+  imageDurationSeconds: number | null;
+  narrationSeconds: number | null;
+  hasImage: boolean;
+  voiceSegments: VoiceSegment[];
+  characterNames: string[];
+}
+
+export interface VoiceSegment {
+  character: string;
+  text: string;
+  voice: string;
+  speed: number;
+  pitch: number;
+  emotion: string;
+  pauseBeforeMs: number;
+  pauseAfterMs: number;
+}
+
+// ---- AI Video Editor ------------------------------------------------------
+
+export interface VideoEditorCapabilities {
+  maxClips: number;
+  maxUploadMb: number;
+  allowedVideoExtensions: string[];
+  allowedAudioExtensions: string[];
+  previewResolution: number;
+  defaultResolution: number;
+  categories: string[];
+  styles: string[];
+  intensities: string[];
+  aspectRatios: { id: string; width: number; height: number }[];
+  /**
+   * Which backend stages exist in this build. The UI disables controls whose
+   * stage is false rather than offering a button that returns 501 - a control
+   * that fails when pressed is worse than one that says why it is unavailable.
+   */
+  implemented: {
+    upload: boolean;
+    analysis: boolean;
+    planning: boolean;
+    preview: boolean;
+    render: boolean;
+    captions: boolean;
+    music: boolean;
+  };
+}
+
+export interface VideoEditorProject {
+  id: string;
+  name: string;
+  category: string;
+  editingStyle: string;
+  intensity: string;
+  aspectRatio: string;
+  targetDurationSec: number | null;
+  customInstructions: string | null;
+  state: string;
+  errorMessage: string | null;
+  smartCuts: boolean;
+  beatSync: boolean;
+  smartTransitions: boolean;
+  autoCaptions: boolean;
+  audioEnhancement: boolean;
+  smartReframing: boolean;
+}
+
+export interface VideoClip {
+  id: string;
+  displayName: string;
+  sortOrder: number;
+  sizeBytes: number | null;
+  durationSec: number | null;
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  hasAudio: boolean;
+  analyzed: boolean;
+  portrait: boolean;
+}
+
+export interface VideoTimelineClip {
+  id: string;
+  clipId: string;
+  sortOrder: number;
+  sourceStartSec: number;
+  sourceEndSec: number;
+  techniqueIn: string | null;
+  techniqueOut: string | null;
+  transitionSec: number | null;
+  speed: number;
+  volume: number;
+  muted: boolean;
+  locked: boolean;
+  reason: string | null;
+  outputDurationSec: number;
+}
+
+export interface VideoEditorVersion {
+  id: string;
+  planner: string;
+  rationale: string | null;
+  shotCount: number;
+  createdAt: string;
+}
+
+export interface VideoJobStart {
+  jobId: string;
+  status?: string;
+  kind?: string;
+}
+
+export interface VideoRenderJob {
+  id: string;
+  projectId: string;
+  kind: string;
+  status: string;
+  progressPercent: number;
+  stage: string | null;
+  errorMessage: string | null;
+}
+
+export interface VideoEditorProjectDetail {
+  project: VideoEditorProject;
+  clips: VideoClip[];
+  timeline: VideoTimelineClip[];
+  rationale: string | null;
+}
+
+export interface VoiceListResponse {
+  voices: Voice[];
+  defaultVoice: string;
+}
+
+// --- Video generation (standalone page) ------------------------------------
+
+export interface VideoGenerationStatus {
+  available: boolean;
+  reason: string | null;
+  defaultWidth: number;
+  defaultHeight: number;
+  maxDurationSeconds: number;
+}
+
+export type VideoGenJobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+
+export interface VideoGenerationJob {
+  id: string;
+  status: VideoGenJobStatus;
+  errorMessage: string | null;
+  seedUsed: number | null;
+  workflowUsed: string | null;
+}

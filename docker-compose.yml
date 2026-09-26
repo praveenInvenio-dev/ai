@@ -1,0 +1,268 @@
+x-app-env: &app-env
+  DEMO_MODE: ${DEMO_MODE:-false}
+  OFFLINE_MODE: ${OFFLINE_MODE:-false}
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_NAME: ${DB_NAME:-ai_story_studio}
+  DB_USER: ${DB_USER:-studio}
+  DB_PASSWORD: ${DB_PASSWORD:-studio}
+  STORAGE_ROOT: /data/projects
+  # Defaults to the Ollama instance running on the HOST machine (not a bundled
+  # container) via the special host.docker.internal DNS name — see the
+  # `extra_hosts` entry on the backend service below, which is what makes this
+  # resolve on Linux too. Point this at a different host/port in .env if your
+  # Ollama runs elsewhere, or set it to http://ollama:11434 if you start the
+  # optional bundled `ollama` service (see the `bundled-ollama` profile).
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  # OLLAMA_MODEL is only a fallback default — the UI lets you pick any model
+  # actually installed on your Ollama server from a dropdown per-story.
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
+  COMFYUI_BASE_URL: http://comfyui:8188
+  COMFYUI_WORKFLOW: ${COMFYUI_WORKFLOW:-character-consistent-story}
+  # SD1.5 by default: on CPU, SDXL is roughly 5-10x slower again and needs
+  # 1024x1024 to look right. Override in .env if you are on a GPU.
+  COMFYUI_MODEL: ${COMFYUI_MODEL:-v1-5-pruned-emaonly-fp16.safetensors}
+  # Optional style checkpoints; blank = use COMFYUI_MODEL.
+  COMFYUI_ANIME_MODEL: ${COMFYUI_ANIME_MODEL:-}
+  COMFYUI_CARTOON_MODEL: ${COMFYUI_CARTOON_MODEL:-}
+  COMFYUI_3D_ANIMATED_MODEL: ${COMFYUI_3D_ANIMATED_MODEL:-}
+  COMFYUI_STORYBOOK_MODEL: ${COMFYUI_STORYBOOK_MODEL:-}
+  COMFYUI_WATERCOLOR_MODEL: ${COMFYUI_WATERCOLOR_MODEL:-}
+  COMFYUI_COMIC_BOOK_MODEL: ${COMFYUI_COMIC_BOOK_MODEL:-}
+  COMFYUI_FANTASY_MODEL: ${COMFYUI_FANTASY_MODEL:-}
+  # Wall-clock budget for a single image. On expiry the backend now actually
+  # interrupts and de-queues the prompt instead of abandoning it, so a slow
+  # image can no longer starve the scenes queued behind it.
+  COMFYUI_TIMEOUT_SECONDS: ${COMFYUI_TIMEOUT_SECONDS:-900}
+  COMFYUI_QUEUE_WAIT_SECONDS: ${COMFYUI_QUEUE_WAIT_SECONDS:-3600}
+  # Cost per image scales with STEPS x WIDTH x HEIGHT. These defaults target
+  # CPU-only ComfyUI; bump them once you're running on a GPU.
+  COMFYUI_STEPS: ${COMFYUI_STEPS:-8}
+  COMFYUI_WIDTH: ${COMFYUI_WIDTH:-512}
+  COMFYUI_HEIGHT: ${COMFYUI_HEIGHT:-512}
+  COMFYUI_CFG: ${COMFYUI_CFG:-7.0}
+  COMFYUI_SAMPLER: ${COMFYUI_SAMPLER:-dpmpp_2m}
+  COMFYUI_SCHEDULER: ${COMFYUI_SCHEDULER:-karras}
+  COMFYUI_FALLBACK_PLACEHOLDER: ${COMFYUI_FALLBACK_PLACEHOLDER:-true}
+  # Real local AI video (image-to-video via Wan) - off by default. This is
+  # explicitly NOT for the CPU/low-VRAM reference setup above; only turn it
+  # on when deploying to separate hardware with a real GPU and the Wan
+  # models actually downloaded. See wan-image-to-video.json's own comments
+  # for what "actually downloaded" means (4 separate model files).
+  LOCAL_AI_ANIMATION_ENABLED: ${LOCAL_AI_ANIMATION_ENABLED:-false}
+  LOCAL_AI_ANIMATION_WORKFLOW: ${LOCAL_AI_ANIMATION_WORKFLOW:-wan-image-to-video}
+  LOCAL_AI_ANIMATION_MODEL: ${LOCAL_AI_ANIMATION_MODEL:-}
+  LOCAL_AI_ANIMATION_CLIP_MODEL: ${LOCAL_AI_ANIMATION_CLIP_MODEL:-}
+  LOCAL_AI_ANIMATION_VAE_MODEL: ${LOCAL_AI_ANIMATION_VAE_MODEL:-}
+  LOCAL_AI_ANIMATION_CLIP_VISION_MODEL: ${LOCAL_AI_ANIMATION_CLIP_VISION_MODEL:-}
+  LOCAL_AI_ANIMATION_WIDTH: ${LOCAL_AI_ANIMATION_WIDTH:-832}
+  LOCAL_AI_ANIMATION_HEIGHT: ${LOCAL_AI_ANIMATION_HEIGHT:-480}
+  LOCAL_AI_ANIMATION_FPS: ${LOCAL_AI_ANIMATION_FPS:-16}
+  LOCAL_AI_ANIMATION_STEPS: ${LOCAL_AI_ANIMATION_STEPS:-20}
+  LOCAL_AI_ANIMATION_CFG: ${LOCAL_AI_ANIMATION_CFG:-6.0}
+  LOCAL_AI_ANIMATION_SAMPLER: ${LOCAL_AI_ANIMATION_SAMPLER:-uni_pc}
+  LOCAL_AI_ANIMATION_SCHEDULER: ${LOCAL_AI_ANIMATION_SCHEDULER:-simple}
+  LOCAL_AI_ANIMATION_MAX_DURATION_SECONDS: ${LOCAL_AI_ANIMATION_MAX_DURATION_SECONDS:-6.0}
+  LOCAL_AI_ANIMATION_TIMEOUT_SECONDS: ${LOCAL_AI_ANIMATION_TIMEOUT_SECONDS:-1800}
+  LOCAL_AI_ANIMATION_QUEUE_WAIT_SECONDS: ${LOCAL_AI_ANIMATION_QUEUE_WAIT_SECONDS:-3600}
+  LOCAL_AI_ANIMATION_MAX_CONCURRENT: ${LOCAL_AI_ANIMATION_MAX_CONCURRENT:-1}
+  LOCAL_AI_ANIMATION_MIN_VRAM_MB: ${LOCAL_AI_ANIMATION_MIN_VRAM_MB:-4000}
+  TTS_BASE_URL: http://tts:5002
+  TTS_VOICE: ${TTS_VOICE:-en_US-lessac-high}
+  QUALITY_MIN_SCORE: ${QUALITY_MIN_SCORE:-70}
+  IMAGE_VALIDATION_ENABLED: ${IMAGE_VALIDATION_ENABLED:-true}
+  IMAGE_VALIDATION_RETRIES: ${IMAGE_VALIDATION_RETRIES:-1}
+  VISION_PROVIDER: ${VISION_PROVIDER:-mock}
+  VISION_MODEL: ${VISION_MODEL:-llava:latest}
+  VIDEO_EDITOR_ENABLED: ${VIDEO_EDITOR_ENABLED:-true}
+  VIDEO_EDITOR_STORAGE_PATH: /data/video-editor
+  VIDEO_EDITOR_MAX_CONCURRENT_RENDERS: ${VIDEO_EDITOR_MAX_CONCURRENT_RENDERS:-1}
+  VIDEO_EDITOR_MAX_CLIPS: ${VIDEO_EDITOR_MAX_CLIPS:-20}
+  VIDEO_EDITOR_MAX_UPLOAD_MB: ${VIDEO_EDITOR_MAX_UPLOAD_MB:-512}
+  VIDEO_EDITOR_PREVIEW_RESOLUTION: ${VIDEO_EDITOR_PREVIEW_RESOLUTION:-480}
+  VIDEO_EDITOR_DEFAULT_RESOLUTION: ${VIDEO_EDITOR_DEFAULT_RESOLUTION:-1080}
+  VIDEO_ANALYSIS_THREADS: ${VIDEO_ANALYSIS_THREADS:-8}
+  VIDEO_WORKER_BASE_URL: ${VIDEO_WORKER_BASE_URL:-http://video-worker:5010}
+  VIDEO_EDITOR_X264_PRESET: ${VIDEO_EDITOR_X264_PRESET:-veryfast}
+  VIDEO_EDITOR_CRF: ${VIDEO_EDITOR_CRF:-23}
+  VIDEO_EDITOR_PREVIEW_RETENTION_HOURS: ${VIDEO_EDITOR_PREVIEW_RETENTION_HOURS:-24}
+  # Standalone "Video generation" page - how long a job's result clip stays
+  # downloadable before the hourly cleanup sweep deletes it (VideoGenJobStore).
+  VIDEO_GENERATION_RETENTION_HOURS: ${VIDEO_GENERATION_RETENTION_HOURS:-24}
+  # Must stay >= VIDEO_EDITOR_MAX_UPLOAD_MB or Spring rejects a legal upload
+  # before the app's own size check can report the real limit.
+  VIDEO_EDITOR_MAX_REQUEST_MB: ${VIDEO_EDITOR_MAX_REQUEST_MB:-2048}
+  # TTS engine selection was reachable only through application.yml defaults
+  # before this; without it TTS_PROVIDER=sarvam in .env had no effect.
+  TTS_PROVIDER: ${TTS_PROVIDER:-piper}
+  SARVAM_API_KEY: ${SARVAM_API_KEY:-}
+  SARVAM_BASE_URL: ${SARVAM_BASE_URL:-https://api.sarvam.ai}
+  SARVAM_MODEL: ${SARVAM_MODEL:-bulbul:v3}
+  SARVAM_SPEAKER: ${SARVAM_SPEAKER:-anushka}
+  SARVAM_LANGUAGE: ${SARVAM_LANGUAGE:-en-IN}
+  COMFYUI_POLL_INTERVAL_MS: ${COMFYUI_POLL_INTERVAL_MS:-2000}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-ai_story_studio}
+      POSTGRES_USER: ${DB_USER:-studio}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-studio}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-studio}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # Optional bundled Ollama container. NOT started by default because most
+  # people running this locally already have Ollama installed on the host
+  # (the backend talks to that via host.docker.internal instead — see
+  # OLLAMA_BASE_URL above). Start this only if you want Ollama to run inside
+  # Docker too:
+  #   docker compose --profile bundled-ollama up -d
+  # ...and then set OLLAMA_BASE_URL=http://ollama:11434 in .env.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["bundled-ollama"]
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+
+  comfyui:
+    image: yanwk/comfyui-boot:cpu
+    environment:
+      # --cpu is hard-coded here on purpose and is NOT overridable from .env.
+      # The yanwk :cpu image supplies --cpu through its own default CLI_ARGS,
+      # and setting CLI_ARGS replaces that default rather than adding to it, so
+      # any .env value that omitted --cpu would crash-loop the container with:
+      #   AssertionError: Torch not compiled with CUDA enabled
+      # --preview-method none is the speed flag: live previews VAE-decode the
+      # latent on every single step, which on CPU can cost more than sampling.
+      # Put any additional flags in COMFYUI_EXTRA_CLI_ARGS; they are appended.
+      CLI_ARGS: --cpu --preview-method none ${COMFYUI_EXTRA_CLI_ARGS:-}
+      # PyTorch on CPU only parallelises well if it can see the cores. Docker
+      # Desktop hands containers a small CPU allocation by default - raise it in
+      # Settings > Resources, then set COMFYUI_THREADS to match your physical
+      # core count (not hyperthreads; oversubscribing makes diffusion slower).
+      OMP_NUM_THREADS: ${COMFYUI_THREADS:-4}
+      MKL_NUM_THREADS: ${COMFYUI_THREADS:-4}
+    volumes:
+      - comfyui-data:/root/ComfyUI/models
+      - comfyui-output:/root/ComfyUI/output
+    ports:
+      - "8188:8188"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8188/system_stats || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+
+  tts:
+    build:
+      context: ./tts
+    environment:
+      TTS_DEFAULT_VOICE: ${TTS_VOICE:-edge:en-IN-NeerjaNeural}
+      OFFLINE_MODE: ${OFFLINE_MODE:-false}
+      # Downloaded into the tts-data volume in the background on first start, so
+      # the Voice lab has something to compare without a wait. Everything else in
+      # the catalogue installs on demand when first selected.
+      TTS_PRELOAD_VOICES: ${TTS_PRELOAD_VOICES:-en_US-lessac-high,en_US-ryan-high}
+    volumes:
+      - tts-data:/voices
+    ports:
+      - "5002:5002"
+    restart: unless-stopped
+
+  # IndicF5 (AI4Bharat) - near-human Kannada/Hindi/Tamil/Telugu etc, MIT licence.
+  # Off by default: it needs ~1 GB of wheels and a ~1.6 GB gated model, and it
+  # does NOT support English, so it supplements the Piper service rather than
+  # replacing it. Start it with:
+  #   docker compose --profile indic up -d tts-indic
+  tts-indic:
+    profiles: ["indic"]
+    build:
+      context: ./tts-indic
+    environment:
+      # Required: ai4bharat/IndicF5 is a gated repo. Accept the terms at
+      # https://huggingface.co/ai4bharat/IndicF5 then put a read token here.
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+      INDICF5_REPO: ${INDICF5_REPO:-ai4bharat/IndicF5}
+      OMP_NUM_THREADS: ${INDICF5_THREADS:-6}
+    volumes:
+      # Reference clips. Each voice is <name>.wav plus <name>.txt holding that
+      # clip's exact transcript - F5 aligns against it and a wrong transcript
+      # degrades output badly rather than being ignored.
+      - ./tts-indic/prompts:/prompts
+      - indicf5-cache:/hf-cache
+    ports:
+      - "5003:5003"
+    restart: unless-stopped
+
+  # Video analysis for the AI Video Editor: ffprobe, PySceneDetect, OpenCV.
+  # Separate from the backend because these are Python and pull ~400 MB of
+  # wheels; putting them in the backend image would make every Java rebuild
+  # re-resolve them.
+  video-worker:
+    build:
+      context: ./video-worker
+    environment:
+      VIDEO_ANALYSIS_THREADS: ${VIDEO_ANALYSIS_THREADS:-8}
+      VIDEO_PROXY_HEIGHT: ${VIDEO_EDITOR_PREVIEW_RESOLUTION:-480}
+    volumes:
+      # Same mount as the backend: the worker reads uploads and writes proxies
+      # in place, so only paths cross the network, never the video itself.
+      - video-editor-data:/data/video-editor
+    ports:
+      - "5010:5010"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      <<: *app-env
+    volumes:
+      - projects-data:/data/projects
+      # Separate volume from the story pipeline's: uploaded source video is
+      # large and has a different lifecycle (deleted with its editor project),
+      # so mixing them would make either one impossible to prune alone.
+      - video-editor-data:/data/video-editor
+    ports:
+      - "8080:8080"
+    # Makes host.docker.internal resolve on Linux too (Docker Desktop on
+    # Mac/Windows already provides it). This is what lets the backend reach
+    # an Ollama instance running directly on your machine, outside Docker.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  indicf5-cache:
+  video-editor-data:
+  postgres-data:
+  ollama-data:
+  comfyui-data:
+  comfyui-output:
+  tts-data:
+  projects-data:

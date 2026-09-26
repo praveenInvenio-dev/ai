@@ -1,0 +1,9 @@
+{
+  "id": "hard_cut",
+  "name": "Hard cut",
+  "category": "CUT",
+  "purpose": "Straight cut. The default; carries no meaning of its own and never distracts.",
+  "minSourceDuration": 0.3,
+  "intensity": "subtle",
+  "render": { "kind": "HARD_CUT" }
+}

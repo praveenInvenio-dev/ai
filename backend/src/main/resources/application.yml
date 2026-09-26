@@ -1,0 +1,233 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ai-story-studio
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ai_story_studio}
+    username: ${DB_USER:studio}
+    password: ${DB_PASSWORD:studio}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  servlet:
+    multipart:
+      # Must exceed studio.video-editor.max-upload-mb, or Spring rejects the
+      # upload before our own size check runs and the user gets a generic 500
+      # instead of the message naming the actual limit. The old 25 MB ceiling
+      # predates the video editor and would reject almost any real clip.
+      max-file-size: ${VIDEO_EDITOR_MAX_UPLOAD_MB:512}MB
+      max-request-size: ${VIDEO_EDITOR_MAX_REQUEST_MB:2048}MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+studio:
+  demoMode: ${DEMO_MODE:false}
+  # Spec section 34: when true, no external network call is allowed from
+  # this app. Real enforcement, not just a label - see ProviderGateway
+  # (Sarvam TTS refused), CloudAIAnimationProvider (refused), and
+  # tts/server.py (Edge TTS refused). Ollama/ComfyUI/Piper/FFmpeg/animation
+  # are already local regardless of this flag, so it only ever has
+  # something to actually disable.
+  offlineMode: ${OFFLINE_MODE:false}
+  storage:
+    root: ${STORAGE_ROOT:/data/projects}
+  vision:
+    # mock is zero-cost/no-op; set VISION_PROVIDER=ollama and VISION_MODEL to a
+    # vision-capable Ollama model to enable semantic image QA and automatic retry.
+    provider: ${VISION_PROVIDER:mock}
+    model: ${VISION_MODEL:llava:latest}
+  ollama:
+    # Fallback used only if OLLAMA_BASE_URL isn't set in the environment at all.
+    # Matches docker-compose.yml's default: your machine's Ollama, not a bundled
+    # container (which would be http://ollama:11434 and only exists if you start
+    # it with `docker compose --profile bundled-ollama up -d`).
+    baseUrl: ${OLLAMA_BASE_URL:http://host.docker.internal:11434}
+    model: ${OLLAMA_MODEL:llama3.1}
+    timeoutSeconds: ${OLLAMA_TIMEOUT_SECONDS:120}
+  comfyui:
+    baseUrl: ${COMFYUI_BASE_URL:http://comfyui:8188}
+    workflow: ${COMFYUI_WORKFLOW:character-consistent-story}
+    # Must exactly match a filename in ComfyUI's models/checkpoints directory
+    # (`docker compose exec comfyui ls /root/ComfyUI/models/checkpoints`).
+    # Every downloaded checkpoint names the file differently, so this is
+    # deliberately NOT hard-coded in the workflow template - set it here
+    # instead of renaming whatever file you downloaded.
+    model: ${COMFYUI_MODEL:v1-5-pruned-emaonly-fp16.safetensors}
+    # Optional style-specific checkpoints. Leave blank to use COMFYUI_MODEL.
+    # These are intentionally opt-in so an installation with only one checkpoint
+    # never breaks when the user selects another style.
+    styleModels:
+      anime: ${COMFYUI_ANIME_MODEL:}
+      cartoon: ${COMFYUI_CARTOON_MODEL:}
+      3dAnimated: ${COMFYUI_3D_ANIMATED_MODEL:}
+      storybook: ${COMFYUI_STORYBOOK_MODEL:}
+      watercolor: ${COMFYUI_WATERCOLOR_MODEL:}
+      comicBook: ${COMFYUI_COMIC_BOOK_MODEL:}
+      fantasy: ${COMFYUI_FANTASY_MODEL:}
+    # Wall-clock budget for ONE image. On expiry the prompt is interrupted and
+    # removed from ComfyUI's queue, so it stops eating CPU the next scene needs.
+    timeoutSeconds: ${COMFYUI_TIMEOUT_SECONDS:900}
+    # How long a caller will wait for its turn when another scene is generating.
+    # ComfyUI runs one prompt at a time, so the backend queues callers itself
+    # rather than stacking prompts that will all time out together.
+    queueWaitSeconds: ${COMFYUI_QUEUE_WAIT_SECONDS:3600}
+    pollIntervalMs: ${COMFYUI_POLL_INTERVAL_MS:2000}
+    # ---- speed/quality knobs -------------------------------------------
+    # Generation cost scales with steps x pixels. These defaults are tuned for
+    # CPU-only ComfyUI; raise them once you're on a GPU.
+    #   CPU  : 512x512, 8 steps, dpmpp_2m/karras   (~1-3 min/image)
+    #   GPU  : 1024x576, 25-30 steps               (seconds/image)
+    steps: ${COMFYUI_STEPS:8}
+    width: ${COMFYUI_WIDTH:512}
+    height: ${COMFYUI_HEIGHT:512}
+    # 7.0 suits SD1.5/SDXL. Use 1.0-2.0 for LCM/Turbo/Lightning checkpoints -
+    # high CFG at low step counts produces burnt, over-saturated images.
+    cfg: ${COMFYUI_CFG:7.0}
+    # dpmpp_2m + karras converges well at low step counts. Use "lcm" +
+    # "sgm_uniform" with the character-consistent-story-lcm workflow.
+    sampler: ${COMFYUI_SAMPLER:dpmpp_2m}
+    scheduler: ${COMFYUI_SCHEDULER:karras}
+    # When ComfyUI fails or times out, fall back to a placeholder image so the
+    # rest of the pipeline (audio, video, packaging) still completes. Set false
+    # to fail the job loudly instead of silently shipping placeholders.
+    fallbackToPlaceholder: ${COMFYUI_FALLBACK_PLACEHOLDER:false}
+  tts:
+    # piper  = fully offline, free, but no Kannada / Indian English / child voices
+    # sarvam = hosted API, costs per character, covers all of the above
+    provider: ${TTS_PROVIDER:piper}
+    baseUrl: ${TTS_BASE_URL:http://tts:5002}
+    voice: ${TTS_VOICE:edge:en-IN-NeerjaNeural}
+    sarvam:
+      baseUrl: ${SARVAM_BASE_URL:https://api.sarvam.ai}
+      apiKey: ${SARVAM_API_KEY:}
+      model: ${SARVAM_MODEL:bulbul:v3}
+      # Speaker names are per-language; check Sarvam's recommended speakers for
+      # your target language rather than assuming one works everywhere.
+      speaker: ${SARVAM_SPEAKER:anushka}
+      # kn-IN Kannada, hi-IN Hindi, en-IN Indian English, ta-IN, te-IN, ml-IN, ...
+      language: ${SARVAM_LANGUAGE:en-IN}
+  ffmpeg:
+    binary: ${FFMPEG_BIN:ffmpeg}
+  retry:
+    llm: 3
+    image: 2
+    tts: 2
+    ffmpeg: 1
+  quality:
+    minScore: ${QUALITY_MIN_SCORE:70}
+    imageValidation:
+      # Semantic QA is automatically used when studio.vision.provider=ollama.
+      # With the default mock provider only the cheap image-integrity checks run.
+      enabled: ${IMAGE_VALIDATION_ENABLED:true}
+      maxRetries: ${IMAGE_VALIDATION_RETRIES:1}
+  video:
+    transitions:
+      # Disabled by default for correctness on low-memory machines. The renderer
+      # can opt in and automatically falls back to full-length concat if a
+      # transition graph ever shortens the timeline.
+      enabled: ${VIDEO_TRANSITIONS_ENABLED:false}
+  music:
+    autoEnabled: ${AUTO_MUSIC_ENABLED:true}
+  video-editor:
+    # false removes the module entirely - no endpoints, no nav item - so editor
+    # problems cannot affect the story pipeline.
+    enabled: ${VIDEO_EDITOR_ENABLED:true}
+    storage-path: ${VIDEO_EDITOR_STORAGE_PATH:/data/video-editor}
+    # 1 is a correctness setting on a 12-core/2 GB-VRAM box, not a tuning knob:
+    # concurrent x264 encodes alongside a diffusion job make everything slower.
+    max-concurrent-renders: ${VIDEO_EDITOR_MAX_CONCURRENT_RENDERS:1}
+    max-clips: ${VIDEO_EDITOR_MAX_CLIPS:20}
+    max-upload-mb: ${VIDEO_EDITOR_MAX_UPLOAD_MB:512}
+    # 480, not the 720 in the brief: ~2.5x faster to encode on this CPU and
+    # adequate for judging cuts, which is all a preview is for.
+    preview-resolution: ${VIDEO_EDITOR_PREVIEW_RESOLUTION:480}
+    default-resolution: ${VIDEO_EDITOR_DEFAULT_RESOLUTION:1080}
+    x264-preset: ${VIDEO_EDITOR_X264_PRESET:veryfast}
+    crf: ${VIDEO_EDITOR_CRF:23}
+    analysis-threads: ${VIDEO_ANALYSIS_THREADS:8}
+    worker-base-url: ${VIDEO_WORKER_BASE_URL:http://video-worker:5010}
+    preview-retention-hours: ${VIDEO_EDITOR_PREVIEW_RETENTION_HOURS:24}
+  # Standalone "Video generation" page (VideoGenerationController) - animates
+  # one uploaded image via the same Wan/ComfyUI provider the story pipeline
+  # uses (studio.animation.local-ai below), independent of any episode.
+  # Jobs and their result clips are kept in memory/disk only for this long;
+  # see VideoGenJobStore.cleanup().
+  video-generation:
+    retention-hours: ${VIDEO_GENERATION_RETENTION_HOURS:24}
+  animation:
+    # Priority for animating a story scene: local AI I2V, then cloud I2V,
+    # then the always-available 2.5D engine (FFmpeg camera motion + parallax
+    # + particles). Both AI tiers are unconfigured by default - reporting
+    # "unavailable" honestly rather than pretending to run a model that
+    # isn't there - so every scene renders via 2.5D until one is actually
+    # set up. See AnimationDecisionService.
+    local-ai:
+      # Real by default now (see ComfyUIVideoProvider) - deploy this on
+      # separate, higher-VRAM hardware and set all of the model filenames
+      # below to actually turn it on. Every field left blank keeps this
+      # tier honestly "unavailable" (see ComfyUIVideoProvider.unavailableReason)
+      # rather than half-configuring a workflow that would fail at render time.
+      enabled: ${LOCAL_AI_ANIMATION_ENABLED:false}
+      workflow: ${LOCAL_AI_ANIMATION_WORKFLOW:wan-image-to-video}
+      # Wan diffusion model (models/diffusion_models/), text encoder
+      # (models/text_encoders/), VAE (models/vae/) and CLIP vision model
+      # (models/clip_vision/ - the same file the IPAdapter image workflow
+      # uses, if already installed). See wan-image-to-video.json's own
+      # comments for exact expected filenames and where to get them.
+      diffusion-model: ${LOCAL_AI_ANIMATION_MODEL:}
+      clip-model: ${LOCAL_AI_ANIMATION_CLIP_MODEL:}
+      vae-model: ${LOCAL_AI_ANIMATION_VAE_MODEL:}
+      clip-vision-model: ${LOCAL_AI_ANIMATION_CLIP_VISION_MODEL:}
+      width: ${LOCAL_AI_ANIMATION_WIDTH:832}
+      height: ${LOCAL_AI_ANIMATION_HEIGHT:480}
+      fps: ${LOCAL_AI_ANIMATION_FPS:16}
+      steps: ${LOCAL_AI_ANIMATION_STEPS:20}
+      cfg: ${LOCAL_AI_ANIMATION_CFG:6.0}
+      sampler: ${LOCAL_AI_ANIMATION_SAMPLER:uni_pc}
+      scheduler: ${LOCAL_AI_ANIMATION_SCHEDULER:simple}
+      # A single Wan call above this length starts costing minutes per scene
+      # even on strong hardware - kept modest by default; raise it once
+      # you've verified timing on your actual deployment GPU.
+      max-duration-seconds: ${LOCAL_AI_ANIMATION_MAX_DURATION_SECONDS:6.0}
+      timeout-seconds: ${LOCAL_AI_ANIMATION_TIMEOUT_SECONDS:1800}
+      queue-wait-seconds: ${LOCAL_AI_ANIMATION_QUEUE_WAIT_SECONDS:3600}
+      max-concurrent: ${LOCAL_AI_ANIMATION_MAX_CONCURRENT:1}
+      # Real gate (spec section 25/27), not assumed: below this, AI video
+      # stays unavailable regardless of every other setting above - a scene
+      # attempted with too little VRAM OOMs mid-run rather than failing
+      # fast. 4000 is conservative for a small Wan quant; raise/lower to
+      # match whatever you actually deploy on.
+      min-vram-mb: ${LOCAL_AI_ANIMATION_MIN_VRAM_MB:4000}
+    cloud:
+      # Empty by default = "no cloud provider configured". Never assumed
+      # present; set both to opt in once a real provider is wired up.
+      api-url: ${CLOUD_ANIMATION_API_URL:}
+      api-key: ${CLOUD_ANIMATION_API_KEY:}
+    # HERO scenes over this length are too long for a first-pass local/cloud
+    # I2V budget on constrained hardware, so they stay on 2.5D regardless of
+    # what's configured - a five-minute hero shot is not what "hero shot"
+    # (spec section 21) is for.
+    max-ai-scene-seconds: ${ANIMATION_MAX_AI_SCENE_SECONDS:12}
+    depth-model:
+      # Spec section 8. False by default, honestly - no lightweight depth
+      # model is actually wired in (FFmpegProcessor.depthModelAvailable()
+      # always reports false regardless of this flag until a real
+      # estimator exists). Exists as the config surface for when one is.
+      enabled: ${ANIMATION_DEPTH_MODEL_ENABLED:false}
+
+logging:
+  level:
+    com.aistorystudio: INFO

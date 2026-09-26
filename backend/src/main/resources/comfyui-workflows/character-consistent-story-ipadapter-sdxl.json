@@ -1,0 +1,134 @@
+{
+  "_comment": [
+    "Character-consistency SDXL variant. Requires ComfyUI_IPAdapter_plus and:",
+    "  clip_vision_h.safetensors",
+    "  ip-adapter-plus_sdxl_vit-h.bin",
+    "Reference conditioning is intentionally moderate so scene composition remains driven by the prompt."
+  ],
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "cfg": "{{CFG}}",
+      "denoise": 1,
+      "latent_image": [
+        "5",
+        0
+      ],
+      "model": [
+        "14",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "sampler_name": "{{SAMPLER}}",
+      "scheduler": "{{SCHEDULER}}",
+      "seed": "{{SEED}}",
+      "steps": "{{STEPS}}"
+    }
+  },
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "{{CHECKPOINT}}"
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "batch_size": 1,
+      "height": "{{HEIGHT}}",
+      "width": "{{WIDTH}}"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "4",
+        1
+      ],
+      "text": "{{POSITIVE_PROMPT}}"
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "4",
+        1
+      ],
+      "text": "{{NEGATIVE_PROMPT}}"
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "ai-story-studio",
+      "images": [
+        "8",
+        0
+      ]
+    }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{REFERENCE_IMAGE}}"
+    }
+  },
+  "12": {
+    "class_type": "CLIPVisionLoader",
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    }
+  },
+  "13": {
+    "class_type": "IPAdapterModelLoader",
+    "inputs": {
+      "ipadapter_file": "ip-adapter-plus_sdxl_vit-h.bin"
+    }
+  },
+  "14": {
+    "class_type": "IPAdapterApply",
+    "inputs": {
+      "ipadapter": [
+        "13",
+        0
+      ],
+      "clip_vision": [
+        "12",
+        0
+      ],
+      "image": [
+        "11",
+        0
+      ],
+      "model": [
+        "4",
+        0
+      ],
+      "weight": 0.52,
+      "noise": 0.0,
+      "weight_type": "original"
+    }
+  }
+}

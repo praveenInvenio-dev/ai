@@ -1,0 +1,10 @@
+{
+  "id": "cut_on_action",
+  "name": "Cut on action",
+  "category": "CUT",
+  "purpose": "Cuts mid-movement so the motion carries across the join and hides it.",
+  "minSourceDuration": 0.5,
+  "intensity": "balanced",
+  "requires": ["currentHasMotion", "nextHasMotion"],
+  "render": { "kind": "HARD_CUT" }
+}

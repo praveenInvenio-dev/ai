@@ -1,0 +1,11 @@
+{
+  "id": "cinematic",
+  "category": "CINEMATIC",
+  "defaultAspectRatio": "LANDSCAPE_16_9",
+  "minShotSeconds": 3.0,
+  "maxShotSeconds": 10.0,
+  "preferredTechniques": ["hard_cut", "cut_on_action", "j_cut", "l_cut", "slow_zoom", "dip_to_black"],
+  "avoidTechniques": ["whip_pan", "punch_zoom", "slide_left"],
+  "colorGrade": "cinematic_teal_orange",
+  "notes": "Long shots, motivated cuts, transitions reserved for real breaks."
+}
