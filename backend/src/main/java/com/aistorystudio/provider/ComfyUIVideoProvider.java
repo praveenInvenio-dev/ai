@@ -197,8 +197,19 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         // Wan's frame count needs to land on 4n+1 for its causal VAE - round to
         // the nearest valid length rather than passing an arbitrary frame count
         // the workflow might reject.
+        // Wan's frame count needs to land on 4n+1 for its causal VAE - round UP
+        // to the nearest valid length, never down. Rounding down (the previous
+        // behavior here) could make the generated clip up to 3 frames SHORTER
+        // than the scene's requested duration, and nothing downstream pads a
+        // short AI clip back out - FFmpegProcessor's -t flag only trims a clip
+        // DOWN to the target length, it can't manufacture missing frames. That
+        // undershoot is exactly what trips "Scene N rendered only Xs of
+        // expected Ys. Refusing to create a partial episode." Rounding up here
+        // guarantees the raw Wan clip is always >= the requested duration, so
+        // the later FFmpeg trim (which expects that) actually has something to
+        // trim from instead of coming up short.
         int rawFrames = (int) Math.round(duration * defaultFps);
-        int length = Math.max(5, ((rawFrames - 1) / 4) * 4 + 1);
+        int length = Math.max(5, (((rawFrames - 1) + 3) / 4) * 4 + 1);
 
         if (request.startingImagePath() == null) {
             throw new IllegalStateException("Local AI video generation requires a starting image.");
