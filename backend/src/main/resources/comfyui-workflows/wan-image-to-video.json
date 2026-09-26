@@ -139,7 +139,7 @@
       "images": ["11", 0],
       "frame_rate": "{{FPS}}",
       "loop_count": 0,
-      "filename_prefix": "ai-story-studio-wan",
+      "filename_prefix": "{{FILENAME_PREFIX}}",
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 20,

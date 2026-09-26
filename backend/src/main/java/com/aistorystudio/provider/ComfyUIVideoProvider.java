@@ -216,11 +216,23 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         }
         String startingImageFilename = uploadStartingImage(Path.of(request.startingImagePath()));
 
+        // Unique per job, not a shared incrementing counter: VHS_VideoCombine's
+        // own auto-numbering is scanned from disk per-run, and any leftover
+        // file from an earlier session (or a fresh ComfyUI restart racing an
+        // in-flight job) can collide on the same number. When that happens the
+        // node skips the write silently ("File already exists. Exiting.")
+        // without raising a hard error, so ComfyUI reports the prompt as
+        // executed successfully with no video output - and pollForVideo()
+        // then waits the FULL timeout for a file that was never going to
+        // appear. A per-job-unique prefix makes that collision structurally
+        // impossible instead of trying to out-guess the counter.
+        String clientId = UUID.randomUUID().toString();
+        String filenamePrefix = "ai-story-studio-wan-" + clientId;
+
         String workflowJson = fillWanTemplate(workflowName, request.prompt(),
                 request.negativePrompt() == null ? "" : request.negativePrompt(),
-                seed, width, height, length, defaultFps, startingImageFilename);
+                seed, width, height, length, defaultFps, startingImageFilename, filenamePrefix);
 
-        String clientId = UUID.randomUUID().toString();
         Map<String, Object> payload = new LinkedHashMap<>();
         try {
             payload.put("prompt", mapper.readTree(workflowJson));
@@ -267,7 +279,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
      *  not a separate ad hoc implementation. */
     private String fillWanTemplate(String workflowName, String positive, String negative,
                                    long seed, int width, int height, int length, int fps,
-                                   String startingImageFilename) {
+                                   String startingImageFilename, String filenamePrefix) {
         Map<String, String> text = new LinkedHashMap<>();
         text.put("{{POSITIVE_PROMPT}}", positive == null ? "" : positive);
         text.put("{{NEGATIVE_PROMPT}}", negative == null ? "" : negative);
@@ -278,6 +290,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         text.put("{{STARTING_IMAGE}}", startingImageFilename);
         text.put("{{SAMPLER}}", defaultSampler);
         text.put("{{SCHEDULER}}", defaultScheduler);
+        text.put("{{FILENAME_PREFIX}}", filenamePrefix);
 
         Map<String, Number> numeric = new LinkedHashMap<>();
         numeric.put("{{SEED}}", seed);
