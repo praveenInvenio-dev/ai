@@ -1,0 +1,141 @@
+{
+  "_comment": [
+    "Text/image-to-video via Wan 2.2 TI2V-5B, using ComfyUI's OFFICIAL reference",
+    "graph for this specific model (Comfy-Org/workflow_templates:",
+    "templates/video_wan2_2_5B_ti2v.json - verified against the live file at",
+    "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/refs/heads/main/templates/video_wan2_2_5B_ti2v.json).",
+    "",
+    "This REPLACES wan-image-to-video.json for TI2V-5B specifically. That file",
+    "was built for the Wan 2.1/2.2 14B I2V models' node structure",
+    "(WanImageToVideo + a separate CLIPVisionLoader/CLIPVisionEncode chain),",
+    "which is architecturally different from TI2V-5B and does not condition on",
+    "the starting image correctly for this model - confirmed by a live test",
+    "that produced a video with literally zero resemblance to the input image",
+    "(the wrong node ran, at the wrong output resolution, effectively ignoring",
+    "the reference frame). TI2V-5B's real image-conditioning node is",
+    "Wan22ImageToVideoLatent, and it does NOT use clip_vision at all - the",
+    "official template has no CLIPVisionLoader/CLIPVisionEncode nodes.",
+    "",
+    "ModelSamplingSD3 (shift=8, the official template's own default) is also",
+    "required for TI2V-5B specifically - it was missing entirely from the old",
+    "workflow, which likely also contributed to the bad output.",
+    "",
+    "VHS_VideoCombine (not the official template's CreateVideo/SaveVideo pair)",
+    "is kept for the final mux step, since ComfyUIVideoProvider's polling/",
+    "download code already expects that node's output shape and the",
+    "VideoHelperSuite pack is already required/installed for the other Wan",
+    "workflow - no reason to introduce a second output mechanism.",
+    "",
+    "STILL UNVERIFIED end-to-end as of this file's creation (built from the",
+    "official reference graph + this project's own template-placeholder",
+    "convention, not yet run) - the previous file's own bad live-test result is",
+    "exactly why a second unverified workflow deserves the same caution, not",
+    "less. Test a short (2-3s) clip first and confirm the output actually",
+    "resembles the starting image before trusting this for a real episode.",
+    "",
+    "REQUIRES (same as wan-image-to-video.json's model files, minus clip_vision):",
+    "  1. wan2.2_ti2v_5B model in models/diffusion_models/",
+    "  2. umt5_xxl text encoder in models/text_encoders/",
+    "  3. Wan 2.2's own VAE (wan2.2_vae.safetensors, NOT wan_2.1_vae.safetensors)",
+    "     in models/vae/",
+    "  4. ComfyUI-VideoHelperSuite custom node pack (for VHS_VideoCombine)",
+    "",
+    "length is the frame count, not seconds - the caller (ComfyUIVideoProvider)",
+    "converts the scene's target duration into a frame count using {{FPS}}",
+    "before filling this template."
+  ],
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "{{CHECKPOINT}}",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": ["1", 0],
+      "shift": 8
+    }
+  },
+  "3": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "{{CLIP_MODEL}}",
+      "type": "wan"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["3", 0],
+      "text": "{{POSITIVE_PROMPT}}"
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["3", 0],
+      "text": "{{NEGATIVE_PROMPT}}"
+    }
+  },
+  "6": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "{{VAE_MODEL}}"
+    }
+  },
+  "7": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{STARTING_IMAGE}}"
+    }
+  },
+  "8": {
+    "class_type": "Wan22ImageToVideoLatent",
+    "inputs": {
+      "vae": ["6", 0],
+      "start_image": ["7", 0],
+      "width": "{{WIDTH}}",
+      "height": "{{HEIGHT}}",
+      "length": "{{LENGTH}}",
+      "batch_size": 1
+    }
+  },
+  "9": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["2", 0],
+      "positive": ["4", 0],
+      "negative": ["5", 0],
+      "latent_image": ["8", 0],
+      "seed": "{{SEED}}",
+      "steps": "{{STEPS}}",
+      "cfg": "{{CFG}}",
+      "sampler_name": "{{SAMPLER}}",
+      "scheduler": "{{SCHEDULER}}",
+      "denoise": 1
+    }
+  },
+  "10": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["9", 0],
+      "vae": ["6", 0]
+    }
+  },
+  "11": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": ["10", 0],
+      "frame_rate": "{{FPS}}",
+      "loop_count": 0,
+      "filename_prefix": "ai-story-studio-wan-ti2v5b",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 20,
+      "save_output": true,
+      "pingpong": false
+    }
+  }
+}
