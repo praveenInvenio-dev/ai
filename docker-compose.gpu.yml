@@ -89,6 +89,25 @@ services:
     environment:
       COMFYUI_TIMEOUT_SECONDS: ${COMFYUI_TIMEOUT_SECONDS:-300}
       COMFYUI_QUEUE_WAIT_SECONDS: ${COMFYUI_QUEUE_WAIT_SECONDS:-1800}
+      # eclipse-temurin (backend's base image) is a plain JRE image, not built
+      # from nvidia/cuda like comfyui/ollama are - those bake this var in
+      # already, which is what makes the NVIDIA runtime hook actually mount
+      # nvidia-smi + driver libs into a container, not just the raw devices.
+      # Without it here, `deploy.resources.reservations.devices` below still
+      # attaches the GPU device but nvidia-smi itself never gets mounted.
+      NVIDIA_DRIVER_CAPABILITIES: utility
+    # Backend never runs inference itself (ComfyUI does that) - this is ONLY
+    # so ResourceMonitorService's `nvidia-smi` check (used by the
+    # LOCAL_AI_ANIMATION_MIN_VRAM_MB gate) can actually see the GPU. Without
+    # this, the backend container has no GPU passthrough at all and the gate
+    # reports "No GPU detected" on every server, regardless of real hardware.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
 volumes:
   comfyui-gpu-root:
