@@ -5,6 +5,7 @@ export interface VoiceProfile {
   provider: string;
   referenceAudioKey?: string;
   voiceName: string;
+  referenceTranscript?: string;
   personality?: string;
   durationSeconds?: number;
   sampleRate?: number;
@@ -83,6 +84,7 @@ export interface Episode {
   ollamaModel?: string;
   musicPreset?: string;
   musicLocked?: boolean;
+  narratorVoiceProfileId?: string;
 }
 
 export interface SceneDto {
@@ -100,6 +102,7 @@ export interface SceneDto {
   motionPrompt?: string;
   motionNegativePrompt?: string;
   visualSpecJson?: string;
+  audioSpecJson?: string;
   narrationSeconds?: number;
   imageDurationSeconds?: number;
   cameraMovement?: string;
@@ -162,6 +165,8 @@ export interface CharacterReference {
   imageHash?: string;
   source: string;
   primary: boolean;
+  locked?: boolean;
+  promptText?: string;
   createdAt: string;
 }
 
@@ -182,7 +187,6 @@ export interface JobStep {
   status: string;
   retryCount: number;
   errorMessage?: string;
-  warningMessage?: string;
   durationMs?: number;
 }
 

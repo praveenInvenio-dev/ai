@@ -84,10 +84,8 @@ public class JobService {
         publishJob(step.getJobId());
     }
 
-    /** Non-fatal - call this on a step that otherwise succeeds. Separate
-     *  from failStep() on purpose: a TTS-fallback warning does not change
-     *  the step's status to FAILED, it just attaches an explanation a
-     *  human should see (see GenerationStep.warningMessage's own comment). */
+    /** Non-fatal - call this on a step that otherwise succeeds (a TTS
+     *  fallback fired but the step still completed). */
     public void setStepWarning(UUID stepId, String warning) {
         if (warning == null || warning.isBlank()) return;
         GenerationStep step = stepRepository.findById(stepId).orElseThrow();

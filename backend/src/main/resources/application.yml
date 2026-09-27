@@ -66,6 +66,14 @@ studio:
     # deliberately NOT hard-coded in the workflow template - set it here
     # instead of renaming whatever file you downloaded.
     model: ${COMFYUI_MODEL:v1-5-pruned-emaonly-fp16.safetensors}
+    # Optional newer/high-quality workflow. Leave blank to preserve the existing
+    # workflow. QUALITY uses these only when both values are configured.
+    highQualityWorkflow: ${COMFYUI_HQ_WORKFLOW:}
+    highQualityModel: ${COMFYUI_HQ_MODEL:}
+    highQualitySteps: ${COMFYUI_HQ_STEPS:24}
+    highQualityWidth: ${COMFYUI_HQ_WIDTH:1024}
+    highQualityHeight: ${COMFYUI_HQ_HEIGHT:1024}
+    highQualityCfg: ${COMFYUI_HQ_CFG:5.0}
     # Optional style-specific checkpoints. Leave blank to use COMFYUI_MODEL.
     # These are intentionally opt-in so an installation with only one checkpoint
     # never breaks when the user selects another style.
@@ -128,6 +136,9 @@ studio:
       # bundled, unlike Piper's preloaded voices, since cloning needs a real
       # reference clip someone actually has rights to use.
       voice: ${CHATTERBOX_VOICE:narrator}
+    cosyvoice:
+      baseUrl: ${COSYVOICE_TTS_BASE_URL:http://tts-cosyvoice:5005}
+      voice: ${COSYVOICE_VOICE:default}
   ffmpeg:
     binary: ${FFMPEG_BIN:ffmpeg}
   retry:
@@ -142,6 +153,7 @@ studio:
       # With the default mock provider only the cheap image-integrity checks run.
       enabled: ${IMAGE_VALIDATION_ENABLED:true}
       maxRetries: ${IMAGE_VALIDATION_RETRIES:1}
+      characterReferenceRequiredForHero: ${CHARACTER_REFERENCE_REQUIRED_FOR_HERO:true}
   video:
     transitions:
       # Disabled by default for correctness on low-memory machines. The renderer
@@ -184,22 +196,18 @@ studio:
     # isn't there - so every scene renders via 2.5D until one is actually
     # set up. See AnimationDecisionService.
     local-ai:
-      # Story pipeline (multi-scene episode) vs the standalone Video
-      # Generation page are gated SEPARATELY on purpose. This flag only
-      # controls the story pipeline; the standalone page always calls the
-      # video model directly regardless of this setting. Default false:
-      # per-scene AI video across a whole episode risks one scene's
-      # duration-mismatch/timeout taking down the entire production, which
-      # a single-clip standalone generation doesn't risk. Flip to true only
-      # once you've tested this is reliable enough on your hardware for a
-      # full multi-scene run.
-      enabled-in-story-pipeline: ${LOCAL_AI_ANIMATION_ENABLED_IN_STORY_PIPELINE:false}
       # Real by default now (see ComfyUIVideoProvider) - deploy this on
       # separate, higher-VRAM hardware and set all of the model filenames
       # below to actually turn it on. Every field left blank keeps this
       # tier honestly "unavailable" (see ComfyUIVideoProvider.unavailableReason)
       # rather than half-configuring a workflow that would fail at render time.
       enabled: ${LOCAL_AI_ANIMATION_ENABLED:false}
+      # Story pipeline vs standalone Video Generation page are gated
+      # SEPARATELY. This only controls the story pipeline; the standalone
+      # page always calls the video model directly regardless. Default
+      # false: per-scene AI video across a whole episode risks one scene's
+      # duration-mismatch/timeout taking down the entire production.
+      enabled-in-story-pipeline: ${LOCAL_AI_ANIMATION_ENABLED_IN_STORY_PIPELINE:false}
       workflow: ${LOCAL_AI_ANIMATION_WORKFLOW:wan-image-to-video}
       # Wan diffusion model (models/diffusion_models/), text encoder
       # (models/text_encoders/), VAE (models/vae/) and CLIP vision model

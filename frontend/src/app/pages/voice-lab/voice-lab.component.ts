@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, Voice } from '../../services/api.service';
@@ -29,12 +29,11 @@ interface VoiceGroup {
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <header class="page-head">
-      <h1>Voice lab</h1>
+    <header class="page-head voice-hero"><div><span class="eyebrow">VOICE DIRECTOR</span><h1>Voice lab</h1>
       <p class="muted">
         Try a narration voice before committing an episode to it. Voices download on first use
         and are then cached, so the first play of a new voice takes longer than later ones.
-      </p>
+      </p></div><div class="hero-stat"><strong>{{ voiceProfiles.length }}</strong><span>saved voices</span></div>
     </header>
 
     <section class="panel">
@@ -96,7 +95,7 @@ interface VoiceGroup {
 
     <section class="panel">
       <div class="group-head">
-        <h2>Voice library</h2>
+        <div><span class="eyebrow">YOUR ASSETS</span><h2>Voice library</h2></div>
         <span class="chip chip-teal">reusable across stories</span>
       </div>
       <p class="muted group-note">
@@ -119,13 +118,23 @@ interface VoiceGroup {
             {{ vp.durationSeconds.toFixed(1) }}s reference clip
             <span *ngIf="vp.language"> &middot; {{ vp.language }}</span>
           </div>
-          <div class="voice-notes" *ngIf="vp.personality">{{ vp.personality }}</div>
+          <div class="voice-notes" *ngIf="vp.personality">{{ vp.personality }}</div><div class="saved-voice-hint">Available in Character Studio and Story Approval</div>
 
-          <audio *ngIf="testAudioUrl[vp.id]" controls [src]="testAudioUrl[vp.id]"></audio>
+          <div class="reference-audio" *ngIf="vp.referenceAudioKey">
+            <button type="button" class="btn-ghost" (click)="playReferenceVoice(vp)" [disabled]="loadingReference[vp.id]">
+              {{ loadingReference[vp.id] ? 'Loading recording...' : '▶ Play recorded voice' }}
+            </button>
+            <audio *ngIf="referenceAudioUrl[vp.id]" controls [src]="referenceAudioUrl[vp.id]"></audio>
+          </div>
+          <div class="test-audio" *ngIf="testAudioUrl[vp.id]">
+            <div class="audio-label">Generated test{{ testDurationSeconds[vp.id] ? ' · ' + testDurationSeconds[vp.id].toFixed(1) + 's' : '' }}</div>
+            <audio controls [src]="testAudioUrl[vp.id]"></audio>
+          </div>
+          <p class="error" *ngIf="testErrors[vp.id]">{{ testErrors[vp.id] }}</p>
 
           <div class="vp-actions">
             <button type="button" class="btn-ghost" (click)="testVoice(vp)" [disabled]="testing[vp.id]">
-              {{ testing[vp.id] ? 'Generating...' : 'Test voice' }}
+              {{ testing[vp.id] ? 'Generating test...' : 'Test cloned voice' }}
             </button>
             <button type="button" class="btn-ghost" *ngIf="renamingId !== vp.id" (click)="startRename(vp)">Rename</button>
             <button type="button" class="btn-ghost" *ngIf="renamingId === vp.id" (click)="confirmRename(vp)">Save name</button>
@@ -140,7 +149,7 @@ interface VoiceGroup {
 
     <section class="panel">
       <div class="group-head">
-        <h2>Add a voice</h2>
+        <div><span class="eyebrow">CREATE</span><h2>Add a reusable voice</h2></div>
       </div>
       <div class="presets">
         <button type="button" class="pill" [class.selected]="addMode === 'record'" (click)="setAddMode('record')">Record your voice</button>
@@ -156,8 +165,21 @@ interface VoiceGroup {
         <input id="vp-lang" [(ngModel)]="newVoiceLanguage" placeholder="e.g. en-US">
       </div>
       <div class="field">
+        <label for="vp-provider">Voice engine</label>
+        <select id="vp-provider" [(ngModel)]="newVoiceProvider">
+          <option value="chatterbox">ChatterBox — expressive English</option>
+          <option value="cosyvoice">CosyVoice 3 — multilingual cloning</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="vp-personality">Personality/style (optional)</label>
         <input id="vp-personality" [(ngModel)]="newVoicePersonality" placeholder="e.g. warm, curious, gentle">
+      </div>
+      <div class="field" *ngIf="newVoiceProvider === 'cosyvoice'">
+        <label for="vp-transcript">Reference transcript</label>
+        <textarea id="vp-transcript" rows="2" [(ngModel)]="newVoiceReferenceTranscript"
+                  placeholder="Type exactly what is spoken in the reference recording..."></textarea>
+        <p class="muted">CosyVoice uses this to align the recorded reference clip. ChatterBox does not require it.</p>
       </div>
 
       <div class="field" *ngIf="addMode === 'record'">
@@ -175,26 +197,58 @@ interface VoiceGroup {
         <audio controls [src]="pendingAudioUrl"></audio>
       </div>
 
-      <p class="muted" *ngIf="validating">Checking audio quality...</p>
+      <div class="validation-status" *ngIf="finalizingRecording" role="status" aria-live="polite">
+        <span class="validation-spinner" aria-hidden="true"></span>
+        <div><strong>Preparing your recording</strong><span>Finishing the audio file and getting it ready for validation...</span></div>
+      </div>
+      <div class="validation-status" *ngIf="validating" role="status" aria-live="polite">
+        <span class="validation-spinner" aria-hidden="true"></span>
+        <div>
+          <strong>Voice validation in progress</strong>
+          <span>Checking duration, clarity and audio quality. You can continue reviewing your voice while this runs.</span>
+        </div>
+      </div>
+      <div class="validation-status validation-success" *ngIf="!validating && pendingAudioBlob && !addError" role="status">
+        <span class="validation-check" aria-hidden="true">✓</span>
+        <div>
+          <strong>Voice validation complete</strong>
+          <span>Your recording is ready to save.</span>
+        </div>
+      </div>
+      <div class="validation-status validation-error" *ngIf="!validating && pendingAudioBlob && addError" role="alert">
+        <span class="validation-check" aria-hidden="true">!</span>
+        <div><strong>Recording needs to be redone</strong><span>{{ addError }}</span></div>
+      </div>
       <ul class="warnings" *ngIf="validationWarnings.length">
         <li *ngFor="let w of validationWarnings">{{ w }}</li>
       </ul>
-      <p class="error" *ngIf="addError">{{ addError }}</p>
+      <p class="success" *ngIf="savedMessage">✓ {{ savedMessage }}</p><p class="error" *ngIf="addError">{{ addError }}</p>
 
       <button type="button" class="btn btn-primary" (click)="saveVoice()"
-              [disabled]="!pendingAudioBlob || !newVoiceName.trim() || saving || validating">
-        {{ saving ? 'Saving...' : 'Save voice' }}
+              [disabled]="!pendingAudioBlob || !newVoiceName.trim() || saving || finalizingRecording || validating || !!addError">
+        {{ saving ? 'Saving voice...' : (finalizingRecording ? 'Preparing recording...' : (validating ? 'Validating voice...' : 'Save voice')) }}
       </button>
     </section>
   `,
   styles: [`
-    .page-head { margin-bottom: 1.25rem; }
+    .page-head { margin-bottom: 1.25rem; }.voice-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem}.eyebrow{display:block;color:var(--accent);font-size:.67rem;letter-spacing:.16em;font-weight:800;margin-bottom:.4rem}.hero-stat{padding:.7rem 1rem;border:1px solid var(--border);border-radius:13px;background:rgba(255,255,255,.025);text-align:center}.hero-stat strong{display:block;font-size:1.35rem;color:var(--teal)}.hero-stat span{font-size:.67rem;color:var(--muted)}.success{color:var(--teal);background:rgba(73,201,189,.08);border:1px solid rgba(73,201,189,.25);padding:.7rem 1rem;border-radius:10px}
     .muted { color: var(--muted); font-size: 0.9rem; }
+    .validation-status{display:flex;align-items:center;gap:.75rem;margin:.8rem 0;padding:.85rem 1rem;border:1px solid rgba(80,160,255,.28);border-radius:12px;background:rgba(80,160,255,.07)}
+    .validation-status strong{display:block;font-size:.9rem;margin-bottom:.15rem}
+    .validation-status span{display:block;color:var(--muted);font-size:.8rem;line-height:1.35}
+    .validation-spinner{width:18px;height:18px;flex:0 0 18px;border:2px solid rgba(255,255,255,.18);border-top-color:var(--accent);border-radius:50%;animation:voice-validation-spin .8s linear infinite}
+    .validation-check{width:18px;height:18px;flex:0 0 18px;display:grid!important;place-items:center;border-radius:50%;background:rgba(73,201,189,.16);color:var(--teal)!important;font-weight:800}
+    .validation-success{border-color:rgba(73,201,189,.25);background:rgba(73,201,189,.07)}
+    .validation-error{border-color:rgba(255,100,100,.28);background:rgba(255,100,100,.07)}
+    .validation-error .validation-check{background:rgba(255,100,100,.16);color:#ff8f8f!important}
+    .reference-audio,.test-audio{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin:.65rem 0}.reference-audio audio,.test-audio audio{max-width:100%;height:34px}.audio-label{font-size:.78rem;color:var(--muted)}
+    @keyframes voice-validation-spin{to{transform:rotate(360deg)}}
     .panel {
       background: var(--surface-raised); border-radius: var(--radius);
       padding: 1.1rem; margin-bottom: 1.1rem;
     }
     label { display: block; font-size: 0.85rem; margin-bottom: 0.35rem; }
+    input, select { width: 100%; box-sizing: border-box; background: var(--surface); color: inherit; border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; font: inherit; }
     textarea {
       width: 100%; background: var(--surface); color: inherit;
       border: 1px solid var(--border); border-radius: 8px;
@@ -268,6 +322,7 @@ interface VoiceGroup {
     }
     .warnings { margin: 0.6rem 0 0; padding-left: 1.2rem; font-size: 0.82rem; color: #fbbf24; }
     .warnings li { margin-bottom: 0.2rem; }
+    .eyebrow{display:block;font-size:.66rem;letter-spacing:.14em;color:var(--accent);font-weight:800;margin-bottom:.25rem}.group-head h2{margin:.05rem 0}.voice-profile-card{position:relative;overflow:hidden;border:1px solid var(--border);background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.015));box-shadow:0 12px 30px rgba(0,0,0,.12);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}.voice-profile-card:hover{transform:translateY(-2px);border-color:rgba(73,201,189,.35);box-shadow:0 16px 34px rgba(0,0,0,.2)}.voice-profile-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--teal),var(--accent));opacity:.8}.saved-voice-hint{margin-top:.55rem;font-size:.7rem;color:var(--muted)}.vp-actions{display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.75rem}.btn-primary{box-shadow:0 8px 24px rgba(73,201,189,.12)}
   `]
 })
 export class VoiceLabComponent implements OnInit, OnDestroy {
@@ -301,7 +356,11 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
   voiceProfiles: VoiceProfile[] = [];
   loadingProfiles = true;
   testing: Record<string, boolean> = {};
+  loadingReference: Record<string, boolean> = {};
   testAudioUrl: Record<string, string> = {};
+  referenceAudioUrl: Record<string, string> = {};
+  testDurationSeconds: Record<string, number> = {};
+  testErrors: Record<string, string> = {};
   renamingId = '';
   renameValue = '';
 
@@ -309,12 +368,16 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
   newVoiceName = '';
   newVoiceLanguage = '';
   newVoicePersonality = '';
+  newVoiceProvider: 'chatterbox' | 'cosyvoice' = 'chatterbox';
+  newVoiceReferenceTranscript = '';
   pendingAudioBlob?: Blob;
   pendingAudioUrl?: string;
   validating = false;
   validationWarnings: string[] = [];
   saving = false;
+  finalizingRecording = false;
   addError = '';
+  savedMessage = '';
 
   recording = false;
   recordSeconds = 0;
@@ -322,7 +385,7 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
   private recordedChunks: Blob[] = [];
   private recordTimer?: ReturnType<typeof setInterval>;
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.api.listVoices().subscribe({
@@ -414,6 +477,14 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
         voices: []
       },
       {
+        key: 'chatterbox', title: 'ChatterBox', badge: 'expressive · cloned', chipClass: 'chip-amber',
+        note: 'Saved expressive character voices. Record or upload a clean reference in Add a voice.', emptyHint: 'No ChatterBox voices saved yet.', voices: []
+      },
+      {
+        key: 'cosyvoice', title: 'CosyVoice', badge: 'multilingual · cloned', chipClass: 'chip-teal',
+        note: 'Saved multilingual voices with reference transcripts.', emptyHint: 'No CosyVoice voices saved yet.', voices: []
+      },
+      {
         key: 'indicf5',
         title: 'IndicF5',
         badge: 'offline · MIT',
@@ -459,7 +530,9 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
   }
 
   startRecording(): void {
+    this.finalizingRecording = false;
     this.addError = '';
+  this.savedMessage = '';
     this.clearPendingAudio();
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
       this.recordedChunks = [];
@@ -467,8 +540,13 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
       this.mediaRecorder.ondataavailable = e => { if (e.data.size > 0) { this.recordedChunks.push(e.data); } };
       this.mediaRecorder.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(this.recordedChunks, { type: 'audio/webm' });
+        const blob = new Blob(this.recordedChunks, { type: this.mediaRecorder?.mimeType || 'audio/webm' });
+        this.finalizingRecording = false;
         this.setPendingAudio(blob, 'recording.webm');
+        // MediaRecorder callbacks are browser events; explicitly refresh the
+        // Angular view so the preview, validation state and Save button never
+        // remain visually stuck after Stop on Chrome/Edge.
+        this.cdr.detectChanges();
       };
       this.mediaRecorder.start();
       this.recording = true;
@@ -480,7 +558,9 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
   }
 
   stopRecording(): void {
-    this.mediaRecorder?.stop();
+    if (!this.mediaRecorder || !this.recording) { return; }
+    this.finalizingRecording = true;
+    this.mediaRecorder.stop();
     this.recording = false;
     if (this.recordTimer) { clearInterval(this.recordTimer); this.recordTimer = undefined; }
   }
@@ -490,6 +570,7 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
     const file = input.files?.[0];
     if (!file) { return; }
     this.addError = '';
+    this.savedMessage = '';
     this.setPendingAudio(file, file.name);
   }
 
@@ -507,14 +588,17 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
         this.validating = false;
         if (!result.ok) {
           this.addError = result.error || 'That clip is not usable.';
-          this.clearPendingAudio();
+          // Keep the clip and preview visible so the user can correct the
+          // recording/name/provider without losing the selected audio.
         } else {
           this.validationWarnings = result.warnings;
         }
+        this.cdr.detectChanges();
       },
       error: err => {
         this.validating = false;
         this.addError = err?.error?.message || 'Could not validate that audio.';
+        this.cdr.detectChanges();
       }
     });
   }
@@ -523,25 +607,37 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
     if (this.pendingAudioUrl) { URL.revokeObjectURL(this.pendingAudioUrl); }
     this.pendingAudioBlob = undefined;
     this.pendingAudioUrl = undefined;
+    this.finalizingRecording = false;
     this.validationWarnings = [];
     this.addError = '';
   }
 
   saveVoice(): void {
-    if (!this.pendingAudioBlob || !this.newVoiceName.trim()) { return; }
+    // Do not make the Save button permanently unavailable while the optional
+    // pre-save quality probe is running. The backend performs the same hard
+    // validation again before storing the profile, so a slow probe must not
+    // trap the user behind a disabled button.
+    if (!this.pendingAudioBlob || !this.newVoiceName.trim() || this.saving) { return; }
+    if (this.newVoiceProvider === 'cosyvoice' && !this.newVoiceReferenceTranscript.trim()) {
+      this.addError = 'CosyVoice requires the exact transcript of the reference recording.';
+      return;
+    }
     this.saving = true;
     this.addError = '';
+    this.savedMessage = '';
     const filename = this.addMode === 'record' ? 'recording.webm' : 'upload.audio';
     this.api.createClonedVoiceProfile(
-      this.newVoiceName.trim(), this.newVoiceLanguage.trim(), 'chatterbox',
-      this.newVoicePersonality.trim(), this.pendingAudioBlob, filename
+      this.newVoiceName.trim(), this.newVoiceLanguage.trim(), this.newVoiceProvider,
+      this.newVoicePersonality.trim(), this.pendingAudioBlob, filename, this.newVoiceReferenceTranscript.trim()
     ).subscribe({
       next: profile => {
         this.voiceProfiles = [...this.voiceProfiles, profile];
+        this.savedMessage = `“${profile.name}” is now saved in your Voice Library and available across stories.`;
         this.saving = false;
         this.newVoiceName = '';
         this.newVoiceLanguage = '';
         this.newVoicePersonality = '';
+        this.newVoiceReferenceTranscript = '';
         this.clearPendingAudio();
       },
       error: err => {
@@ -551,17 +647,47 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
     });
   }
 
-  testVoice(vp: VoiceProfile): void {
-    this.testing[vp.id] = true;
-    this.api.testVoiceProfile(vp.id, 'Hello! This is what I sound like.').subscribe({
+  playReferenceVoice(vp: VoiceProfile): void {
+    this.loadingReference[vp.id] = true;
+    this.api.getVoiceReferenceAudio(vp.id).subscribe({
       next: blob => {
-        if (this.testAudioUrl[vp.id]) { URL.revokeObjectURL(this.testAudioUrl[vp.id]); }
-        this.testAudioUrl[vp.id] = URL.createObjectURL(blob);
-        this.testing[vp.id] = false;
+        if (this.referenceAudioUrl[vp.id]) { URL.revokeObjectURL(this.referenceAudioUrl[vp.id]); }
+        this.referenceAudioUrl[vp.id] = URL.createObjectURL(blob);
+        this.loadingReference[vp.id] = false;
+        this.cdr.detectChanges();
       },
       error: () => {
+        this.loadingReference[vp.id] = false;
+        this.testErrors[vp.id] = 'The original recorded reference could not be loaded. Re-save this voice or record it again.';
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  testVoice(vp: VoiceProfile): void {
+    this.testing[vp.id] = true;
+    this.testErrors[vp.id] = '';
+    // Use a deliberately longer sample so a cloned voice is actually auditable.
+    // The old seven-word sample naturally produced ~2 seconds and made a healthy
+    // clone look broken even when the reference was 5-15 seconds long.
+    const sampleText = 'Hello! This is a voice test for your story. I am speaking clearly and naturally so you can check the voice, pronunciation, pacing, and overall sound before using it in your video.';
+    this.api.testVoiceProfile(vp.id, sampleText).subscribe({
+      next: blob => {
+        if (this.testAudioUrl[vp.id]) { URL.revokeObjectURL(this.testAudioUrl[vp.id]); }
+        const url = URL.createObjectURL(blob);
+        this.testAudioUrl[vp.id] = url;
+        const probe = new Audio(url);
+        probe.addEventListener('loadedmetadata', () => {
+          this.testDurationSeconds[vp.id] = Number.isFinite(probe.duration) ? probe.duration : 0;
+          this.cdr.detectChanges();
+        }, { once: true });
         this.testing[vp.id] = false;
-        this.error = `Could not generate a test sample for "${vp.name}".`;
+        this.cdr.detectChanges();
+      },
+      error: err => {
+        this.testing[vp.id] = false;
+        this.testErrors[vp.id] = err?.error?.message || `Could not generate a test sample for "${vp.name}".`;
+        this.cdr.detectChanges();
       }
     });
   }

@@ -42,9 +42,8 @@ public class GenerationStep {
     private String errorMessage;
 
     /** Non-fatal - the step still succeeded. Set when a TTS fallback fired
-     *  during narration generation (see ProviderGateway/ProductionPipelineService)
-     *  so "never silently replace the user's selected voice" actually
-     *  reaches the UI instead of staying a backend log line. */
+     *  during narration generation so "never silently replace the user's
+     *  selected voice" reaches the UI instead of staying a backend log line. */
     @Column(name = "warning_message", columnDefinition = "TEXT")
     private String warningMessage;
 

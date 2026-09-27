@@ -73,6 +73,10 @@ public class Scene {
     @Column(name = "voice_segments_json", columnDefinition = "TEXT")
     private String voiceSegmentsJson;
 
+    /** Structured ambience/music/SFX direction shared by the audio renderer. */
+    @Column(name = "audio_spec_json", columnDefinition = "TEXT")
+    private String audioSpecJson;
+
     @Column(name = "narration_seconds")
     private Double narrationSeconds;
 

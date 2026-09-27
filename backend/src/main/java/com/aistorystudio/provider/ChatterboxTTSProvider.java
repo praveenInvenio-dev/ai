@@ -55,13 +55,22 @@ public class ChatterboxTTSProvider implements TextToSpeechProvider {
     public TtsResult synthesize(TtsRequest request) {
         String voice = request.voice() != null ? request.voice() : defaultVoice;
 
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("text", request.text());
+        body.put("voice", voice);
+        body.put("speed", request.speed() > 0 ? request.speed() : 1.0);
+        body.put("pitch", request.pitch() > 0 ? request.pitch() : 1.0);
+        if (request.emotion() != null) body.put("emotion", request.emotion());
+        if (request.emotionIntensity() != null) body.put("emotionIntensity", request.emotionIntensity());
+        if (request.delivery() != null) body.put("delivery", request.delivery());
+        if (request.emphasis() != null && !request.emphasis().isEmpty()) body.put("emphasis", request.emphasis());
+        if (Boolean.TRUE.equals(request.breath())) body.put("breath", true);
+        if (request.paralinguisticEvent() != null && !request.paralinguisticEvent().isBlank()) body.put("paralinguisticEvent", request.paralinguisticEvent());
+        if (request.actingDirection() != null && !request.actingDirection().isBlank()) body.put("actingDirection", request.actingDirection());
+
         byte[] wav = webClient.post()
                 .uri("/api/tts")
-                .bodyValue(Map.of(
-                        "text", request.text(),
-                        "voice", voice,
-                        "speed", request.speed() > 0 ? request.speed() : 1.0,
-                        "pitch", request.pitch() > 0 ? request.pitch() : 1.0))
+                .bodyValue(body)
                 .retrieve()
                 .bodyToMono(byte[].class)
                 // Loading the model on first request (350M params) can take a

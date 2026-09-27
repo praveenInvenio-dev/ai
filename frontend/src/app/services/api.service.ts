@@ -45,6 +45,10 @@ export class ApiService {
   }
 
   // Episodes / stories
+  setNarratorVoiceProfile(episodeId: string, voiceProfileId: string | null): Observable<Episode> {
+    return this.http.post<Episode>(`${this.base}/episodes/${episodeId}/narrator-voice`, { voiceProfileId: voiceProfileId || '' });
+  }
+
   listEpisodes(projectId: string): Observable<Episode[]> {
     return this.http.get<Episode[]>(`${this.base}/episodes`, { params: { projectId } });
   }
@@ -53,6 +57,21 @@ export class ApiService {
   }
   getScenes(episodeId: string): Observable<SceneDto[]> {
     return this.http.get<SceneDto[]>(`${this.base}/episodes/${episodeId}/scenes`);
+  }
+  getEpisodeCharacters(episodeId: string): Observable<Character[]> {
+    return this.http.get<Character[]>(`${this.base}/episodes/${episodeId}/characters`);
+  }
+  generateCharacterMasterPrompt(characterId: string): Observable<{ prompt: string }> {
+    return this.http.post<{ prompt: string }>(`${this.base}/characters/${characterId}/reference-prompt`, {});
+  }
+  generateCharacterReference(characterId: string, visualStyle?: string, prompt?: string): Observable<CharacterReference> {
+    return this.http.post<CharacterReference>(`${this.base}/characters/${characterId}/generate-reference`, { visualStyle, prompt });
+  }
+  lockCharacterReference(characterId: string, referenceId: string, locked: boolean): Observable<CharacterReference> {
+    return this.http.post<CharacterReference>(`${this.base}/characters/${characterId}/references/${referenceId}/lock`, {}, { params: { locked } });
+  }
+  listCharacterReferences(characterId: string): Observable<CharacterReference[]> {
+    return this.http.get<CharacterReference[]>(`${this.base}/characters/${characterId}/references`);
   }
 
   createDraft(req: CreateStoryRequest): Observable<StoryDraftResponse> {
@@ -153,13 +172,6 @@ export class ApiService {
     return this.http.get<OllamaModelsResponse>(`${this.base}/models/ollama`);
   }
 
-  generateCharacterReference(characterId: string, visualStyle?: string): Observable<CharacterReference> {
-    return this.http.post<CharacterReference>(`${this.base}/characters/${characterId}/generate-reference`, { visualStyle });
-  }
-
-  listCharacterReferences(characterId: string): Observable<CharacterReference[]> {
-    return this.http.get<CharacterReference[]>(`${this.base}/characters/${characterId}/references`);
-  }
 
   characterReferenceImageUrl(referenceId: string): string {
     return `${this.base}/character-references/${referenceId}/image`;
@@ -394,19 +406,24 @@ export class ApiService {
   }
 
   createClonedVoiceProfile(
-    name: string, language: string, provider: string, personality: string, audio: Blob, filename: string
+    name: string, language: string, provider: string, personality: string, audio: Blob, filename: string, referenceTranscript = ''
   ): Observable<VoiceProfile> {
     const form = new FormData();
     form.append('name', name);
     if (language) { form.append('language', language); }
     form.append('provider', provider);
     if (personality) { form.append('personality', personality); }
+    if (referenceTranscript) { form.append('referenceTranscript', referenceTranscript); }
     form.append('audio', audio, filename);
     return this.http.post<VoiceProfile>(`${this.base}/voice-profiles/cloned`, form);
   }
 
   testVoiceProfile(id: string, text: string): Observable<Blob> {
     return this.http.post(`${this.base}/voice-profiles/${id}/test`, { text }, { responseType: 'blob' });
+  }
+
+  getVoiceReferenceAudio(id: string): Observable<Blob> {
+    return this.http.get(`${this.base}/voice-profiles/${id}/reference-audio`, { responseType: 'blob' });
   }
 
   renameVoiceProfile(id: string, name: string): Observable<VoiceProfile> {

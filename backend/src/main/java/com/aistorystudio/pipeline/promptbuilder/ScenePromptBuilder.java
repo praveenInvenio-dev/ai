@@ -35,6 +35,7 @@ public class ScenePromptBuilder {
 
         appendCameraOpening(sb, spec.camera());
         appendCharacters(sb, spec.characters(), scene);
+        appendProps(sb, spec.props());
         appendEnvironment(sb, spec.environment());
         appendLighting(sb, spec.lighting());
         appendComma(sb, spec.cinematicStyle());
@@ -73,6 +74,20 @@ public class ScenePromptBuilder {
         }
     }
 
+    private void appendProps(StringBuilder sb, java.util.List<String> props) {
+        if (props == null || props.isEmpty()) return;
+        StringBuilder rendered = new StringBuilder();
+        for (String prop : props) {
+            if (prop != null && !prop.isBlank()) {
+                if (rendered.length() > 0) rendered.append(", ");
+                rendered.append(prop.trim());
+            }
+        }
+        if (rendered.length() > 0) {
+            appendComma(sb, "important props: " + rendered);
+        }
+    }
+
     private void appendEnvironment(StringBuilder sb, SceneVisualSpec.Environment env) {
         if (env == null) return;
         appendComma(sb, env.location());
@@ -80,6 +95,7 @@ public class ScenePromptBuilder {
         appendComma(sb, env.foreground() != null ? "foreground: " + env.foreground() : null);
         appendComma(sb, env.midground() != null ? "midground: " + env.midground() : null);
         appendComma(sb, env.background() != null ? "background: " + env.background() : null);
+        appendComma(sb, env.atmosphere());
         appendComma(sb, env.particles());
         appendComma(sb, env.colorPalette());
         appendComma(sb, env.mood());
@@ -88,6 +104,8 @@ public class ScenePromptBuilder {
     private void appendLighting(StringBuilder sb, SceneVisualSpec.Lighting light) {
         if (light == null) return;
         appendComma(sb, light.keyLight());
+        appendComma(sb, light.fillLight());
+        appendComma(sb, light.rimLight());
         appendComma(sb, light.lightDirection() != null ? "light from " + light.lightDirection() : null);
         appendComma(sb, light.shadows());
         appendComma(sb, light.reflections());

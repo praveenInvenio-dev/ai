@@ -12,15 +12,46 @@
 # whatever works on CPU keeps working here.
 
 services:
-  ollama:
-    image: ollama/ollama:latest
+  tts-chatterbox:
+    build:
+      args:
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu128
+        TORCH_PACKAGES: "torch==2.7.1 torchaudio==2.7.1"
+    environment:
+      CHATTERBOX_DEVICE: ${CHATTERBOX_DEVICE:-cuda}
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: all
+              count: 1
               capabilities: [gpu]
+
+  tts-cosyvoice:
+    build:
+      args:
+        COSYVOICE_GPU: "1"
+    environment:
+      COSYVOICE_DEVICE: ${COSYVOICE_DEVICE:-cuda}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Ollama intentionally runs on the host for this project. Keep the bundled
+  # GPU Ollama service disabled; .env uses host.docker.internal:11434.
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]
 
   comfyui:
     # cu124-slim is a retired tag. Its runner script git-clones ComfyUI at HEAD,
@@ -63,6 +94,10 @@ services:
     #     https://huggingface.co/Lykon/dreamshaper-8-lcm/resolve/main/DreamShaper8_LCM.safetensors
     volumes: !override
       - comfyui-gpu-root:/root
+      # Runs after the ComfyUI bundle is copied into /root and before the
+      # server starts. Installs the IPAdapter Plus custom node once so the
+      # bundled character-reference workflow does not fail on a fresh GPU volume.
+      - ./comfyui-gpu/pre-start.sh:/root/user-scripts/pre-start.sh
     deploy:
       resources:
         reservations:

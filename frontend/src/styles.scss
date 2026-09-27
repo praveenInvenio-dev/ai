@@ -7,10 +7,10 @@
 */
 
 :root {
-  --bg: #14121a;
-  --surface: #1c1926;
-  --surface-raised: #242032;
-  --border: #332e40;
+  --bg: #0f0e14;
+  --surface: #17151f;
+  --surface-raised: #211e2c;
+  --border: #302b3d;
   --text: #f4f0e6;
   --muted: #938da3;
   --accent: #eea23b;       /* spotlight amber — primary actions */
@@ -19,7 +19,7 @@
   --danger: #e2665b;
   --font-display: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
   --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --radius: 10px;
+  --radius: 14px;
 }
 
 * { box-sizing: border-box; }
@@ -117,7 +117,7 @@ label {
 }
 
 .card {
-  background: var(--surface);
+  background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.012));
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1.4rem;
@@ -156,3 +156,10 @@ label {
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+
+/* Product-surface polish */
+::placeholder{color:#696375;opacity:1}.panel,.card{box-shadow:0 14px 50px rgba(0,0,0,.14)}button,input,select,textarea{transition:border-color .16s ease,box-shadow .16s ease,background .16s ease}button:hover{transform:translateY(-1px)}
+
+/* Product polish */
+::placeholder{color:#696375;opacity:1}button,input,select,textarea{transition:border-color .16s ease,box-shadow .16s ease,background .16s ease}

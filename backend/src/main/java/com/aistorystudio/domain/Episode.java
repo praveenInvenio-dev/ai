@@ -73,6 +73,10 @@ public class Episode {
     @Column(name = "quality_score")
     private Integer qualityScore;
 
+    /** Optional reusable narrator voice from the global Voice Library. */
+    @Column(name = "narrator_voice_profile_id")
+    private UUID narratorVoiceProfileId;
+
     /** Ollama model chosen for this episode (from whatever's installed locally); null = server default. */
     @Column(name = "ollama_model")
     private String ollamaModel;
