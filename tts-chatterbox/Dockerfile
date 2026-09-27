@@ -10,9 +10,9 @@ RUN apt-get update \
 # whole selling point (350M params, single-step decoder) is that it is usable
 # on CPU in the first place. If you set CHATTERBOX_DEVICE=cuda, rebuild with
 # a CUDA torch wheel instead - this base image will not see the GPU.
-ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
-ARG TORCH_PACKAGES="torch==2.4.1 torchaudio==2.4.1"
-RUN pip install --no-cache-dir --index-url ${TORCH_INDEX_URL} ${TORCH_PACKAGES}
+RUN pip install --no-cache-dir \
+      --index-url https://download.pytorch.org/whl/cpu \
+      torch==2.4.1 torchaudio==2.4.1
 
 # Real pip package, confirmed at https://pypi.org/project/chatterbox-tts/
 # (Resemble AI). Turbo-specific import path is chatterbox.tts_turbo -

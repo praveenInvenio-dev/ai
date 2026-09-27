@@ -55,9 +55,8 @@ public class VoiceProfileController {
             @RequestParam(value = "language", required = false) String language,
             @RequestParam(value = "provider", defaultValue = "chatterbox") String provider,
             @RequestParam(value = "personality", required = false) String personality,
-            @RequestParam(value = "referenceTranscript", required = false) String referenceTranscript,
             @RequestParam("audio") MultipartFile audio) {
-        return service.createCloned(name, language, provider, personality, referenceTranscript, audio);
+        return service.createCloned(name, language, provider, personality, audio);
     }
 
     /** Validate-before-save: lets the "Record Your Voice" flow show duration/
@@ -66,14 +65,6 @@ public class VoiceProfileController {
     @PostMapping(value = "/validate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public VoiceProfileService.ValidationResult validate(@RequestParam("audio") MultipartFile audio) {
         return service.validateOnly(audio);
-    }
-
-    /** Plays the exact stored reference recording, not generated TTS. */
-    @GetMapping(value = "/{id}/reference-audio", produces = "audio/wav")
-    public ResponseEntity<byte[]> referenceAudio(@PathVariable UUID id) {
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType("audio/wav"))
-                .body(service.getReferenceAudio(id));
     }
 
     @PutMapping("/{id}/rename")

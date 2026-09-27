@@ -19,10 +19,6 @@ public class Character {
     @Column(name = "universe_id")
     private UUID universeId;
 
-    /** Episode-scoped character for standalone stories that do not belong to a universe. */
-    @Column(name = "episode_id")
-    private UUID episodeId;
-
     @Column(nullable = false)
     private String name;
 

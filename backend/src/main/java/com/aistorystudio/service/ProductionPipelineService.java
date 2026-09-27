@@ -54,13 +54,9 @@ public class ProductionPipelineService {
     private final ImagePromptAssembler imagePromptAssembler = new ImagePromptAssembler();
     private final ObjectMapper mapper = new ObjectMapper();
 
+    @Value("${studio.animation.local-ai.enabled-in-story-pipeline:false}")
+    private boolean storyPipelineAiVideoEnabled;
     @Value("${studio.comfyui.model:}") private String comfyuiModel;
-    @Value("${studio.comfyui.highQualityWorkflow:}") private String highQualityWorkflow;
-    @Value("${studio.comfyui.highQualityModel:}") private String highQualityModel;
-    @Value("${studio.comfyui.highQualitySteps:24}") private int highQualitySteps;
-    @Value("${studio.comfyui.highQualityWidth:1024}") private int highQualityWidth;
-    @Value("${studio.comfyui.highQualityHeight:1024}") private int highQualityHeight;
-    @Value("${studio.comfyui.highQualityCfg:5.0}") private double highQualityCfg;
     @Value("${studio.comfyui.styleModels.anime:}") private String animeModel;
     @Value("${studio.comfyui.styleModels.cartoon:}") private String cartoonModel;
     @Value("${studio.comfyui.styleModels.3dAnimated:}") private String threeDAnimatedModel;
@@ -70,7 +66,6 @@ public class ProductionPipelineService {
     @Value("${studio.comfyui.styleModels.fantasy:}") private String fantasyModel;
     @Value("${studio.quality.imageValidation.enabled:true}") private boolean imageValidationEnabled;
     @Value("${studio.quality.imageValidation.maxRetries:1}") private int imageValidationRetries;
-    @Value("${studio.quality.characterReferenceRequiredForHero:true}") private boolean characterReferenceRequiredForHero;
     @Value("${studio.music.autoEnabled:true}") private boolean autoMusicEnabled;
 
     public ProductionPipelineService(EpisodeRepository episodeRepository, SceneRepository sceneRepository,
@@ -130,7 +125,7 @@ public class ProductionPipelineService {
             List<Scene> scenes = sceneRepository.findByEpisodeIdOrderByOrderIndexAsc(episodeId);
             StoryBible bible = storyBibleRepository.findFirstByEpisodeIdAndActiveTrueOrderByVersionDesc(episodeId)
                     .orElseThrow(() -> new IllegalStateException("No active Story Bible for episode " + episodeId));
-            List<Character> chars = charactersForEpisode(episode);
+            List<Character> chars = episode.getUniverseId() != null ? characterRepository.findByUniverseId(episode.getUniverseId()) : List.of();
             jobService.updateStatus(jobId, JobStatus.GENERATING_IMAGES, 10);
             Map<UUID, Path> paths = generateSceneImages(jobId, episode, scenes, chars, bible);
             jobService.updateStatus(jobId, JobStatus.VALIDATING_IMAGES, 90);
@@ -194,7 +189,9 @@ public class ProductionPipelineService {
             StoryBible bible = storyBibleRepository.findFirstByEpisodeIdAndActiveTrueOrderByVersionDesc(episodeId)
                     .orElseThrow(() -> new IllegalStateException("No active Story Bible for episode " + episodeId));
 
-            List<Character> universeCharacters = charactersForEpisode(episode);
+            List<Character> universeCharacters = episode.getUniverseId() != null
+                    ? characterRepository.findByUniverseId(episode.getUniverseId())
+                    : List.of();
 
             jobService.updateStatus(jobId, JobStatus.GENERATING_IMAGES, 10);
             Map<UUID, Path> sceneImagePaths = generateSceneImages(jobId, episode, scenes, universeCharacters, bible);
@@ -270,7 +267,23 @@ public class ProductionPipelineService {
             long start = System.currentTimeMillis();
             try {
                 List<Character> sceneCharacters = resolveSceneCharacters(scene, universeCharacters);
-                String referenceImagePath = resolvePrimaryReferenceImage(sceneCharacters);
+                // IPAdapter conditions the WHOLE image on one reference photo - fine
+                // for a one-character scene, actively harmful for a multi-character
+                // one. resolvePrimaryReferenceImage() picks a single character's
+                // studio-style portrait (Character Studio's locked reference), and
+                // forcing that onto a 2+ character scene drags the whole generation
+                // toward that one portrait's composition and often its plain
+                // background, and can visually bleed that character's face/features
+                // onto the OTHER characters in frame - exactly the "mixing
+                // characters" / "no background" symptom this was causing. For a
+                // multi-character scene, skip the single-portrait reference and let
+                // the text prompt's per-character descriptions (CharacterPromptBuilder,
+                // already first in ImagePromptAssembler's ordering) carry identity
+                // instead - weaker consistency than IPAdapter gives a single subject,
+                // but it doesn't actively corrupt the scene.
+                String referenceImagePath = sceneCharacters.size() <= 1
+                        ? resolvePrimaryReferenceImage(sceneCharacters)
+                        : null;
                 Set<String> currentCharacterNames = sceneCharacters.stream()
                         .map(c -> c.getName() == null ? "" : c.getName().trim().toLowerCase(Locale.ROOT))
                         .filter(n -> !n.isBlank())
@@ -283,7 +296,7 @@ public class ProductionPipelineService {
                     log.info("Scene {} using previous-scene character continuity reference for {}",
                             scene.getSceneNumber(), currentCharacterNames);
                 }
-                var assembled = imagePromptAssembler.assemble(scene, sceneCharacters, List.of(), visualStyle, colorPalette, imageModelFor(episode, visualStyle));
+                var assembled = imagePromptAssembler.assemble(scene, sceneCharacters, List.of(), visualStyle, colorPalette, effectiveModel(visualStyle));
 
                 // persist final prompt actually used, versioned (spec section 31)
                 scene.setImagePrompt(assembled.positivePrompt());
@@ -312,21 +325,21 @@ public class ProductionPipelineService {
                     Long stableSeed = stableSceneSeed(episode, scene, sceneCharacters);
                     int qualitySteps = qualityImageSteps(episode);
                     var request = new ImageGenerationProvider.ImageGenerationRequest(
-                            prompt, assembled.negativePrompt(), imageWidthFor(episode), imageHeightFor(episode), imageStepsFor(episode, qualitySteps), imageCfgFor(episode),
-                            stableSeed, imageWorkflowFor(episode, referenceImagePath, visualStyle),
-                            imageModelFor(episode, visualStyle), referenceImagePath);
+                            prompt, assembled.negativePrompt(), 0, 0, qualitySteps, 0,
+                            stableSeed, referenceImagePath != null ? "character-consistent-story-ipadapter" : null,
+                            styleModel(visualStyle), referenceImagePath);
                     result0 = providerGateway.generateImage(request);
                     if (result0 != null && "mock".equalsIgnoreCase(result0.workflowUsed())
                             && referenceImagePath != null) {
-                        if (characterReferenceRequiredForHero && "HERO".equalsIgnoreCase(scene.getImportance())) {
-                            throw new IllegalStateException("Character reference conditioning was unavailable for HERO scene "
-                                    + scene.getSceneNumber() + "; refusing to generate an inconsistent hero frame.");
-                        }
+                        // A missing IPAdapter custom node must never turn into a
+                        // placeholder frame. Retry the same deterministic scene
+                        // without reference conditioning so the real checkpoint
+                        // still produces an image.
                         log.warn("Reference workflow was unavailable for scene {}; retrying plain ComfyUI workflow.",
                                 scene.getSceneNumber());
                         var fallbackRequest = new ImageGenerationProvider.ImageGenerationRequest(
-                                prompt, assembled.negativePrompt(), imageWidthFor(episode), imageHeightFor(episode), imageStepsFor(episode, qualitySteps), imageCfgFor(episode),
-                                stableSeed, imageWorkflowFor(episode, null, visualStyle), imageModelFor(episode, visualStyle), null);
+                                prompt, assembled.negativePrompt(), 0, 0, qualitySteps, 0,
+                                stableSeed, null, styleModel(visualStyle), null);
                         result0 = providerGateway.generateImage(fallbackRequest);
                     }
                     var qa = validateGeneratedImage(result0, prompt, assembled.negativePrompt(), visualStyle, scene);
@@ -407,18 +420,20 @@ public class ProductionPipelineService {
             long start = System.currentTimeMillis();
             try {
                 List<VoiceSegment> segments = readVoiceSegments(scene);
-                if (segments.isEmpty()) segments = List.of(new VoiceSegment("Narrator", scene.getNarration(), "", 1.0, 1.0, scene.getEmotion(), 0, 0, null, null, List.of(), false, null, null));
+                if (segments.isEmpty()) segments = List.of(new VoiceSegment("Narrator", scene.getNarration(), "", 1.0, 1.0, scene.getEmotion(), 0, 0));
                 List<byte[]> parts = new ArrayList<>();
+                List<String> ttsWarnings = new ArrayList<>();
                 for (VoiceSegment seg : segments) {
                     if (seg.text() == null || seg.text().isBlank()) continue;
                     double pauseScale = lookupEmotionProsody(seg.emotion()).pauseScale();
-                    maybeInsertBreath(parts, seg.pauseBeforeMs(), seg.breath());
+                    maybeInsertBreath(parts, seg.pauseBeforeMs());
                     appendSilence(parts, scaledPause(seg.pauseBeforeMs(), pauseScale));
                     // One synthesis call per voice segment keeps the same voice and
                     // prosody context across the sentence. Punctuation remains inside
                     // the request; explicit pauses are added outside it.
                     Prosody p = prosody(seg);
                     var tts = synthesizeSegment(episode, seg, p);
+                    if (tts.providerWarning() != null) ttsWarnings.add(tts.providerWarning());
                     parts.add(tts.audioBytes());
                     appendSilence(parts, scaledPause(seg.pauseAfterMs(), pauseScale));
                 }
@@ -430,6 +445,9 @@ public class ProductionPipelineService {
                 result.put(scene.getId(), path);
                 double duration = probeWavDuration(combined);
                 if (duration > 0) { scene.setNarrationSeconds(duration); scene.setImageDurationSeconds(duration + 0.6); sceneRepository.save(scene); }
+                if (!ttsWarnings.isEmpty()) {
+                    jobService.setStepWarning(step.getId(), String.join(" | ", new java.util.LinkedHashSet<>(ttsWarnings)));
+                }
                 jobService.completeStep(step.getId(), System.currentTimeMillis() - start);
             } catch (Exception e) {
                 // Isolated per scene, same as generateSceneImages: one scene's
@@ -460,8 +478,8 @@ public class ProductionPipelineService {
                 .orElse(null);
     }
 
-    private record VoiceSegment(String character, String text, String voice, Double speed, Double pitch, String emotion, Integer pauseBeforeMs, Integer pauseAfterMs, Double emotionIntensity, String delivery, List<String> emphasis, Boolean breath, String paralinguisticEvent, String actingDirection) {}
-    private record Prosody(double speed, double pitch, String emotion, Double intensity, String delivery, List<String> emphasis, Boolean breath, String paralinguisticEvent, String actingDirection) {}
+    private record VoiceSegment(String character, String text, String voice, Double speed, Double pitch, String emotion, Integer pauseBeforeMs, Integer pauseAfterMs) {}
+    private record Prosody(double speed, double pitch) {}
 
     private List<VoiceSegment> readVoiceSegments(Scene scene) {
         if (scene.getVoiceSegmentsJson() == null || scene.getVoiceSegmentsJson().isBlank()) return List.of();
@@ -540,54 +558,27 @@ public class ProductionPipelineService {
      *  "Narrator" segment or an unmatched name simply has no assignment to
      *  find, which is not an error, just the unassigned case. */
     private TextToSpeechProvider.TtsResult synthesizeSegment(Episode episode, VoiceSegment seg, Prosody p) {
-        UUID voiceProfileId = explicitVoiceProfileId(seg.voice());
+        UUID voiceProfileId = resolveAssignedVoiceProfileId(episode, seg.character());
         if (voiceProfileId != null) {
             var profileOpt = voiceProfileRepository.findById(voiceProfileId);
             if (profileOpt.isPresent()) {
                 var profile = profileOpt.get();
                 return providerGateway.synthesizeWithVoice(
                         profile.getProvider(), profile.getVoiceName(), seg.text().trim(),
-                        episode.getLanguage(), p.speed(), p.pitch(), p.emotion(), p.intensity(), p.delivery(),
-                        p.emphasis(), p.breath(), p.paralinguisticEvent(), p.actingDirection(), profile.getReferenceTranscript());
-            }
-            log.warn("Explicit voice profile {} no longer exists; falling back to character/default voice.", voiceProfileId);
-        }
-        voiceProfileId = resolveAssignedVoiceProfileId(episode, seg.character());
-        if (voiceProfileId == null && seg.character() != null && "narrator".equalsIgnoreCase(seg.character().trim())) {
-            voiceProfileId = episode.getNarratorVoiceProfileId();
-        }
-        if (voiceProfileId != null) {
-            var profileOpt = voiceProfileRepository.findById(voiceProfileId);
-            if (profileOpt.isPresent()) {
-                var profile = profileOpt.get();
-                return providerGateway.synthesizeWithVoice(
-                        profile.getProvider(), profile.getVoiceName(), seg.text().trim(),
-                        episode.getLanguage(), p.speed(), p.pitch(), p.emotion(), p.intensity(), p.delivery(),
-                        p.emphasis(), p.breath(), p.paralinguisticEvent(), p.actingDirection(), profile.getReferenceTranscript());
+                        episode.getLanguage(), p.speed(), p.pitch());
             }
             log.warn("Character '{}' has voiceProfileId {} but that VoiceProfile no longer exists - "
                     + "falling back to the default TTS provider for this line.", seg.character(), voiceProfileId);
         }
         return providerGateway.synthesize(new TextToSpeechProvider.TtsRequest(
-                seg.text().trim(), seg.voice() == null || seg.voice().isBlank() ? null : seg.voice(),
-                episode.getLanguage(), p.speed(), p.pitch(), p.emotion(), p.intensity(), p.delivery(),
-                p.emphasis(), p.breath(), p.paralinguisticEvent(), p.actingDirection()));
-    }
-
-    private List<Character> charactersForEpisode(Episode episode) {
-        if (episode.getUniverseId() != null) return characterRepository.findByUniverseId(episode.getUniverseId());
-        return characterRepository.findByEpisodeId(episode.getId());
-    }
-
-    private UUID explicitVoiceProfileId(String voice) {
-        if (voice == null || !voice.startsWith("profile:")) return null;
-        try { return UUID.fromString(voice.substring("profile:".length())); }
-        catch (IllegalArgumentException e) { return null; }
+                seg.text().trim(),
+                seg.voice() == null || seg.voice().isBlank() ? null : seg.voice(),
+                episode.getLanguage(), p.speed(), p.pitch()));
     }
 
     private UUID resolveAssignedVoiceProfileId(Episode episode, String characterName) {
         if (characterName == null || episode.getUniverseId() == null) return null;
-        return charactersForEpisode(episode).stream()
+        return characterRepository.findByUniverseId(episode.getUniverseId()).stream()
                 .filter(c -> characterName.equalsIgnoreCase(c.getName()))
                 .map(Character::getVoiceProfileId)
                 .filter(java.util.Objects::nonNull)
@@ -635,14 +626,9 @@ public class ProductionPipelineService {
         // random jitter (~2%) per line keeps consecutive lines from
         // sounding like they were stamped from the same template, without
         // being large enough to sound unstable.
-        // Intentional Voice Director variation replaces random jitter. A fixed voice should
-        // remain stable across stories; emotional variation belongs in the segment metadata.
-        double intensity = s.emotionIntensity() == null ? 0.5 : Math.max(0.0, Math.min(1.0, s.emotionIntensity()));
-        double scale = 0.85 + (intensity * 0.15);
-        speed *= scale;
-        return new Prosody(Math.max(.6, Math.min(1.6, speed)), Math.max(.6, Math.min(1.5, pitch)),
-                s.emotion(), s.emotionIntensity(), s.delivery(), s.emphasis() == null ? List.of() : s.emphasis(),
-                s.breath(), s.paralinguisticEvent(), s.actingDirection());
+        double jitter = 1.0 + (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.04;
+        speed *= jitter;
+        return new Prosody(Math.max(.6, Math.min(1.6, speed)), Math.max(.6, Math.min(1.5, pitch)));
     }
 
     private List<String> splitPauseMarkers(String text) {
@@ -762,14 +748,11 @@ public class ProductionPipelineService {
      * Inserted before the silence it precedes, so the breath sits inside the
      * pause rather than extending it by much.
      */
-    private void maybeInsertBreath(List<byte[]> parts, Integer pauseBeforeMs, Boolean requested) {
+    private void maybeInsertBreath(List<byte[]> parts, Integer pauseBeforeMs) {
         if (pauseBeforeMs == null || pauseBeforeMs < 400) {
             return;
         }
-        // Voice Director can explicitly request a breath. For older scenes that
-        // have no breath field, retain the previous conservative 35% fallback.
-        if (!Boolean.TRUE.equals(requested) && requested != null) return;
-        if (!Boolean.TRUE.equals(requested) && ThreadLocalRandom.current().nextDouble() > 0.35) {
+        if (ThreadLocalRandom.current().nextDouble() > 0.35) {
             return;
         }
         byte[] breath = loadBreathSample();
@@ -808,12 +791,22 @@ public class ProductionPipelineService {
             // genuinely configured (see LocalAIAnimationProvider /
             // CloudAIAnimationProvider) - this only ever fires on hardware
             // where it's actually been set up, exactly as the decision
-            // service's own priority table intends. Any failure here (OOM,
-            // ComfyUI down, workflow rejected, timeout) falls back to the
-            // always-available 2.5D path below rather than failing the
-            // scene - the whole point of a fallback chain is that a video
-            // model having a bad day never blocks the story.
-            if ("local-ai".equals(decision.providerId()) && providerGateway.isLocalAiVideoAvailable()) {
+            // service's own priority table intends. Any failure INSIDE
+            // tryGenerateAiVideo() (OOM, ComfyUI down, workflow rejected,
+            // timeout) falls back to the always-available 2.5D path below -
+            // but a real gap remained: FFmpegProcessor's own duration-
+            // tolerance check, which runs AFTER a successful-but-slightly-
+            // short Wan clip, throws a hard failure that nothing here
+            // catches, and that failure was taking down the WHOLE episode
+            // over one scene. storyPipelineAiVideoEnabled defaults to false
+            // for exactly that reason: AI video per-scene, across a whole
+            // multi-scene episode, is not yet reliable enough to risk the
+            // entire episode on it. The standalone Video Generation page is
+            // unaffected by this flag - it calls the same provider directly,
+            // one clip at a time, where a single failure only costs that one
+            // clip, not an entire production run.
+            if (storyPipelineAiVideoEnabled && "local-ai".equals(decision.providerId())
+                    && providerGateway.isLocalAiVideoAvailable()) {
                 aiVideoPath = tryGenerateAiVideo(episode, scene, images.get(scene.getId()), duration);
             }
             clips.add(new MediaProcessor.SceneClip(images.get(scene.getId()), audio.get(scene.getId()), duration,
@@ -920,8 +913,7 @@ public class ProductionPipelineService {
             if (!autoMusicEnabled) {
                 return null;
             }
-            preset = audioSpecMusicPreset(scenes);
-            if (preset == null) preset = autoMusicPreset(scenes);
+            preset = autoMusicPreset(scenes);
             episode.setMusicPreset(preset);
             episodeRepository.save(episode);
         }
@@ -963,27 +955,6 @@ public class ProductionPipelineService {
             log.warn("Could not persist bundled background music '{}': {}", preset, e.getMessage());
             return presetSource;
         }
-    }
-
-    /** Prefer the LLM's structured AudioSceneSpec mood when it maps cleanly to
-     * one of the bundled production beds. If absent/unknown, preserve the older
-     * deterministic keyword heuristic. */
-    private String audioSpecMusicPreset(List<Scene> scenes) {
-        if (scenes == null) return null;
-        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
-        for (Scene scene : scenes) {
-            try {
-                if (scene.getAudioSpecJson() == null || scene.getAudioSpecJson().isBlank()) continue;
-                var root = mapper.readTree(scene.getAudioSpecJson());
-                String mood = root.path("music").path("mood").asText("").toLowerCase(Locale.ROOT);
-                String mapped = null;
-                if (mood.matches(".*(adventure|energetic|playful|excited|epic|wonder).*")) mapped = "adventurous";
-                else if (mood.matches(".*(sad|emotional|tender|melancholy|dramatic|lonely).*")) mapped = "emotional";
-                else if (mood.matches(".*(calm|gentle|peaceful|warm|magical|bedtime).*")) mapped = "calm";
-                if (mapped != null) counts.merge(mapped, 1, Integer::sum);
-            } catch (Exception ignored) { }
-        }
-        return counts.entrySet().stream().max(java.util.Map.Entry.comparingByValue()).map(java.util.Map.Entry::getKey).orElse(null);
     }
 
     private String autoMusicPreset(List<Scene> scenes) {
@@ -1088,35 +1059,6 @@ public class ProductionPipelineService {
         }
     }
 
-    private boolean highQualityEnabled(Episode episode) {
-        return "QUALITY".equalsIgnoreCase(episode.getQualityProfile())
-                && highQualityWorkflow != null && !highQualityWorkflow.isBlank()
-                && highQualityModel != null && !highQualityModel.isBlank();
-    }
-
-    private int imageWidthFor(Episode episode) { return highQualityEnabled(episode) ? highQualityWidth : 0; }
-    private int imageHeightFor(Episode episode) { return highQualityEnabled(episode) ? highQualityHeight : 0; }
-    private int imageStepsFor(Episode episode, int fallback) { return highQualityEnabled(episode) ? highQualitySteps : fallback; }
-    private double imageCfgFor(Episode episode) { return highQualityEnabled(episode) ? highQualityCfg : 0; }
-
-    private String imageWorkflowFor(Episode episode, String referenceImagePath, String visualStyle) {
-        boolean hqConfigured = highQualityWorkflow != null && !highQualityWorkflow.isBlank()
-                && highQualityModel != null && !highQualityModel.isBlank();
-        if (hqConfigured && "QUALITY".equalsIgnoreCase(episode.getQualityProfile())) {
-            return highQualityWorkflow.trim();
-        }
-        return referenceImagePath != null ? "character-consistent-story-ipadapter" : null;
-    }
-
-    private String imageModelFor(Episode episode, String visualStyle) {
-        boolean hqConfigured = highQualityWorkflow != null && !highQualityWorkflow.isBlank()
-                && highQualityModel != null && !highQualityModel.isBlank();
-        if (hqConfigured && "QUALITY".equalsIgnoreCase(episode.getQualityProfile())) {
-            return highQualityModel.trim();
-        }
-        return styleModel(visualStyle);
-    }
-
     private String styleModel(String visualStyle) {
         if (visualStyle == null) return null;
         return switch (visualStyle.trim().toUpperCase(Locale.ROOT)) {
@@ -1193,14 +1135,11 @@ public class ProductionPipelineService {
                 continue;
             }
             CharacterReference chosen = refs.stream()
-                    .filter(CharacterReference::isLocked)
+                    .filter(CharacterReference::isPrimary)
                     .findFirst()
                     .orElseGet(() -> refs.stream()
-                            .filter(CharacterReference::isPrimary)
-                            .findFirst()
-                            .orElseGet(() -> refs.stream()
                             .max(java.util.Comparator.comparing(CharacterReference::getCreatedAt))
-                            .orElse(refs.get(0))));
+                            .orElse(refs.get(0)));
             Path path = Path.of(chosen.getImagePath());
             if (path.toFile().exists() && path.toFile().length() > 0) {
                 return path.toString();
@@ -1265,20 +1204,26 @@ public class ProductionPipelineService {
                 .orElseThrow(() -> new IllegalArgumentException("Episode not found: " + episodeId));
         StoryBible bible = storyBibleRepository.findByEpisodeIdOrderByVersionDesc(episodeId)
                 .stream().findFirst().orElse(null);
-        List<Character> characters = charactersForEpisode(episode);
+        List<Character> characters = episode.getUniverseId() == null
+                ? List.of() : characterRepository.findByUniverseId(episode.getUniverseId());
 
         List<Character> sceneCharacters = resolveSceneCharacters(scene, characters);
         String colorPalette = extractColorPalette(bible);
-        var assembled = imagePromptAssembler.assemble(scene, sceneCharacters, List.of(), episode.getVisualStyle(), colorPalette, imageModelFor(episode, episode.getVisualStyle()));
+        var assembled = imagePromptAssembler.assemble(scene, sceneCharacters, List.of(), episode.getVisualStyle(), colorPalette, effectiveModel(episode.getVisualStyle()));
         scene.setImagePrompt(assembled.positivePrompt());
         scene.setNegativePrompt(assembled.negativePrompt());
         sceneRepository.save(scene);
 
-        String referenceImagePath = resolvePrimaryReferenceImage(sceneCharacters);
+        // Same guard as the main pipeline loop - see its comment for why a
+        // single-portrait IPAdapter reference must not be forced onto a
+        // multi-character scene.
+        String referenceImagePath = sceneCharacters.size() <= 1
+                ? resolvePrimaryReferenceImage(sceneCharacters)
+                : null;
         var request = new ImageGenerationProvider.ImageGenerationRequest(
-                assembled.positivePrompt(), assembled.negativePrompt(), imageWidthFor(episode), imageHeightFor(episode), imageStepsFor(episode, qualityImageSteps(episode)), imageCfgFor(episode), null,
-                imageWorkflowFor(episode, referenceImagePath, episode.getVisualStyle()),
-                imageModelFor(episode, episode.getVisualStyle()), referenceImagePath);
+                assembled.positivePrompt(), assembled.negativePrompt(), 0, 0, qualityImageSteps(episode), 0, null,
+                referenceImagePath != null ? "character-consistent-story-ipadapter" : null,
+                styleModel(episode.getVisualStyle()), referenceImagePath);
         var result = providerGateway.generateImage(request);
         String relative = assetRelativePath(episode, String.format("images/scene-%03d.%s", scene.getSceneNumber(), result.fileExtension()));
         Path path = storageProvider.store(relative, result.imageBytes());
@@ -1305,13 +1250,13 @@ public class ProductionPipelineService {
 
         List<VoiceSegment> segments = readVoiceSegments(scene);
         if (segments.isEmpty()) {
-            segments = List.of(new VoiceSegment("Narrator", scene.getNarration(), "", 1.0, 1.0, scene.getEmotion(), 0, 0, null, null, List.of(), false, null, null));
+            segments = List.of(new VoiceSegment("Narrator", scene.getNarration(), "", 1.0, 1.0, scene.getEmotion(), 0, 0));
         }
         List<byte[]> parts = new ArrayList<>();
         for (VoiceSegment seg : segments) {
             if (seg.text() == null || seg.text().isBlank()) continue;
             double pauseScale = lookupEmotionProsody(seg.emotion()).pauseScale();
-            maybeInsertBreath(parts, seg.pauseBeforeMs(), seg.breath());
+            maybeInsertBreath(parts, seg.pauseBeforeMs());
             appendSilence(parts, scaledPause(seg.pauseBeforeMs(), pauseScale));
                     // One synthesis call per voice segment keeps the same voice and
                     // prosody context across the sentence. Punctuation remains inside

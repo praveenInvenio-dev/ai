@@ -8,7 +8,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * A reusable, named voice - built-in (Piper) or cloned (ChatterBox/CosyVoice) - usable across any story/character rather than re-entered per
+ * A reusable, named voice - built-in (Piper) or cloned (ChatterBox, later
+ * CosyVoice) - usable across any story/character rather than re-entered per
  * episode. See VoiceProfileService for the recording/upload/validation flow
  * and VoiceProfileController for the REST surface.
  */
@@ -28,7 +29,7 @@ public class VoiceProfile {
     @Column(length = 20)
     private String language;
 
-    /** piper | chatterbox | cosyvoice */
+    /** piper | chatterbox | (cosyvoice, once that provider exists) */
     @Column(nullable = false, length = 20)
     private String provider;
 
@@ -40,10 +41,6 @@ public class VoiceProfile {
 
     @Column(name = "voice_name", nullable = false, length = 120)
     private String voiceName;
-
-    /** Exact transcript of the reference clip; required by zero-shot CosyVoice. */
-    @Column(name = "reference_transcript", columnDefinition = "TEXT")
-    private String referenceTranscript;
 
     @Column(columnDefinition = "TEXT")
     private String personality;

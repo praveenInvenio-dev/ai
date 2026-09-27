@@ -16,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -93,16 +92,14 @@ public class VoiceProfileService {
      * committing, rather than silently accepted here.
      */
     public VoiceProfile createCloned(String name, String language, String provider,
-                                      String personality, String referenceTranscript, MultipartFile audio) {
-        String normalizedProvider = provider == null ? "" : provider.toLowerCase(java.util.Locale.ROOT);
-        if (!Set.of("chatterbox", "cosyvoice", "cosyvoice3").contains(normalizedProvider)) {
+                                      String personality, MultipartFile audio) {
+        if (!"chatterbox".equalsIgnoreCase(provider)) {
+            // Only provider actually wired to accept a reference clip so
+            // far - see class comment. Rejecting early here is clearer than
+            // storing audio a provider can never use.
             throw new IllegalStateException(
                     "Unsupported voice provider for a cloned voice: " + provider
-                    + " (supported: chatterbox, cosyvoice)");
-        }
-        if (("cosyvoice".equals(normalizedProvider) || "cosyvoice3".equals(normalizedProvider))
-                && (referenceTranscript == null || referenceTranscript.isBlank())) {
-            throw new IllegalStateException("CosyVoice requires the exact transcript of the reference recording.");
+                    + " (currently only 'chatterbox' accepts reference audio)");
         }
         ValidationResult validation = validate(audio);
         if (!validation.ok()) {
@@ -125,7 +122,6 @@ public class VoiceProfileService {
         profile.setProvider(provider.toLowerCase(java.util.Locale.ROOT));
         profile.setReferenceAudioKey(id.toString());
         profile.setVoiceName(id.toString());
-        profile.setReferenceTranscript(referenceTranscript);
         profile.setPersonality(personality);
         profile.setDurationSeconds(validation.durationSeconds());
         profile.setSampleRate(validation.sampleRate());
@@ -146,24 +142,6 @@ public class VoiceProfileService {
         return repository.save(profile);
     }
 
-    /** Returns the exact stored reference clip so the Voice Library can
-     *  distinguish a recording/storage problem from a TTS-generation problem. */
-    public byte[] getReferenceAudio(UUID id) {
-        VoiceProfile profile = get(id);
-        if (profile.getReferenceAudioKey() == null || profile.getReferenceAudioKey().isBlank()) {
-            throw new IllegalStateException("This voice does not have a stored reference recording.");
-        }
-        Path file = audioDir.resolve(profile.getReferenceAudioKey() + ".wav").normalize();
-        if (!file.startsWith(audioDir.normalize()) || !Files.isRegularFile(file)) {
-            throw new IllegalStateException("The stored reference recording is missing for voice profile " + id);
-        }
-        try {
-            return Files.readAllBytes(file);
-        } catch (IOException e) {
-            throw new java.io.UncheckedIOException("Could not read the stored reference recording", e);
-        }
-    }
-
     public void delete(UUID id) {
         VoiceProfile profile = get(id);
         if (profile.getReferenceAudioKey() != null) {
@@ -180,10 +158,6 @@ public class VoiceProfileService {
      *  same code path a real episode would use (ProviderGateway.synthesize),
      *  not a separate preview mechanism that could drift from real output. */
     public TextToSpeechProvider.TtsResult generateTest(UUID id, String sampleText) {
-        return generateTest(id, sampleText, 1.0, 1.0);
-    }
-
-    public TextToSpeechProvider.TtsResult generateTest(UUID id, String sampleText, double speed, double pitch) {
         VoiceProfile profile = get(id);
         String text = (sampleText == null || sampleText.isBlank())
                 ? "Hello! This is what I sound like."
@@ -192,8 +166,7 @@ public class VoiceProfileService {
         // provider=piper, or this profile's stored filename key for a
         // cloned provider - both already sit in voiceName, so this call
         // doesn't need to branch on provider itself.
-        return providerGateway.synthesizeWithVoice(profile.getProvider(), profile.getVoiceName(), text,
-                profile.getLanguage(), speed, pitch, "neutral", 0.5, "natural", List.of(), false, null, null, profile.getReferenceTranscript());
+        return providerGateway.synthesizeWithVoice(profile.getProvider(), profile.getVoiceName(), text);
     }
 
     private ValidationResult validate(MultipartFile audio) {
@@ -214,10 +187,10 @@ public class VoiceProfileService {
             if (duration <= 0) {
                 return new ValidationResult(false, "That file doesn't look like valid audio.", List.of(), 0, 0);
             }
-            if (duration < 5.0) {
+            if (duration < 2.0) {
                 return new ValidationResult(false,
                         "That clip is too short (" + String.format("%.1f", duration) + "s) - "
-                        + "record at least 5 seconds. For best cloning quality, use a clean 5-15 second sample and record again.", List.of(), duration, sampleRate);
+                        + "record at least 5 seconds for a usable voice clone.", List.of(), duration, sampleRate);
             }
             if (duration > 60.0) {
                 return new ValidationResult(false,

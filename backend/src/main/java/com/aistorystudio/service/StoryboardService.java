@@ -84,7 +84,6 @@ public class StoryboardService {
     private final MediaProcessor mediaProcessor;
     private final ProviderGateway gateway;
     private final SubtitleService subtitleService;
-    private final com.aistorystudio.repository.VoiceProfileRepository voiceProfileRepository;
     private final String defaultVoice;
     private final ObjectMapper objectMapper;
 
@@ -97,7 +96,6 @@ public class StoryboardService {
                              ProviderGateway gateway,
                              SubtitleService subtitleService,
                              ObjectMapper objectMapper,
-                             com.aistorystudio.repository.VoiceProfileRepository voiceProfileRepository,
                              @Value("${studio.tts.voice:edge:en-IN-NeerjaNeural}") String defaultVoice) {
         this.episodes = episodes;
         this.projects = projects;
@@ -108,7 +106,6 @@ public class StoryboardService {
         this.gateway = gateway;
         this.subtitleService = subtitleService;
         this.objectMapper = objectMapper;
-        this.voiceProfileRepository = voiceProfileRepository;
         this.defaultVoice = defaultVoice;
     }
 
@@ -177,14 +174,7 @@ public class StoryboardService {
 
     public record VoiceSegmentInput(String character, String text, String voice,
                                     Double speed, Double pitch, String emotion,
-                                    Integer pauseBeforeMs, Integer pauseAfterMs,
-                                    Double emotionIntensity, String delivery, List<String> emphasis,
-                                    Boolean breath, String paralinguisticEvent, String actingDirection) {
-        public VoiceSegmentInput(String character, String text, String voice, Double speed, Double pitch, String emotion,
-                                 Integer pauseBeforeMs, Integer pauseAfterMs) {
-            this(character, text, voice, speed, pitch, emotion, pauseBeforeMs, pauseAfterMs, null, null, List.of(), false, null, null);
-        }
-    }
+                                    Integer pauseBeforeMs, Integer pauseAfterMs) {}
 
     public record SceneInput(String narration, String action, String location,
                              String emotion, Double durationSeconds,
@@ -490,25 +480,11 @@ public class StoryboardService {
                 String text = part.trim();
                 if (text.isEmpty()) continue;
                 Prosody prosody = prosody(segment);
-                TextToSpeechProvider.TtsResult result;
-                String selectedVoice = segment.voice() == null || segment.voice().isBlank() ? defaultVoice : segment.voice();
-                if (selectedVoice.startsWith("profile:")) {
-                    try {
-                        UUID profileId = UUID.fromString(selectedVoice.substring("profile:".length()));
-                        var profile = voiceProfileRepository.findById(profileId)
-                                .orElseThrow(() -> new IllegalArgumentException("Voice profile not found: " + profileId));
-                        result = gateway.synthesizeWithVoice(profile.getProvider(), profile.getVoiceName(), text,
-                                episode.getLanguage(), prosody.speed(), prosody.pitch(), segment.emotion(),
-                                segment.emotionIntensity() == null ? 0.5 : segment.emotionIntensity(), segment.delivery(),
-                                segment.emphasis() == null ? List.of() : segment.emphasis(), segment.breath(),
-                                segment.paralinguisticEvent(), segment.actingDirection(), profile.getReferenceTranscript());
-                    } catch (IllegalArgumentException e) {
-                        throw new IllegalStateException("Invalid saved voice selection: " + selectedVoice, e);
-                    }
-                } else {
-                    result = gateway.synthesize(new TextToSpeechProvider.TtsRequest(
-                            text, selectedVoice, episode.getLanguage(), prosody.speed(), prosody.pitch()));
-                }
+                TextToSpeechProvider.TtsResult result = gateway.synthesize(
+                        new TextToSpeechProvider.TtsRequest(
+                                text,
+                                segment.voice() == null || segment.voice().isBlank() ? defaultVoice : segment.voice(),
+                                episode.getLanguage(), prosody.speed(), prosody.pitch()));
                 audioParts.add(result.audioBytes());
             }
             appendSilence(audioParts, scaledPause(segment.pauseAfterMs(), pauseScale));

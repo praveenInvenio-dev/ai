@@ -70,15 +70,6 @@ public class MotionPromptBuilder {
             SceneVisualSpec.Environment env = spec.environment();
             if (env.particles() != null) { appendComma(sb, env.particles() + " drifting through the scene"); }
             appendAmbientMotion(sb, env.atmosphere(), env.location());
-        }
-        if (spec.environmentMotion() != null) {
-            for (String motion : spec.environmentMotion()) { if (motion != null && !motion.isBlank()) appendComma(sb, motion); }
-        }
-        if (spec.visualEffects() != null) {
-            for (String effect : spec.visualEffects()) { if (effect != null && !effect.isBlank()) appendComma(sb, effect + " moves subtly"); }
-        }
-        if (spec.lighting() != null) {
-            if (spec.lighting().lightDirection() != null) appendComma(sb, "preserve lighting direction while allowing subtle natural light variation");
         } else {
             appendAmbientMotion(sb, scene.getLighting(), scene.getLocation());
         }

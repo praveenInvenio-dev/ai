@@ -30,11 +30,5 @@ public class CharacterReference {
     @Column(name = "is_primary")
     private boolean primary = false;
 
-    /** User-approved master reference; locked references are preferred by scene generation. */
-    private boolean locked = false;
-
-    @Column(name = "prompt_text", columnDefinition = "TEXT")
-    private String promptText;
-
     private Instant createdAt = Instant.now();
 }

@@ -150,13 +150,6 @@ def synthesize():
     speed = body.get("speed") or 1.0
     pitch = body.get("pitch") or 1.0
 
-    # Structured Voice Director metadata is converted to ChatterBox-native
-    # paralinguistic tags only inside this provider. Other TTS engines never
-    # see literal [gasp]/[laugh] text.
-    event = str(body.get("paralinguisticEvent") or "").strip().lower()
-    if event in {"laugh", "chuckle", "gasp", "sigh", "cough"} and f"[{event}]" not in text.lower():
-        text = f"{text} [{event}]"
-
     reference = voice_reference_path(voice)
     if reference is None:
         return jsonify({
@@ -174,9 +167,6 @@ def synthesize():
     try:
         import torchaudio as ta
         generate_kwargs = {"audio_prompt_path": reference}
-        log.info("Voice Director: emotion=%s intensity=%s delivery=%s emphasis=%s breath=%s acting=%s",
-                 body.get("emotion"), body.get("emotionIntensity"), body.get("delivery"),
-                 body.get("emphasis"), body.get("breath"), body.get("actingDirection"))
         # Best-effort: the documented Turbo signature doesn't show a speed
         # kwarg, but if a future/different chatterbox-tts version does
         # support one, use it instead of silently ignoring the request.

@@ -46,7 +46,7 @@ public class CharacterImageService {
         this.storageProvider = storageProvider;
     }
 
-    public CharacterReference generateReferenceImage(UUID characterId, String visualStyleOverride, String customPrompt) {
+    public CharacterReference generateReferenceImage(UUID characterId, String visualStyleOverride) {
         Character character = characterRepository.findById(characterId)
                 .orElseThrow(() -> new IllegalArgumentException("Character not found: " + characterId));
 
@@ -54,13 +54,8 @@ public class CharacterImageService {
         String style = stylePromptBuilder.build(
                 visualStyleOverride != null && !visualStyleOverride.isBlank() ? visualStyleOverride : DEFAULT_STYLE,
                 null);
-        String supplied = customPrompt == null ? "" : customPrompt.trim();
-        String positivePrompt = (supplied.isBlank() ? canon : supplied) + ". " + style
-                + ". MASTER CHARACTER REFERENCE for this character. Full body front view, 3/4 view, side/profile view, "
-                + "close-up face, happy/sad/surprised/excited expressions, neutral studio background, clear silhouette, "
-                + "exact clothing and signature accessories, consistent proportions, clean character-development artwork. "
-                + "No other characters. Prioritize identity and repeatability over background detail.";
-        positivePrompt = positivePrompt.trim();
+        String positivePrompt = (canon + ". " + style
+                + ". Portrait, character reference sheet, plain neutral background, centered.").trim();
         String negativePrompt = negativePromptBuilder.build(character.getNegativeConstraints(), stylePromptBuilder.negativeProfile(visualStyleOverride != null && !visualStyleOverride.isBlank() ? visualStyleOverride : DEFAULT_STYLE));
 
         // Zeros mean "use the configured defaults" (studio.comfyui.width/height/steps/cfg)
@@ -81,8 +76,6 @@ public class CharacterImageService {
         ref.setImageHash(Integer.toHexString(java.util.Arrays.hashCode(result.imageBytes())));
         ref.setSource("GENERATED");
         ref.setPrimary(!hasExisting);
-        ref.setLocked(false);
-        ref.setPromptText(supplied.isBlank() ? positivePrompt : supplied);
         return characterReferenceRepository.save(ref);
     }
 }

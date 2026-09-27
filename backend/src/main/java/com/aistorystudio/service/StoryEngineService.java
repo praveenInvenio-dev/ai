@@ -39,7 +39,6 @@ public class StoryEngineService {
     private final StoryBibleRepository storyBibleRepository;
     private final SceneRepository sceneRepository;
     private final CharacterRepository characterRepository;
-    private final CharacterService characterService;
     private final EpisodeMemoryRepository episodeMemoryRepository;
     private final QualityEngineService qualityEngineService;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -49,7 +48,6 @@ public class StoryEngineService {
                                StoryBibleRepository storyBibleRepository,
                                SceneRepository sceneRepository,
                                CharacterRepository characterRepository,
-                               CharacterService characterService,
                                EpisodeMemoryRepository episodeMemoryRepository,
                                QualityEngineService qualityEngineService) {
         this.providerGateway = providerGateway;
@@ -57,7 +55,6 @@ public class StoryEngineService {
         this.storyBibleRepository = storyBibleRepository;
         this.sceneRepository = sceneRepository;
         this.characterRepository = characterRepository;
-        this.characterService = characterService;
         this.episodeMemoryRepository = episodeMemoryRepository;
         this.qualityEngineService = qualityEngineService;
     }
@@ -124,13 +121,6 @@ public class StoryEngineService {
         bible.setStoryBeatsJson(jsonOrNull(root, "storyBeats"));
         bible = storyBibleRepository.save(bible);
 
-        // Standalone stories still need real Character records so the Storyboard
-        // Character Builder can generate, lock and reuse master references.
-        // Universe-backed stories continue using their existing canonical characters.
-        if (episode.getUniverseId() == null) {
-            characterService.syncEpisodeCharacters(episode.getId(), root.path("characters"));
-        }
-
         // remove previous scenes for this episode (a regenerate replaces the full draft;
         // production-time per-scene regeneration is handled separately once approved)
         sceneRepository.deleteAll(sceneRepository.findByEpisodeIdOrderByOrderIndexAsc(episodeId));
@@ -157,7 +147,6 @@ public class StoryEngineService {
             scene.setImagePrompt(text(sceneNode, "imagePrompt"));
             scene.setNegativePrompt(text(sceneNode, "negativePrompt"));
             scene.setVisualSpecJson(jsonOrNull(sceneNode, "visualSpec"));
-            scene.setAudioSpecJson(buildAudioSpecJson(sceneNode));
             // Motion prompt built from the scene fields set just above (action,
             // emotion, lighting, characters) - must come after those setters.
             scene.setContinuityJson(buildSceneContinuityJson(root, sceneNode, episode, characters));
@@ -196,7 +185,7 @@ public class StoryEngineService {
     private SceneDto toDto(Scene s) {
         return new SceneDto(s.getId(), s.getSceneNumber(), s.getPurpose(), s.getNarration(), s.getLocation(),
                 s.getAction(), s.getEmotion(), s.getCamera(), s.getLighting(), s.getImagePrompt(),
-                s.getNegativePrompt(), s.getMotionPrompt(), s.getMotionNegativePrompt(), s.getVisualSpecJson(), s.getAudioSpecJson(), s.getNarrationSeconds(), s.getImageDurationSeconds(), s.getCameraMovement(),
+                s.getNegativePrompt(), s.getMotionPrompt(), s.getMotionNegativePrompt(), s.getVisualSpecJson(), s.getNarrationSeconds(), s.getImageDurationSeconds(), s.getCameraMovement(),
                 s.getImportance(), s.isLocked(), s.isNarrationLocked(), s.getAnimationMode(), readVoiceSegments(s), readCharacterNames(s));
     }
 
@@ -244,17 +233,6 @@ public class StoryEngineService {
             }
             return out;
         } catch (Exception e) { return List.of(); }
-    }
-
-    private String buildAudioSpecJson(JsonNode sceneNode) {
-        JsonNode supplied = sceneNode.path("audioSpec");
-        if (supplied.isObject()) return supplied.toString();
-        ObjectNode out = mapper.createObjectNode();
-        out.putArray("ambience");
-        out.putObject("music").put("mood", text(sceneNode, "emotion") == null ? "gentle" : text(sceneNode, "emotion")).put("intensity", 0.25);
-        out.putArray("sfx");
-        out.put("dialoguePriority", 1.0);
-        return out.toString();
     }
 
     private String buildVoiceSegmentsJson(JsonNode sceneNode, String narration, String sceneEmotion) {
@@ -346,10 +324,7 @@ public class StoryEngineService {
               "title": string,
               "logline": string,
               "fullNarration": string,
-              "characters": [ {"name": string, "role": string, "species": string, "age": string,
-                "personality": string, "canonicalDescription": string, "negativeConstraints": string,
-                "attributes": {"body": string, "face": string, "eyes": string, "hair": string,
-                  "clothing": string, "colors": string, "accessories": string, "signatureFeatures": string} } ],
+              "characters": [ {"name": string, "role": string} ],
               "locations": [string],
               "objects": [string],
               "relationships": [string],
@@ -376,28 +351,19 @@ public class StoryEngineService {
                   "lighting": string,
                   "imagePrompt": string,
                   "negativePrompt": string,
-                  "audioSpec": {
-                    "ambience": [string],
-                    "music": {"mood": string, "intensity": number},
-                    "sfx": [ {"event": string, "timing": string, "intensity": number} ],
-                    "dialoguePriority": number
-                  },
                   "visualSpec": {
                     "environment": {"location": string, "timeOfDay": string, "weather": string,
                       "season": string, "foreground": string, "midground": string, "background": string,
                       "atmosphere": string, "particles": string, "colorPalette": string, "mood": string},
                     "characters": [ {"name": string, "position": string, "pose": string,
                       "expression": string, "action": string} ],
-                    "props": [string],
                     "lighting": {"keyLight": string, "fillLight": string, "rimLight": string,
                       "lightDirection": string, "shadows": string, "reflections": string},
                     "camera": {"position": string, "angle": string, "shotType": string, "lens": string,
                       "focalLength": string, "framing": string, "composition": string,
                       "depthOfField": string, "focusSubject": string, "movement": string},
                     "cinematicStyle": string,
-                    "continuityRequirements": [string],
-                    "environmentMotion": [string],
-                    "visualEffects": [string]
+                    "continuityRequirements": [string]
                   },
                   "importance": "NORMAL" | "IMPORTANT" | "HERO"
                 }
@@ -446,7 +412,6 @@ public class StoryEngineService {
             Every imagePrompt MUST be a concrete visual description of THAT scene's action, characters, location,
             objects and composition. Do not invent unrelated characters or animals. Do not omit named story objects
             that are part of the action. The imagePrompt should never introduce a conflicting art style.
-            ALSO fill audioSpec for every scene. Keep ambience, music mood/intensity and only the sound effects that actually happen on screen; dialoguePriority should normally be 0.8-1.0.
             ALSO fill visualSpec for every scene - a structured cinematic breakdown, not a duplicate of imagePrompt.
             Think like a cinematographer: environment (location, time of day, weather, season, what's in the
             foreground/midground/background, atmosphere, particles, color palette, mood), where each character is

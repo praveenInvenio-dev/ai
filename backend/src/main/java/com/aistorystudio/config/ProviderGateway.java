@@ -34,8 +34,6 @@ public class ProviderGateway {
     // TTS_PROVIDER default a given episode/preview would otherwise use.
     private final TextToSpeechProvider localTtsProvider;
     private final TextToSpeechProvider chatterboxTtsProvider;
-    private final TextToSpeechProvider cosyVoiceTtsProvider;
-    private final TextToSpeechProvider sarvamTtsProvider;
     private final VisionProvider visionProvider;
     private final VideoGenerationProvider videoGenerationProvider;
 
@@ -48,7 +46,6 @@ public class ProviderGateway {
             LocalTTSProvider localTtsProvider,
             SarvamTTSProvider sarvamTtsProvider,
             ChatterboxTTSProvider chatterboxTtsProvider,
-            CosyVoiceTTSProvider cosyVoiceTtsProvider,
             @Value("${studio.tts.provider:piper}") String ttsProviderName,
             @Value("${studio.offlineMode:false}") boolean offlineMode,
             MockTTSProvider mockTtsProvider,
@@ -74,8 +71,6 @@ public class ProviderGateway {
         // OFFLINE_MODE has no reason to refuse it the way it refuses Sarvam.
         if ("chatterbox".equalsIgnoreCase(ttsProviderName)) {
             this.ttsProvider = chatterboxTtsProvider;
-        } else if (("cosyvoice".equalsIgnoreCase(ttsProviderName) || "cosyvoice3".equalsIgnoreCase(ttsProviderName))) {
-            this.ttsProvider = cosyVoiceTtsProvider;
         } else if ("sarvam".equalsIgnoreCase(ttsProviderName) && !offlineMode) {
             this.ttsProvider = sarvamTtsProvider;
         } else {
@@ -84,8 +79,6 @@ public class ProviderGateway {
         log.info("TTS provider: {}", this.ttsProvider.providerName());
         this.localTtsProvider = localTtsProvider;
         this.chatterboxTtsProvider = chatterboxTtsProvider;
-        this.cosyVoiceTtsProvider = cosyVoiceTtsProvider;
-        this.sarvamTtsProvider = sarvamTtsProvider;
         this.mockTtsProvider = mockTtsProvider;
         this.visionProvider = visionProvider;
         this.videoGenerationProvider = videoGenerationProvider;
@@ -149,7 +142,7 @@ public class ProviderGateway {
      *  shouldn't crash a voice preview). */
     public TextToSpeechProvider.TtsResult synthesizeWithVoice(String provider, String voiceName, String text,
                                                                 String language, double speed, double pitch) {
-        TextToSpeechProvider selected = selectTtsProvider(provider);
+        TextToSpeechProvider selected = "chatterbox".equalsIgnoreCase(provider) ? chatterboxTtsProvider : localTtsProvider;
         TextToSpeechProvider.TtsRequest request = new TextToSpeechProvider.TtsRequest(text, voiceName, language, speed, pitch);
         if (demoMode) {
             return mockTtsProvider.synthesize(request);
@@ -157,54 +150,12 @@ public class ProviderGateway {
         try {
             return selected.synthesize(request);
         } catch (Exception e) {
-            log.warn("Voice profile TTS provider '{}' failed ({}). Falling back to silent placeholder audio.",
-                    selected.providerName(), e.getMessage());
-            return mockTtsProvider.synthesize(request);
+            String warning = "Voice provider '" + selected.providerName() + "' failed (" + e.getMessage()
+                    + "); this line used a silent placeholder instead of the assigned voice.";
+            log.warn(warning);
+            var mock = mockTtsProvider.synthesize(request);
+            return new TextToSpeechProvider.TtsResult(mock.audioBytes(), mock.durationSeconds(), mock.format(), warning);
         }
-    }
-
-    public TextToSpeechProvider.TtsResult synthesizeWithVoice(String provider, String voiceName, String text,
-                                                                String language, double speed, double pitch,
-                                                                String emotion, Double emotionIntensity, String delivery,
-                                                                java.util.List<String> emphasis, Boolean breath,
-                                                                String paralinguisticEvent, String actingDirection,
-                                                                String referenceTranscript) {
-        TextToSpeechProvider selected = selectTtsProvider(provider);
-        TextToSpeechProvider.TtsRequest request = new TextToSpeechProvider.TtsRequest(
-                text, voiceName, language, speed, pitch, emotion, emotionIntensity, delivery,
-                emphasis == null ? java.util.List.of() : emphasis, breath, paralinguisticEvent, actingDirection, referenceTranscript);
-        if (demoMode) return mockTtsProvider.synthesize(request);
-        try { return selected.synthesize(request); }
-        catch (Exception e) {
-            log.warn("Voice profile TTS provider '{}' failed ({}). Falling back to placeholder audio.", selected.providerName(), e.getMessage());
-            return mockTtsProvider.synthesize(request);
-        }
-    }
-
-    public TextToSpeechProvider.TtsResult synthesizeWithVoice(String provider, String voiceName, String text,
-                                                                String language, double speed, double pitch,
-                                                                String emotion, Double emotionIntensity, String delivery,
-                                                                java.util.List<String> emphasis, Boolean breath,
-                                                                String paralinguisticEvent, String actingDirection) {
-        TextToSpeechProvider selected = selectTtsProvider(provider);
-        TextToSpeechProvider.TtsRequest request = new TextToSpeechProvider.TtsRequest(
-                text, voiceName, language, speed, pitch, emotion, emotionIntensity, delivery,
-                emphasis == null ? java.util.List.of() : emphasis, breath, paralinguisticEvent, actingDirection, null);
-        if (demoMode) return mockTtsProvider.synthesize(request);
-        try {
-            return selected.synthesize(request);
-        } catch (Exception e) {
-            log.warn("Voice profile TTS provider '{}' failed ({}). Falling back to placeholder audio.",
-                    selected.providerName(), e.getMessage());
-            return mockTtsProvider.synthesize(request);
-        }
-    }
-
-    private TextToSpeechProvider selectTtsProvider(String provider) {
-        if ("chatterbox".equalsIgnoreCase(provider)) return chatterboxTtsProvider;
-        if ("cosyvoice".equalsIgnoreCase(provider) || "cosyvoice3".equalsIgnoreCase(provider)) return cosyVoiceTtsProvider;
-        if ("sarvam".equalsIgnoreCase(provider) && !offlineMode) return sarvamTtsProvider;
-        return localTtsProvider;
     }
 
     /** Sample/preview overload - default prosody, no per-line speed/pitch to
@@ -222,9 +173,11 @@ public class ProviderGateway {
         try {
             return ttsProvider.synthesize(request);
         } catch (Exception e) {
-            log.warn("TTS provider '{}' failed ({}). Falling back to silent placeholder audio.",
-                    ttsProvider.providerName(), e.getMessage());
-            return mockTtsProvider.synthesize(request);
+            String warning = "TTS provider '" + ttsProvider.providerName() + "' failed (" + e.getMessage()
+                    + "); this line used a silent placeholder instead.";
+            log.warn(warning);
+            var mock = mockTtsProvider.synthesize(request);
+            return new TextToSpeechProvider.TtsResult(mock.audioBytes(), mock.durationSeconds(), mock.format(), warning);
         }
     }
 

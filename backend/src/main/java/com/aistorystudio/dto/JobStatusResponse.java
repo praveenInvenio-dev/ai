@@ -13,5 +13,5 @@ public record JobStatusResponse(
         String errorMessage,
         List<StepDto> steps
 ) {
-    public record StepDto(String stepName, String status, int retryCount, String errorMessage, Long durationMs) {}
+    public record StepDto(String stepName, String status, int retryCount, String errorMessage, String warningMessage, Long durationMs) {}
 }

@@ -11,21 +11,18 @@ import { ApiService } from './services/api.service';
     <div class="shell">
       <aside class="rail">
         <div class="brand">
-          <span class="brand-mark">✦</span>
-          <span><span class="brand-name">AI Story Studio</span><small>Creative production workspace</small></span>
+          <span class="brand-mark">🎬</span>
+          <span class="brand-name">AI Story Studio</span>
         </div>
         <nav>
-          <div class="nav-label">WORKSPACE</div>
-          <a routerLink="/dashboard" routerLinkActive="active"><span>▦</span>Projects</a>
-          <a routerLink="/create" routerLinkActive="active"><span>＋</span>Create story</a>
-          <div class="nav-label">BUILD</div>
-          <a routerLink="/characters" routerLinkActive="active"><span>◉</span>Character studio</a>
-          <a routerLink="/build-story" routerLinkActive="active"><span>✎</span>Build a story</a>
-          <a routerLink="/story-images" routerLinkActive="active"><span>▧</span>Add story images</a>
-          <a routerLink="/voice-lab" routerLinkActive="active"><span>♫</span>Voice lab</a>
-          <div class="nav-label">PRODUCTION</div>
-          <a routerLink="/video-editor" routerLinkActive="active"><span>◫</span>AI video editor</a>
-          <a routerLink="/video-generation" routerLinkActive="active"><span>▶</span>Video generation</a>
+          <a routerLink="/dashboard" routerLinkActive="active">Projects</a>
+          <a routerLink="/create" routerLinkActive="active">Create story</a>
+          <a routerLink="/characters" routerLinkActive="active">Character studio</a>
+          <a routerLink="/build-story" routerLinkActive="active">Build a story</a>
+          <a routerLink="/story-images" routerLinkActive="active">Add story images</a>
+          <a routerLink="/voice-lab" routerLinkActive="active">Voice lab</a>
+          <a routerLink="/video-editor" routerLinkActive="active">AI video editor</a>
+          <a routerLink="/video-generation" routerLinkActive="active">Video generation</a>
         </nav>
         <div class="rail-footer">
           <span class="tag" *ngIf="healthChecked && !demoMode" [class.tag-teal]="true">Local &amp; self-hosted</span>
@@ -59,9 +56,21 @@ import { ApiService } from './services/api.service';
       top: 0;
       height: 100vh;
     }
-    .brand { display:flex;align-items:center;gap:.7rem;margin-bottom:2rem }.brand-mark{width:36px;height:36px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(135deg,var(--accent),#f3c46b);color:#211606;font-weight:900;box-shadow:0 8px 24px rgba(238,162,59,.18)}.brand-name{display:block;font-weight:800;letter-spacing:-.02em}.brand small{display:block;color:var(--muted);font-size:.62rem;margin-top:.15rem}nav{display:flex;flex-direction:column;gap:.25rem;flex:1}.nav-label{font-size:.62rem;letter-spacing:.14em;color:#6f687e;font-weight:800;margin:1rem .7rem .3rem}nav a{text-decoration:none;color:var(--muted);padding:.72em .8em;border-radius:11px;font-size:.88rem;display:flex;align-items:center;gap:.7rem;transition:.16s ease}nav a span{width:18px;text-align:center;color:#777083}nav a:hover{color:var(--text);background:rgba(255,255,255,.045)}nav a.active{color:var(--text);background:linear-gradient(90deg,rgba(238,162,59,.14),rgba(238,162,59,.035));box-shadow:inset 2px 0 var(--accent)}nav a.active span{color:var(--accent)}
+    .brand { display: flex; align-items: center; gap: 0.6em; margin-bottom: 2.2rem; }
+    .brand-mark { font-size: 1.4rem; }
+    .brand-name { font-family: var(--font-display); font-size: 1.05rem; }
+    nav { display: flex; flex-direction: column; gap: 0.3rem; flex: 1; }
+    nav a {
+      text-decoration: none;
+      color: var(--muted);
+      padding: 0.6em 0.8em;
+      border-radius: 8px;
+      font-size: 0.92rem;
+    }
+    nav a:hover { color: var(--text); background: var(--surface-raised); }
+    nav a.active { color: var(--accent); background: var(--surface-raised); }
     .rail-footer { padding-top: 1rem; }
-    .stage { flex:1; padding:2.5rem clamp(1.2rem,4vw,3.4rem); max-width:none; min-width:0 }
+    .stage { flex: 1; padding: 2.4rem 2.6rem; max-width: 1100px; }
     .demo-banner {
       background: rgba(238, 162, 59, 0.12);
       border: 1px solid rgba(238, 162, 59, 0.4);

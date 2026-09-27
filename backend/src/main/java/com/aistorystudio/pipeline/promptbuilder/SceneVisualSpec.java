@@ -28,13 +28,10 @@ import java.util.List;
 public record SceneVisualSpec(
         Environment environment,
         List<CharacterPlacement> characters,
-        List<String> props,
         Lighting lighting,
         Camera camera,
         String cinematicStyle,
-        List<String> continuityRequirements,
-        List<String> environmentMotion,
-        List<String> visualEffects
+        List<String> continuityRequirements
 ) {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Environment(

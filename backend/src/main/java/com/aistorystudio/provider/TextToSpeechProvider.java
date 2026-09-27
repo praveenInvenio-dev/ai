@@ -1,7 +1,5 @@
 package com.aistorystudio.provider;
 
-import java.util.List;
-
 public interface TextToSpeechProvider {
 
     TtsResult synthesize(TtsRequest request);
@@ -10,26 +8,18 @@ public interface TextToSpeechProvider {
 
     String providerName();
 
-    /**
-     * Rich, provider-neutral speech direction. The 5-argument constructor is
-     * intentionally retained so every existing caller remains source-compatible.
-     */
-    record TtsRequest(
-            String text, String voice, String language, double speed, double pitch,
-            String emotion, Double emotionIntensity, String delivery,
-            List<String> emphasis, Boolean breath, String paralinguisticEvent,
-            String actingDirection, String referenceTranscript) {
+    record TtsRequest(String text, String voice, String language, double speed, double pitch) {}
 
-        public TtsRequest(String text, String voice, String language, double speed, double pitch,
-                          String emotion, Double emotionIntensity, String delivery, List<String> emphasis,
-                          Boolean breath, String paralinguisticEvent, String actingDirection) {
-            this(text, voice, language, speed, pitch, emotion, emotionIntensity, delivery, emphasis, breath, paralinguisticEvent, actingDirection, null);
-        }
-
-        public TtsRequest(String text, String voice, String language, double speed, double pitch) {
-            this(text, voice, language, speed, pitch, null, null, null, List.of(), false, null, null, null);
+    record TtsResult(byte[] audioBytes, double durationSeconds, String format,
+                      /** Null in the normal case. Set by ProviderGateway when the
+                       *  configured/assigned provider failed and this result actually
+                       *  came from the mock fallback - "never silently replace the
+                       *  user's selected voice without informing them", surfaced up
+                       *  through the pipeline to the generation step (see
+                       *  ProductionPipelineService) rather than just a backend log line. */
+                      String providerWarning) {
+        public TtsResult(byte[] audioBytes, double durationSeconds, String format) {
+            this(audioBytes, durationSeconds, format, null);
         }
     }
-
-    record TtsResult(byte[] audioBytes, double durationSeconds, String format) {}
 }

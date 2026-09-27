@@ -8,5 +8,4 @@ import java.util.UUID;
 
 public interface CharacterRepository extends JpaRepository<Character, UUID> {
     List<Character> findByUniverseId(UUID universeId);
-    List<Character> findByEpisodeId(UUID episodeId);
 }

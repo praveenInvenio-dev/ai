@@ -149,13 +149,8 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         if (blank(vaeModel)) {
             return "No VAE configured (studio.animation.local-ai.vae-model).";
         }
-        // The legacy Wan image-to-video graph uses CLIP Vision for reference
-        // conditioning. The newer TI2V-5B graph does not, so requiring it for
-        // every workflow falsely disables the newer pipeline.
-        boolean needsClipVision = defaultWorkflow != null
-                && !defaultWorkflow.toLowerCase(java.util.Locale.ROOT).contains("ti2v-5b");
-        if (needsClipVision && blank(clipVisionModel)) {
-            return "No CLIP vision model configured for the selected legacy Wan workflow.";
+        if (blank(clipVisionModel)) {
+            return "No CLIP vision model configured (studio.animation.local-ai.clip-vision-model).";
         }
         // Real check, not assumed (spec section 25/27): a scene attempted on
         // hardware without enough VRAM would OOM mid-generation, wasting the
@@ -360,16 +355,10 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                 .bodyToMono(JsonNode.class)
                 .block(Duration.ofSeconds(30));
 
-        if (response == null || response.get("name") == null || response.get("name").asText().isBlank()) {
-            throw new IllegalStateException("ComfyUI did not return a usable filename for the uploaded starting image: " + response);
+        if (response == null || response.get("name") == null) {
+            throw new IllegalStateException("ComfyUI did not return a filename for the uploaded starting image: " + response);
         }
-        String name = response.get("name").asText();
-        String subfolder = response.path("subfolder").asText("");
-        String relative = subfolder.isBlank() ? name : subfolder + "/" + name;
-        if (relative.equals("input") || relative.endsWith("/input") || relative.contains("../")) {
-            throw new IllegalStateException("ComfyUI returned an invalid starting-image path: " + relative);
-        }
-        return relative;
+        return response.get("name").asText();
     }
 
     // ---- polling -------------------------------------------------------------

@@ -84,12 +84,24 @@ public class JobService {
         publishJob(step.getJobId());
     }
 
+    /** Non-fatal - call this on a step that otherwise succeeds. Separate
+     *  from failStep() on purpose: a TTS-fallback warning does not change
+     *  the step's status to FAILED, it just attaches an explanation a
+     *  human should see (see GenerationStep.warningMessage's own comment). */
+    public void setStepWarning(UUID stepId, String warning) {
+        if (warning == null || warning.isBlank()) return;
+        GenerationStep step = stepRepository.findById(stepId).orElseThrow();
+        step.setWarningMessage(warning);
+        step = stepRepository.save(step);
+        publishJob(step.getJobId());
+    }
+
     public JobStatusResponse getStatus(UUID jobId) {
         GenerationJob job = jobRepository.findById(jobId)
                 .orElseThrow(() -> new IllegalArgumentException("Job not found: " + jobId));
         List<GenerationStep> steps = stepRepository.findByJobIdOrderByCreatedAtAsc(jobId);
         List<JobStatusResponse.StepDto> stepDtos = steps.stream()
-                .map(s -> new JobStatusResponse.StepDto(s.getStepName(), s.getStatus().name(), s.getRetryCount(), s.getErrorMessage(), s.getDurationMs()))
+                .map(s -> new JobStatusResponse.StepDto(s.getStepName(), s.getStatus().name(), s.getRetryCount(), s.getErrorMessage(), s.getWarningMessage(), s.getDurationMs()))
                 .toList();
         return new JobStatusResponse(job.getId(), job.getEpisodeId(), job.getStatus(), job.getProgressPercent(), job.getErrorMessage(), stepDtos);
     }

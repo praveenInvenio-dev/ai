@@ -18,7 +18,6 @@ public record SceneDto(
         String motionPrompt,
         String motionNegativePrompt,
         String visualSpecJson,
-        String audioSpecJson,
         Double narrationSeconds,
         Double imageDurationSeconds,
         String cameraMovement,
