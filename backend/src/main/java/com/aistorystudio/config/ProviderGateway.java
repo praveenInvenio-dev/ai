@@ -28,6 +28,14 @@ public class ProviderGateway {
     private final ImageGenerationProvider mockImageProvider;
     private final TextToSpeechProvider ttsProvider;
     private final TextToSpeechProvider mockTtsProvider;
+    // Kept individually, in addition to the single selected ttsProvider above,
+    // so VoiceProfile-scoped calls (synthesizeWithVoice) can pick per-call by
+    // the profile's own stored provider, independent of the app-wide
+    // TTS_PROVIDER default a given episode/preview would otherwise use.
+    private final TextToSpeechProvider localTtsProvider;
+    private final TextToSpeechProvider chatterboxTtsProvider;
+    private final TextToSpeechProvider cosyVoiceTtsProvider;
+    private final TextToSpeechProvider sarvamTtsProvider;
     private final VisionProvider visionProvider;
     private final VideoGenerationProvider videoGenerationProvider;
 
@@ -39,6 +47,8 @@ public class ProviderGateway {
             MockImageGenerationProvider mockImageProvider,
             LocalTTSProvider localTtsProvider,
             SarvamTTSProvider sarvamTtsProvider,
+            ChatterboxTTSProvider chatterboxTtsProvider,
+            CosyVoiceTTSProvider cosyVoiceTtsProvider,
             @Value("${studio.tts.provider:piper}") String ttsProviderName,
             @Value("${studio.offlineMode:false}") boolean offlineMode,
             MockTTSProvider mockTtsProvider,
@@ -60,10 +70,22 @@ public class ProviderGateway {
             log.warn("studio.tts.provider=sarvam but OFFLINE_MODE=true - using local TTS instead. "
                     + "Sarvam is a hosted cloud API and OFFLINE_MODE explicitly disallows external calls.");
         }
-        this.ttsProvider = ("sarvam".equalsIgnoreCase(ttsProviderName) && !offlineMode)
-                ? sarvamTtsProvider
-                : localTtsProvider;
+        // ChatterBox runs locally (tts-chatterbox sidecar) same as Piper, so
+        // OFFLINE_MODE has no reason to refuse it the way it refuses Sarvam.
+        if ("chatterbox".equalsIgnoreCase(ttsProviderName)) {
+            this.ttsProvider = chatterboxTtsProvider;
+        } else if (("cosyvoice".equalsIgnoreCase(ttsProviderName) || "cosyvoice3".equalsIgnoreCase(ttsProviderName))) {
+            this.ttsProvider = cosyVoiceTtsProvider;
+        } else if ("sarvam".equalsIgnoreCase(ttsProviderName) && !offlineMode) {
+            this.ttsProvider = sarvamTtsProvider;
+        } else {
+            this.ttsProvider = localTtsProvider;
+        }
         log.info("TTS provider: {}", this.ttsProvider.providerName());
+        this.localTtsProvider = localTtsProvider;
+        this.chatterboxTtsProvider = chatterboxTtsProvider;
+        this.cosyVoiceTtsProvider = cosyVoiceTtsProvider;
+        this.sarvamTtsProvider = sarvamTtsProvider;
         this.mockTtsProvider = mockTtsProvider;
         this.visionProvider = visionProvider;
         this.videoGenerationProvider = videoGenerationProvider;
@@ -117,6 +139,80 @@ public class ProviderGateway {
      *  *why* rather than just a disabled button. */
     public String localAiVideoUnavailableReason() {
         return videoGenerationProvider.unavailableReason();
+    }
+
+    /** VoiceProfile-scoped synthesis: picks the provider by the profile's own
+     *  stored value rather than the app-wide TTS_PROVIDER selection, so a
+     *  chatterbox-cloned voice works even when the episode default is piper,
+     *  and vice versa. Falls back to the mock provider on failure, same as
+     *  synthesize() below, for the same reason (a broken TTS sidecar
+     *  shouldn't crash a voice preview). */
+    public TextToSpeechProvider.TtsResult synthesizeWithVoice(String provider, String voiceName, String text,
+                                                                String language, double speed, double pitch) {
+        TextToSpeechProvider selected = selectTtsProvider(provider);
+        TextToSpeechProvider.TtsRequest request = new TextToSpeechProvider.TtsRequest(text, voiceName, language, speed, pitch);
+        if (demoMode) {
+            return mockTtsProvider.synthesize(request);
+        }
+        try {
+            return selected.synthesize(request);
+        } catch (Exception e) {
+            log.warn("Voice profile TTS provider '{}' failed ({}). Falling back to silent placeholder audio.",
+                    selected.providerName(), e.getMessage());
+            return mockTtsProvider.synthesize(request);
+        }
+    }
+
+    public TextToSpeechProvider.TtsResult synthesizeWithVoice(String provider, String voiceName, String text,
+                                                                String language, double speed, double pitch,
+                                                                String emotion, Double emotionIntensity, String delivery,
+                                                                java.util.List<String> emphasis, Boolean breath,
+                                                                String paralinguisticEvent, String actingDirection,
+                                                                String referenceTranscript) {
+        TextToSpeechProvider selected = selectTtsProvider(provider);
+        TextToSpeechProvider.TtsRequest request = new TextToSpeechProvider.TtsRequest(
+                text, voiceName, language, speed, pitch, emotion, emotionIntensity, delivery,
+                emphasis == null ? java.util.List.of() : emphasis, breath, paralinguisticEvent, actingDirection, referenceTranscript);
+        if (demoMode) return mockTtsProvider.synthesize(request);
+        try { return selected.synthesize(request); }
+        catch (Exception e) {
+            log.warn("Voice profile TTS provider '{}' failed ({}). Falling back to placeholder audio.", selected.providerName(), e.getMessage());
+            return mockTtsProvider.synthesize(request);
+        }
+    }
+
+    public TextToSpeechProvider.TtsResult synthesizeWithVoice(String provider, String voiceName, String text,
+                                                                String language, double speed, double pitch,
+                                                                String emotion, Double emotionIntensity, String delivery,
+                                                                java.util.List<String> emphasis, Boolean breath,
+                                                                String paralinguisticEvent, String actingDirection) {
+        TextToSpeechProvider selected = selectTtsProvider(provider);
+        TextToSpeechProvider.TtsRequest request = new TextToSpeechProvider.TtsRequest(
+                text, voiceName, language, speed, pitch, emotion, emotionIntensity, delivery,
+                emphasis == null ? java.util.List.of() : emphasis, breath, paralinguisticEvent, actingDirection, null);
+        if (demoMode) return mockTtsProvider.synthesize(request);
+        try {
+            return selected.synthesize(request);
+        } catch (Exception e) {
+            log.warn("Voice profile TTS provider '{}' failed ({}). Falling back to placeholder audio.",
+                    selected.providerName(), e.getMessage());
+            return mockTtsProvider.synthesize(request);
+        }
+    }
+
+    private TextToSpeechProvider selectTtsProvider(String provider) {
+        if ("chatterbox".equalsIgnoreCase(provider)) return chatterboxTtsProvider;
+        if ("cosyvoice".equalsIgnoreCase(provider) || "cosyvoice3".equalsIgnoreCase(provider)) return cosyVoiceTtsProvider;
+        if ("sarvam".equalsIgnoreCase(provider) && !offlineMode) return sarvamTtsProvider;
+        return localTtsProvider;
+    }
+
+    /** Sample/preview overload - default prosody, no per-line speed/pitch to
+     *  carry. Real narration synthesis (ProductionPipelineService) uses the
+     *  6-arg version above so scene-level prosody still applies to an
+     *  assigned VoiceProfile exactly as it would to the app-wide default. */
+    public TextToSpeechProvider.TtsResult synthesizeWithVoice(String provider, String voiceName, String text) {
+        return synthesizeWithVoice(provider, voiceName, text, null, 1.0, 1.0);
     }
 
     public TextToSpeechProvider.TtsResult synthesize(TextToSpeechProvider.TtsRequest request) {

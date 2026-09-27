@@ -66,6 +66,14 @@ studio:
     # deliberately NOT hard-coded in the workflow template - set it here
     # instead of renaming whatever file you downloaded.
     model: ${COMFYUI_MODEL:v1-5-pruned-emaonly-fp16.safetensors}
+    # Optional newer/high-quality workflow. Leave blank to preserve the existing
+    # workflow. QUALITY uses these only when both values are configured.
+    highQualityWorkflow: ${COMFYUI_HQ_WORKFLOW:}
+    highQualityModel: ${COMFYUI_HQ_MODEL:}
+    highQualitySteps: ${COMFYUI_HQ_STEPS:24}
+    highQualityWidth: ${COMFYUI_HQ_WIDTH:1024}
+    highQualityHeight: ${COMFYUI_HQ_HEIGHT:1024}
+    highQualityCfg: ${COMFYUI_HQ_CFG:5.0}
     # Optional style-specific checkpoints. Leave blank to use COMFYUI_MODEL.
     # These are intentionally opt-in so an installation with only one checkpoint
     # never breaks when the user selects another style.
@@ -105,8 +113,10 @@ studio:
     # to fail the job loudly instead of silently shipping placeholders.
     fallbackToPlaceholder: ${COMFYUI_FALLBACK_PLACEHOLDER:false}
   tts:
-    # piper  = fully offline, free, but no Kannada / Indian English / child voices
-    # sarvam = hosted API, costs per character, covers all of the above
+    # piper       = fully offline, free, but no Kannada / Indian English / child voices
+    # sarvam      = hosted API, costs per character, covers all of the above
+    # chatterbox  = expressive English (paralinguistic tags, voice cloning) - see
+    #               tts-chatterbox/server.py. Requires the `chatterbox` compose profile.
     provider: ${TTS_PROVIDER:piper}
     baseUrl: ${TTS_BASE_URL:http://tts:5002}
     voice: ${TTS_VOICE:edge:en-IN-NeerjaNeural}
@@ -119,6 +129,16 @@ studio:
       speaker: ${SARVAM_SPEAKER:anushka}
       # kn-IN Kannada, hi-IN Hindi, en-IN Indian English, ta-IN, te-IN, ml-IN, ...
       language: ${SARVAM_LANGUAGE:en-IN}
+    chatterbox:
+      baseUrl: ${CHATTERBOX_TTS_BASE_URL:http://tts-chatterbox:5004}
+      # Must match a reference clip filename (minus .wav) in
+      # tts-chatterbox/voices/ - see that folder's README. No default ships
+      # bundled, unlike Piper's preloaded voices, since cloning needs a real
+      # reference clip someone actually has rights to use.
+      voice: ${CHATTERBOX_VOICE:narrator}
+    cosyvoice:
+      baseUrl: ${COSYVOICE_TTS_BASE_URL:http://tts-cosyvoice:5005}
+      voice: ${COSYVOICE_VOICE:default}
   ffmpeg:
     binary: ${FFMPEG_BIN:ffmpeg}
   retry:
@@ -133,6 +153,7 @@ studio:
       # With the default mock provider only the cheap image-integrity checks run.
       enabled: ${IMAGE_VALIDATION_ENABLED:true}
       maxRetries: ${IMAGE_VALIDATION_RETRIES:1}
+      characterReferenceRequiredForHero: ${CHARACTER_REFERENCE_REQUIRED_FOR_HERO:true}
   video:
     transitions:
       # Disabled by default for correctness on low-memory machines. The renderer

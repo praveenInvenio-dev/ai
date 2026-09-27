@@ -51,6 +51,14 @@ public class Episode {
     @Column(name = "visual_style", columnDefinition = "TEXT")
     private String visualStyle;
 
+    /** FAST | BALANCED | QUALITY (Phase 4). Per-episode, not global - see
+     *  ProductionPipelineService.qualitySettings() for what each tier
+     *  actually changes (steps, resolution). Defaults match the migration's
+     *  DB default so an episode created before this field existed still
+     *  reads as BALANCED, not null. */
+    @Column(name = "quality_profile", nullable = false)
+    private String qualityProfile = "BALANCED";
+
     @Column(columnDefinition = "TEXT")
     private String language = "English";
 
@@ -64,6 +72,10 @@ public class Episode {
 
     @Column(name = "quality_score")
     private Integer qualityScore;
+
+    /** Optional reusable narrator voice from the global Voice Library. */
+    @Column(name = "narrator_voice_profile_id")
+    private UUID narratorVoiceProfileId;
 
     /** Ollama model chosen for this episode (from whatever's installed locally); null = server default. */
     @Column(name = "ollama_model")

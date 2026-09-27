@@ -1531,6 +1531,12 @@ public class FFmpegProcessor implements MediaProcessor {
          *   highpass   - removes sub-80Hz rumble/hum no human voice has
          *   afftdn     - gentle broadband noise reduction (synthesizer hiss)
          *   acompressor- evens out level swings between TTS calls/segments
+         *   deesser    - tames harsh "s"/"sh" sibilance a TTS voice can
+         *                emphasize more than a human speaker would;
+         *                intensity kept moderate (i=0.4) since children's
+         *                narration voices skew higher-pitched, where an
+         *                aggressive de-esser starts eating real high-end
+         *                detail, not just sibilance
          *   loudnorm   - EBU R128 loudness normalization to a standard
          *                spoken-content target (-16 LUFS), so narration
          *                isn't randomly quiet or loud between scenes
@@ -1551,6 +1557,7 @@ public class FFmpegProcessor implements MediaProcessor {
             args.add("-af");
             args.add("highpass=f=80,afftdn=nf=-25,"
                     + "acompressor=threshold=-18dB:ratio=2.5:attack=15:release=250:makeup=2,"
+                    + "deesser=i=0.4:m=0.5:f=0.5:s=o,"
                     + "loudnorm=I=-16:TP=-1.5:LRA=11,alimiter=limit=0.97");
             args.add("-ar");
             args.add("22050");

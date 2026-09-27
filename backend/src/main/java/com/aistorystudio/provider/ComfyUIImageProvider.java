@@ -168,14 +168,33 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
                         e.getMessage());
             }
         }
+        // The workflow must follow the resource that actually made it into ComfyUI,
+        // not merely the fact that the caller supplied a local path. If upload failed
+        // (or there was no reference at all), never submit an IPAdapter workflow with
+        // an empty LoadImage value - ComfyUI resolves that empty value to its input
+        // directory and LoadImage then throws IsADirectoryError.
+        if (referenceImageFilename == null && workflowName.toLowerCase(java.util.Locale.ROOT).contains("ipadapter")) {
+            log.info("No usable character reference uploaded; switching from {} to plain SDXL workflow.", workflowName);
+            workflowName = "character-consistent-story-sdxl";
+        }
+
+        // Unique per call, not a shared constant: every image workflow's
+        // SaveImage node had a hardcoded filename_prefix ("ai-story-studio"
+        // etc.), the exact same collision class that broke video generation
+        // (see wan-ti2v-5b-image-to-video.json's history) - SaveImage's own
+        // auto-increment counter is no more reliable across restarts/
+        // concurrent runs than VHS_VideoCombine's was. A per-call unique
+        // prefix makes the collision structurally impossible instead of
+        // relying on ComfyUI to keep count correctly.
+        String clientId = UUID.randomUUID().toString();
+        String filenamePrefix = "ai-story-studio-" + clientId;
 
         String workflowJson = WorkflowTemplateLoader.loadAndFill(
                 mapper, workflowName, request.prompt(),
                 request.negativePrompt() == null ? "" : request.negativePrompt(),
                 seed, width, height, steps, cfg, checkpointName, defaultSampler, defaultScheduler,
-                referenceImageFilename);
+                referenceImageFilename, filenamePrefix);
 
-        String clientId = UUID.randomUUID().toString();
         Map<String, Object> payload = new LinkedHashMap<>();
         try {
             payload.put("prompt", mapper.readTree(workflowJson));
@@ -189,17 +208,35 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
 
         JsonNode queueResponse;
         try {
-            queueResponse = webClient.post()
-                    .uri("/prompt")
-                    .bodyValue(payload)
-                    .retrieve()
-                    .bodyToMono(JsonNode.class)
-                    .block(Duration.ofSeconds(30));
+            queueResponse = submitPrompt(payload);
         } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
-            // ComfyUI's 400 body usually names the exact problem (e.g. missing checkpoint
-            // file, invalid node) - surface it instead of just "400 Bad Request".
-            throw new IllegalStateException(
-                    "ComfyUI rejected the workflow (" + e.getStatusCode() + "): " + e.getResponseBodyAsString(), e);
+            String body = e.getResponseBodyAsString();
+            // A missing IPAdapter custom node should not make every scene fail.
+            // Retry the same SDXL generation without reference conditioning so the
+            // episode can still render. Once ComfyUI_IPAdapter_plus is installed,
+            // the normal workflow is used again automatically.
+            if (isMissingIpAdapterNode(workflowName, body)) {
+                String fallbackWorkflow = "character-consistent-story-sdxl";
+                log.warn("ComfyUI IPAdapter node is unavailable; retrying scene with {} fallback. "
+                        + "Install ComfyUI_IPAdapter_plus to restore reference conditioning.", fallbackWorkflow);
+                String fallbackJson = WorkflowTemplateLoader.loadAndFill(
+                        mapper, fallbackWorkflow, request.prompt(),
+                        request.negativePrompt() == null ? "" : request.negativePrompt(),
+                        seed, width, height, steps, cfg, checkpointName, defaultSampler, defaultScheduler,
+                        null, filenamePrefix);
+                Map<String, Object> fallbackPayload = new LinkedHashMap<>();
+                try {
+                    fallbackPayload.put("prompt", mapper.readTree(fallbackJson));
+                } catch (Exception parse) {
+                    throw new IllegalStateException("Invalid ComfyUI fallback workflow '" + fallbackWorkflow + "'", parse);
+                }
+                fallbackPayload.put("client_id", clientId);
+                queueResponse = submitPrompt(fallbackPayload);
+                workflowName = fallbackWorkflow;
+            } else {
+                throw new IllegalStateException(
+                        "ComfyUI rejected the workflow (" + e.getStatusCode() + "): " + body, e);
+            }
         }
 
         if (queueResponse == null || queueResponse.get("prompt_id") == null) {
@@ -207,7 +244,26 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         }
         JsonNode nodeErrors = queueResponse.path("node_errors");
         if (nodeErrors.isObject() && nodeErrors.size() > 0) {
-            throw new IllegalStateException("ComfyUI reported node errors: " + nodeErrors);
+            String nodeErrorText = nodeErrors.toString();
+            if (isMissingIpAdapterNode(workflowName, nodeErrorText)) {
+                String fallbackWorkflow = "character-consistent-story-sdxl";
+                log.warn("ComfyUI returned IPAdapter node errors; retrying with {} fallback.", fallbackWorkflow);
+                String fallbackJson = WorkflowTemplateLoader.loadAndFill(
+                        mapper, fallbackWorkflow, request.prompt(),
+                        request.negativePrompt() == null ? "" : request.negativePrompt(),
+                        seed, width, height, steps, cfg, checkpointName, defaultSampler, defaultScheduler,
+                        null, filenamePrefix);
+                Map<String, Object> fallbackPayload = new LinkedHashMap<>();
+                try { fallbackPayload.put("prompt", mapper.readTree(fallbackJson)); }
+                catch (Exception parse) { throw new IllegalStateException("Invalid ComfyUI fallback workflow '" + fallbackWorkflow + "'", parse); }
+                fallbackPayload.put("client_id", clientId);
+                queueResponse = submitPrompt(fallbackPayload);
+                workflowName = fallbackWorkflow;
+                nodeErrors = queueResponse.path("node_errors");
+            }
+            if (nodeErrors.isObject() && nodeErrors.size() > 0) {
+                throw new IllegalStateException("ComfyUI reported node errors: " + nodeErrors);
+            }
         }
         String promptId = queueResponse.get("prompt_id").asText();
 
@@ -216,6 +272,24 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         log.info("ComfyUI image ready in {}s ({} bytes, promptId={})",
                 (System.currentTimeMillis() - start) / 1000, imageBytes.length, promptId);
         return new ImageGenerationResult(imageBytes, "png", seed, checkpointName, workflowName);
+    }
+
+    private JsonNode submitPrompt(Map<String, Object> payload) {
+        return webClient.post()
+                .uri("/prompt")
+                .bodyValue(payload)
+                .retrieve()
+                .bodyToMono(JsonNode.class)
+                .block(Duration.ofSeconds(30));
+    }
+
+    private boolean isMissingIpAdapterNode(String workflowName, String body) {
+        if (workflowName == null || !workflowName.toLowerCase(java.util.Locale.ROOT).contains("ipadapter")) {
+            return false;
+        }
+        String text = body == null ? "" : body.toLowerCase(java.util.Locale.ROOT);
+        return text.contains("missing_node_type")
+                && (text.contains("ipadaptermodellloader") || text.contains("ipadapteradvanced") || text.contains("ipadapter"));
     }
 
     /**
@@ -263,10 +337,16 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
                 .bodyToMono(JsonNode.class)
                 .block(Duration.ofSeconds(30));
 
-        if (response == null || response.get("name") == null) {
-            throw new IllegalStateException("ComfyUI did not return a filename for the uploaded reference image: " + response);
+        if (response == null || response.get("name") == null || response.get("name").asText().isBlank()) {
+            throw new IllegalStateException("ComfyUI did not return a usable filename for the uploaded reference image: " + response);
         }
-        return response.get("name").asText();
+        String name = response.get("name").asText();
+        String subfolder = response.path("subfolder").asText("");
+        String relative = subfolder.isBlank() ? name : subfolder + "/" + name;
+        if (relative.equals("input") || relative.endsWith("/input") || relative.contains("../")) {
+            throw new IllegalStateException("ComfyUI returned an invalid reference-image path: " + relative);
+        }
+        return relative;
     }
 
     // ---- polling -----------------------------------------------------------
@@ -457,13 +537,14 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         static String loadAndFill(ObjectMapper mapper, String workflowName, String positive, String negative,
                                    long seed, int width, int height, int steps, double cfg,
                                    String checkpointName, String sampler, String scheduler,
-                                   String referenceImageFilename) {
+                                   String referenceImageFilename, String filenamePrefix) {
             Map<String, String> text = new LinkedHashMap<>();
             text.put("{{POSITIVE_PROMPT}}", positive == null ? "" : positive);
             text.put("{{NEGATIVE_PROMPT}}", negative == null ? "" : negative);
             text.put("{{CHECKPOINT}}", checkpointName);
             text.put("{{SAMPLER}}", sampler);
             text.put("{{SCHEDULER}}", scheduler);
+            text.put("{{FILENAME_PREFIX}}", filenamePrefix);
             // Only substituted if the workflow actually has this placeholder
             // (the IPAdapter-capable templates) - a plain txt2img template
             // simply has no {{REFERENCE_IMAGE}} token anywhere to replace.

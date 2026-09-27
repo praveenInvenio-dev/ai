@@ -1,0 +1,111 @@
+{
+  "_comment": [
+    "Text-to-video via Wan 2.2 TI2V-5B - same model, checkpoint and node graph",
+    "as wan-ti2v-5b-image-to-video.json, just without a starting image: no",
+    "LoadImage node, and Wan22ImageToVideoLatent's optional start_image input",
+    "is simply omitted rather than wired. Per ComfyUI's own official template",
+    "comments (Comfy-Org/workflow_templates), that node's start_image input is",
+    "genuinely optional - omitted, TI2V-5B starts purely from noise/text,",
+    "which is the documented T2V behavior for this exact node, not a guess.",
+    "",
+    "ModelSamplingSD3 (shift=8) still required, same reason as the I2V file.",
+    "VHS_VideoCombine kept for the same reason (matches existing polling code).",
+    "",
+    "UNVERIFIED end-to-end, same caveat as every other workflow file here -",
+    "test one short clip before trusting it for a real episode.",
+    "",
+    "REQUIRES the same 3 model files as wan-ti2v-5b-image-to-video.json (no",
+    "clip_vision needed, same as that file):",
+    "  1. wan2.2_ti2v_5B model in models/diffusion_models/",
+    "  2. umt5_xxl text encoder in models/text_encoders/",
+    "  3. wan2.2_vae.safetensors in models/vae/",
+    "  4. ComfyUI-VideoHelperSuite custom node pack"
+  ],
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "{{CHECKPOINT}}",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": ["1", 0],
+      "shift": 8
+    }
+  },
+  "3": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "{{CLIP_MODEL}}",
+      "type": "wan"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["3", 0],
+      "text": "{{POSITIVE_PROMPT}}"
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["3", 0],
+      "text": "{{NEGATIVE_PROMPT}}"
+    }
+  },
+  "6": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "{{VAE_MODEL}}"
+    }
+  },
+  "8": {
+    "class_type": "Wan22ImageToVideoLatent",
+    "inputs": {
+      "vae": ["6", 0],
+      "width": "{{WIDTH}}",
+      "height": "{{HEIGHT}}",
+      "length": "{{LENGTH}}",
+      "batch_size": 1
+    }
+  },
+  "9": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["2", 0],
+      "positive": ["4", 0],
+      "negative": ["5", 0],
+      "latent_image": ["8", 0],
+      "seed": "{{SEED}}",
+      "steps": "{{STEPS}}",
+      "cfg": "{{CFG}}",
+      "sampler_name": "{{SAMPLER}}",
+      "scheduler": "{{SCHEDULER}}",
+      "denoise": 1
+    }
+  },
+  "10": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["9", 0],
+      "vae": ["6", 0]
+    }
+  },
+  "11": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": ["10", 0],
+      "frame_rate": "{{FPS}}",
+      "loop_count": 0,
+      "filename_prefix": "{{FILENAME_PREFIX}}",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 20,
+      "save_output": true,
+      "pingpong": false
+    }
+  }
+}

@@ -58,8 +58,24 @@ public class Scene {
     @Column(name = "negative_prompt", columnDefinition = "TEXT")
     private String negativePrompt;
 
+    @Column(name = "motion_prompt", columnDefinition = "TEXT")
+    private String motionPrompt;
+
+    @Column(name = "motion_negative_prompt", columnDefinition = "TEXT")
+    private String motionNegativePrompt;
+
+    /** Structured cinematic scene spec (Phase 2) - see SceneVisualSpec. Raw
+     *  JSON here, not a mapped entity, so a partially-populated or malformed
+     *  LLM response degrades to "field absent" rather than a save failure. */
+    @Column(name = "visual_spec_json", columnDefinition = "TEXT")
+    private String visualSpecJson;
+
     @Column(name = "voice_segments_json", columnDefinition = "TEXT")
     private String voiceSegmentsJson;
+
+    /** Structured ambience/music/SFX direction shared by the audio renderer. */
+    @Column(name = "audio_spec_json", columnDefinition = "TEXT")
+    private String audioSpecJson;
 
     @Column(name = "narration_seconds")
     private Double narrationSeconds;

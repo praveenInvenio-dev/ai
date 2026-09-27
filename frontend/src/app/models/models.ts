@@ -1,3 +1,26 @@
+export interface VoiceProfile {
+  id: string;
+  name: string;
+  language?: string;
+  provider: string;
+  referenceAudioKey?: string;
+  voiceName: string;
+  referenceTranscript?: string;
+  personality?: string;
+  durationSeconds?: number;
+  sampleRate?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VoiceValidationResult {
+  ok: boolean;
+  error?: string;
+  warnings: string[];
+  durationSeconds: number;
+  sampleRate: number;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -27,6 +50,7 @@ export interface Character {
   negativeConstraints?: string;
   locked: boolean;
   version: number;
+  voiceProfileId?: string;
 }
 
 export type EpisodeStatus =
@@ -60,6 +84,7 @@ export interface Episode {
   ollamaModel?: string;
   musicPreset?: string;
   musicLocked?: boolean;
+  narratorVoiceProfileId?: string;
 }
 
 export interface SceneDto {
@@ -74,6 +99,10 @@ export interface SceneDto {
   lighting?: string;
   imagePrompt?: string;
   negativePrompt?: string;
+  motionPrompt?: string;
+  motionNegativePrompt?: string;
+  visualSpecJson?: string;
+  audioSpecJson?: string;
   narrationSeconds?: number;
   imageDurationSeconds?: number;
   cameraMovement?: string;
@@ -95,6 +124,12 @@ export interface VoiceSegment {
   emotion: string;
   pauseBeforeMs: number;
   pauseAfterMs: number;
+  emotionIntensity?: number;
+  delivery?: string;
+  emphasis?: string[];
+  breath?: boolean;
+  paralinguisticEvent?: string;
+  actingDirection?: string;
 }
 
 export interface StoryDraftResponse {
@@ -120,6 +155,7 @@ export interface CreateStoryRequest {
   language?: string;
   characterIds?: string[];
   ollamaModel?: string;
+  qualityProfile?: string;
 }
 
 export interface CharacterReference {
@@ -129,6 +165,8 @@ export interface CharacterReference {
   imageHash?: string;
   source: string;
   primary: boolean;
+  locked?: boolean;
+  promptText?: string;
   createdAt: string;
 }
 

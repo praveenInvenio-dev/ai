@@ -3,6 +3,8 @@ package com.aistorystudio.controller;
 import com.aistorystudio.domain.Episode;
 import com.aistorystudio.domain.GenerationJob;
 import com.aistorystudio.domain.Scene;
+import com.aistorystudio.domain.Character;
+import com.aistorystudio.repository.CharacterRepository;
 import com.aistorystudio.dto.SceneDto;
 import com.aistorystudio.dto.SceneDto.VoiceSegmentDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,6 +12,8 @@ import com.aistorystudio.dto.JobStatusResponse;
 import com.aistorystudio.repository.EpisodeRepository;
 import com.aistorystudio.repository.SceneRepository;
 import com.aistorystudio.service.JobService;
+import com.aistorystudio.service.CharacterService;
+import com.aistorystudio.repository.StoryBibleRepository;
 import com.aistorystudio.service.PackagingService;
 import com.aistorystudio.service.ProductionPipelineService;
 import org.springframework.core.io.ByteArrayResource;
@@ -28,6 +32,9 @@ public class EpisodeController {
 
     private final EpisodeRepository episodeRepository;
     private final SceneRepository sceneRepository;
+    private final CharacterRepository characterRepository;
+    private final CharacterService characterService;
+    private final StoryBibleRepository storyBibleRepository;
     private final ProductionPipelineService productionPipelineService;
     private final PackagingService packagingService;
     private final JobService jobService;
@@ -35,12 +42,16 @@ public class EpisodeController {
 
     public EpisodeController(EpisodeRepository episodeRepository, SceneRepository sceneRepository,
                               ProductionPipelineService productionPipelineService, PackagingService packagingService,
-                              JobService jobService) {
+                              JobService jobService, CharacterRepository characterRepository, CharacterService characterService,
+                              StoryBibleRepository storyBibleRepository) {
         this.episodeRepository = episodeRepository;
         this.sceneRepository = sceneRepository;
         this.productionPipelineService = productionPipelineService;
         this.packagingService = packagingService;
         this.jobService = jobService;
+        this.characterRepository = characterRepository;
+        this.characterService = characterService;
+        this.storyBibleRepository = storyBibleRepository;
     }
 
     @GetMapping
@@ -51,6 +62,32 @@ public class EpisodeController {
     @GetMapping("/{id}")
     public Episode get(@PathVariable UUID id) {
         return episodeRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Episode not found: " + id));
+    }
+
+    @PostMapping("/{id}/narrator-voice")
+    public Episode setNarratorVoice(@PathVariable UUID id, @RequestBody java.util.Map<String, String> body) {
+        Episode episode = episodeRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Episode not found: " + id));
+        String raw = body == null ? null : body.get("voiceProfileId");
+        episode.setNarratorVoiceProfileId(raw == null || raw.isBlank() ? null : UUID.fromString(raw));
+        return episodeRepository.save(episode);
+    }
+
+    @GetMapping("/{id}/characters")
+    public List<Character> characters(@PathVariable UUID id) {
+        Episode episode = episodeRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Episode not found: " + id));
+        if (episode.getUniverseId() != null) return characterRepository.findByUniverseId(episode.getUniverseId());
+        List<Character> existing = characterRepository.findByEpisodeId(id);
+        if (!existing.isEmpty()) return existing;
+        return storyBibleRepository.findFirstByEpisodeIdAndActiveTrueOrderByVersionDesc(id)
+                .map(b -> {
+                    try {
+                        return characterService.syncEpisodeCharacters(id, objectMapper.readTree(b.getCharactersJson()));
+                    } catch (Exception e) {
+                        return List.<Character>of();
+                    }
+                }).orElse(List.of());
     }
 
     @GetMapping("/{id}/scenes")
@@ -88,9 +125,11 @@ public class EpisodeController {
                 }
             }
         } catch (Exception ignored) {}
-        if (segments.isEmpty()) segments = List.of(new VoiceSegmentDto("Narrator", s.getNarration(), "", 1.0, 1.0, s.getEmotion(), 0, 0));
+        if (segments.isEmpty()) segments = List.of(new VoiceSegmentDto("Narrator", s.getNarration(), "", 1.0, 1.0, s.getEmotion(), 0, 0,
+                null, null, List.of(), null, null, null));
         return new SceneDto(s.getId(), s.getSceneNumber(), s.getPurpose(), s.getNarration(), s.getLocation(), s.getAction(),
                 s.getEmotion(), s.getCamera(), s.getLighting(), s.getImagePrompt(), s.getNegativePrompt(),
+                s.getMotionPrompt(), s.getMotionNegativePrompt(), s.getVisualSpecJson(), s.getAudioSpecJson(),
                 s.getNarrationSeconds(), s.getImageDurationSeconds(), s.getCameraMovement(), s.getImportance(),
                 s.isLocked(), s.isNarrationLocked(), s.getAnimationMode(), segments, names);
     }
@@ -173,6 +212,24 @@ public class EpisodeController {
             throw new IllegalStateException("Music is locked for this episode. Unlock it before changing the preset.");
         }
         episode.setMusicPreset(preset == null || preset.isBlank() ? null : preset);
+        return episodeRepository.save(episode);
+    }
+
+    private static final java.util.Set<String> VALID_QUALITY_PROFILES = java.util.Set.of("FAST", "BALANCED", "QUALITY");
+
+    /** FAST/BALANCED/QUALITY (Phase 4) - only affects generation calls made
+     *  AFTER this is set, not anything already generated. See
+     *  ProductionPipelineService.qualityImageSteps() for what each tier
+     *  actually changes. */
+    @PostMapping("/{id}/quality-profile")
+    public Episode setQualityProfile(@PathVariable UUID id, @RequestParam String profile) {
+        String upper = profile == null ? "" : profile.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!VALID_QUALITY_PROFILES.contains(upper)) {
+            throw new IllegalArgumentException("Quality profile must be one of FAST, BALANCED, QUALITY - got: " + profile);
+        }
+        Episode episode = episodeRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Episode not found: " + id));
+        episode.setQualityProfile(upper);
         return episodeRepository.save(episode);
     }
 

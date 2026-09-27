@@ -1,5 +1,7 @@
 package com.aistorystudio.provider;
 
+import java.util.List;
+
 public interface TextToSpeechProvider {
 
     TtsResult synthesize(TtsRequest request);
@@ -8,7 +10,26 @@ public interface TextToSpeechProvider {
 
     String providerName();
 
-    record TtsRequest(String text, String voice, String language, double speed, double pitch) {}
+    /**
+     * Rich, provider-neutral speech direction. The 5-argument constructor is
+     * intentionally retained so every existing caller remains source-compatible.
+     */
+    record TtsRequest(
+            String text, String voice, String language, double speed, double pitch,
+            String emotion, Double emotionIntensity, String delivery,
+            List<String> emphasis, Boolean breath, String paralinguisticEvent,
+            String actingDirection, String referenceTranscript) {
+
+        public TtsRequest(String text, String voice, String language, double speed, double pitch,
+                          String emotion, Double emotionIntensity, String delivery, List<String> emphasis,
+                          Boolean breath, String paralinguisticEvent, String actingDirection) {
+            this(text, voice, language, speed, pitch, emotion, emotionIntensity, delivery, emphasis, breath, paralinguisticEvent, actingDirection, null);
+        }
+
+        public TtsRequest(String text, String voice, String language, double speed, double pitch) {
+            this(text, voice, language, speed, pitch, null, null, null, List.of(), false, null, null, null);
+        }
+    }
 
     record TtsResult(byte[] audioBytes, double durationSeconds, String format) {}
 }

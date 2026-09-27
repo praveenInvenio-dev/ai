@@ -61,24 +61,51 @@ public class ImagePromptAssembler {
     private static final int STYLE_TOKENS = 40;
     private static final int CONTINUITY_TOKENS = 12;
 
+    // SDXL's dual text encoder (CLIP-L + OpenCLIP-G, each with its own 75-token
+    // budget) has meaningfully more effective capacity than SD1.5's single
+    // CLIP-L - the SD1.5-tier budget above was sized for that single-encoder
+    // ceiling. Give SDXL runs more room, especially for continuity (background/
+    // environment locking - see ContinuityPromptBuilder's locationContinuity)
+    // and scene detail, which is exactly what was previously most likely to get
+    // cut. This does NOT change output for an SD1.5 checkpoint - existing
+    // budgets above are untouched for that case.
+    private static final int SDXL_CHARACTER_TOKENS = 80;
+    private static final int SDXL_SCENE_TOKENS = 78;
+    private static final int SDXL_STYLE_TOKENS = 55;
+    private static final int SDXL_CONTINUITY_TOKENS = 24;
+
     public record AssembledPrompt(String positivePrompt, String negativePrompt) {}
 
+    /** Back-compat overload - no checkpoint hint means the SD1.5-tier budget,
+     *  same as before this change. Prefer the 6-arg overload when the caller
+     *  knows which checkpoint is configured. */
     public AssembledPrompt assemble(Scene scene, List<Character> charactersInScene,
                                      List<String> continuityFacts, String visualStyle, String colorPalette) {
+        return assemble(scene, charactersInScene, continuityFacts, visualStyle, colorPalette, null);
+    }
+
+    public AssembledPrompt assemble(Scene scene, List<Character> charactersInScene,
+                                     List<String> continuityFacts, String visualStyle, String colorPalette,
+                                     String checkpointName) {
+        boolean sdxl = checkpointName != null && checkpointName.toLowerCase(java.util.Locale.ROOT).contains("xl");
+        int characterTokens = sdxl ? SDXL_CHARACTER_TOKENS : CHARACTER_TOKENS;
+        int sceneTokens = sdxl ? SDXL_SCENE_TOKENS : SCENE_TOKENS;
+        int styleTokens = sdxl ? SDXL_STYLE_TOKENS : STYLE_TOKENS;
+        int continuityTokens = sdxl ? SDXL_CONTINUITY_TOKENS : CONTINUITY_TOKENS;
 
         // Order is the whole point: identity, then what is happening, then how it
         // is rendered. Reordering these silently degrades character consistency.
         // Budget passed in, not applied afterwards: the builder splits it evenly
         // between characters so a two-hander does not lose the second one entirely.
-        String characterCanon = characterPromptBuilder.build(charactersInScene, CHARACTER_TOKENS);
+        String characterCanon = characterPromptBuilder.build(charactersInScene, characterTokens);
         String sceneFragment = PromptTokenBudget.fit(
-                scenePromptBuilder.build(scene), SCENE_TOKENS);
+                scenePromptBuilder.build(scene), sceneTokens);
         String styleFragment = PromptTokenBudget.fit(
-                stylePromptBuilder.build(visualStyle, colorPalette), STYLE_TOKENS);
+                stylePromptBuilder.build(visualStyle, colorPalette), styleTokens);
         String continuitySource = (continuityFacts == null || continuityFacts.isEmpty())
                 ? continuityPromptBuilder.buildFromJson(scene.getContinuityJson())
                 : continuityPromptBuilder.build(continuityFacts);
-        String continuityFragment = PromptTokenBudget.fit(continuitySource, CONTINUITY_TOKENS);
+        String continuityFragment = PromptTokenBudget.fit(continuitySource, continuityTokens);
 
         StringBuilder positive = new StringBuilder();
         appendPart(positive, characterCanon);

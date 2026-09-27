@@ -52,7 +52,7 @@
   "9": {
     "class_type": "SaveImage",
     "inputs": {
-      "filename_prefix": "ai-story-studio",
+      "filename_prefix": "{{FILENAME_PREFIX}}",
       "images": ["8", 0]
     }
   }

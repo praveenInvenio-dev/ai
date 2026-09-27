@@ -59,6 +59,14 @@ import { Project, Universe, Character } from '../../models/models';
           </select>
         </div>
         <div>
+          <label>Generation speed</label>
+          <select [(ngModel)]="qualityProfile">
+            <option value="FAST">Fast (quick test, lower detail)</option>
+            <option value="BALANCED">Balanced (default)</option>
+            <option value="QUALITY">Quality (slower, more detail)</option>
+          </select>
+        </div>
+        <div>
           <label>Age</label>
           <select [(ngModel)]="targetAge">
             <option>3-5</option>
@@ -189,6 +197,7 @@ export class CreateStoryComponent implements OnInit {
   genre = 'Adventure';
   tone = 'Funny';
   visualStyle = '3D Realistic';
+  qualityProfile: 'FAST' | 'BALANCED' | 'QUALITY' = 'BALANCED';
   language = 'English';
 
   genres = ['Adventure', 'Comedy', 'Fantasy', 'Educational', 'Mystery', 'Bedtime', 'Friendship', 'Moral', 'Science', 'Animals'];
@@ -320,7 +329,8 @@ export class CreateStoryComponent implements OnInit {
         visualStyle: this.visualStyle,
         language: this.language,
         characterIds: Array.from(this.selectedCharacterIds),
-        ollamaModel: this.selectedModel || undefined
+        ollamaModel: this.selectedModel || undefined,
+        qualityProfile: this.qualityProfile
       }).subscribe({
         next: draft => this.router.navigate(['/episodes', draft.episodeId, 'approve']),
         error: err => {

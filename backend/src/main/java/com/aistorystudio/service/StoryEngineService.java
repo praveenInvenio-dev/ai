@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.aistorystudio.pipeline.promptbuilder.MotionPromptBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,11 +30,16 @@ public class StoryEngineService {
 
     private static final Logger log = LoggerFactory.getLogger(StoryEngineService.class);
 
+    private final MotionPromptBuilder motionPromptBuilder = new MotionPromptBuilder();
+    @org.springframework.beans.factory.annotation.Value("${studio.tts.provider:piper}")
+    private String ttsProvider;
+
     private final ProviderGateway providerGateway;
     private final EpisodeRepository episodeRepository;
     private final StoryBibleRepository storyBibleRepository;
     private final SceneRepository sceneRepository;
     private final CharacterRepository characterRepository;
+    private final CharacterService characterService;
     private final EpisodeMemoryRepository episodeMemoryRepository;
     private final QualityEngineService qualityEngineService;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -43,6 +49,7 @@ public class StoryEngineService {
                                StoryBibleRepository storyBibleRepository,
                                SceneRepository sceneRepository,
                                CharacterRepository characterRepository,
+                               CharacterService characterService,
                                EpisodeMemoryRepository episodeMemoryRepository,
                                QualityEngineService qualityEngineService) {
         this.providerGateway = providerGateway;
@@ -50,6 +57,7 @@ public class StoryEngineService {
         this.storyBibleRepository = storyBibleRepository;
         this.sceneRepository = sceneRepository;
         this.characterRepository = characterRepository;
+        this.characterService = characterService;
         this.episodeMemoryRepository = episodeMemoryRepository;
         this.qualityEngineService = qualityEngineService;
     }
@@ -66,6 +74,15 @@ public class StoryEngineService {
         episode.setVisualStyle(req.visualStyle());
         episode.setLanguage(req.language() != null ? req.language() : "English");
         episode.setOllamaModel(req.ollamaModel());
+        if (req.qualityProfile() != null && !req.qualityProfile().isBlank()) {
+            String upper = req.qualityProfile().trim().toUpperCase(java.util.Locale.ROOT);
+            if (java.util.Set.of("FAST", "BALANCED", "QUALITY").contains(upper)) {
+                episode.setQualityProfile(upper);
+            }
+            // Anything else silently keeps Episode's own BALANCED default -
+            // a bad value here shouldn't block story creation over a
+            // secondary generation-speed setting.
+        }
         episode = episodeRepository.save(episode);
 
         return regenerateDraft(episode.getId(), req.characterIds());
@@ -107,6 +124,13 @@ public class StoryEngineService {
         bible.setStoryBeatsJson(jsonOrNull(root, "storyBeats"));
         bible = storyBibleRepository.save(bible);
 
+        // Standalone stories still need real Character records so the Storyboard
+        // Character Builder can generate, lock and reuse master references.
+        // Universe-backed stories continue using their existing canonical characters.
+        if (episode.getUniverseId() == null) {
+            characterService.syncEpisodeCharacters(episode.getId(), root.path("characters"));
+        }
+
         // remove previous scenes for this episode (a regenerate replaces the full draft;
         // production-time per-scene regeneration is handled separately once approved)
         sceneRepository.deleteAll(sceneRepository.findByEpisodeIdOrderByOrderIndexAsc(episodeId));
@@ -132,10 +156,16 @@ public class StoryEngineService {
             scene.setVisualStyle(episode.getVisualStyle());
             scene.setImagePrompt(text(sceneNode, "imagePrompt"));
             scene.setNegativePrompt(text(sceneNode, "negativePrompt"));
+            scene.setVisualSpecJson(jsonOrNull(sceneNode, "visualSpec"));
+            scene.setAudioSpecJson(buildAudioSpecJson(sceneNode));
+            // Motion prompt built from the scene fields set just above (action,
+            // emotion, lighting, characters) - must come after those setters.
             scene.setContinuityJson(buildSceneContinuityJson(root, sceneNode, episode, characters));
             scene.setImportance(validateImportance(text(sceneNode, "importance")));
             scene.setCameraMovement(pickCameraMovement(index));
             scene.setTransitionIn(pickTransition(index, text(sceneNode, "emotion"), text(sceneNode, "purpose")));
+            scene.setMotionPrompt(motionPromptBuilder.buildMotionPrompt(scene));
+            scene.setMotionNegativePrompt(motionPromptBuilder.buildMotionNegativePrompt(scene));
 
             double narrationSeconds = estimateNarrationSeconds(scene.getNarration());
             scene.setNarrationSeconds(narrationSeconds);
@@ -166,14 +196,15 @@ public class StoryEngineService {
     private SceneDto toDto(Scene s) {
         return new SceneDto(s.getId(), s.getSceneNumber(), s.getPurpose(), s.getNarration(), s.getLocation(),
                 s.getAction(), s.getEmotion(), s.getCamera(), s.getLighting(), s.getImagePrompt(),
-                s.getNegativePrompt(), s.getNarrationSeconds(), s.getImageDurationSeconds(), s.getCameraMovement(),
+                s.getNegativePrompt(), s.getMotionPrompt(), s.getMotionNegativePrompt(), s.getVisualSpecJson(), s.getAudioSpecJson(), s.getNarrationSeconds(), s.getImageDurationSeconds(), s.getCameraMovement(),
                 s.getImportance(), s.isLocked(), s.isNarrationLocked(), s.getAnimationMode(), readVoiceSegments(s), readCharacterNames(s));
     }
 
     private List<VoiceSegmentDto> readVoiceSegments(Scene s) {
         if (s.getVoiceSegmentsJson() == null || s.getVoiceSegmentsJson().isBlank()) {
             return List.of(new VoiceSegmentDto("Narrator", s.getNarration(), "", 1.0, 1.0,
-                    s.getEmotion() == null ? "neutral" : s.getEmotion(), 0, 0));
+                    s.getEmotion() == null ? "neutral" : s.getEmotion(), 0, 0,
+                    null, null, List.of(), null, null, null));
         }
         try {
             var arr = mapper.readTree(s.getVoiceSegmentsJson());
@@ -183,10 +214,23 @@ public class StoryEngineService {
                         text(n, "character"), text(n, "text"), text(n, "voice"),
                         n.path("speed").isNumber() ? n.get("speed").asDouble() : 1.0,
                         n.path("pitch").isNumber() ? n.get("pitch").asDouble() : 1.0,
-                        text(n, "emotion"), n.path("pauseBeforeMs").asInt(0), n.path("pauseAfterMs").asInt(0)));
+                        text(n, "emotion"), n.path("pauseBeforeMs").asInt(0), n.path("pauseAfterMs").asInt(0),
+                        n.path("emotionIntensity").isNumber() ? n.get("emotionIntensity").asDouble() : null,
+                        text(n, "delivery"), readStringArray(n.path("emphasis")),
+                        n.path("breath").isBoolean() ? n.get("breath").asBoolean() : null,
+                        text(n, "paralinguisticEvent"), text(n, "actingDirection")));
             }
             return out.isEmpty() ? List.of() : out;
         } catch (Exception e) { return List.of(); }
+    }
+
+    private List<String> readStringArray(JsonNode arr) {
+        if (arr == null || !arr.isArray()) return List.of();
+        List<String> out = new ArrayList<>();
+        for (JsonNode n : arr) {
+            if (n.isTextual()) out.add(n.asText());
+        }
+        return out;
     }
 
     private List<String> readCharacterNames(Scene s) {
@@ -200,6 +244,17 @@ public class StoryEngineService {
             }
             return out;
         } catch (Exception e) { return List.of(); }
+    }
+
+    private String buildAudioSpecJson(JsonNode sceneNode) {
+        JsonNode supplied = sceneNode.path("audioSpec");
+        if (supplied.isObject()) return supplied.toString();
+        ObjectNode out = mapper.createObjectNode();
+        out.putArray("ambience");
+        out.putObject("music").put("mood", text(sceneNode, "emotion") == null ? "gentle" : text(sceneNode, "emotion")).put("intensity", 0.25);
+        out.putArray("sfx");
+        out.put("dialoguePriority", 1.0);
+        return out.toString();
     }
 
     private String buildVoiceSegmentsJson(JsonNode sceneNode, String narration, String sceneEmotion) {
@@ -291,7 +346,10 @@ public class StoryEngineService {
               "title": string,
               "logline": string,
               "fullNarration": string,
-              "characters": [ {"name": string, "role": string} ],
+              "characters": [ {"name": string, "role": string, "species": string, "age": string,
+                "personality": string, "canonicalDescription": string, "negativeConstraints": string,
+                "attributes": {"body": string, "face": string, "eyes": string, "hair": string,
+                  "clothing": string, "colors": string, "accessories": string, "signatureFeatures": string} } ],
               "locations": [string],
               "objects": [string],
               "relationships": [string],
@@ -307,7 +365,9 @@ public class StoryEngineService {
                   "characters": [string],
                   "voiceSegments": [
                     {"character": string, "text": string, "voice": "", "speed": 1.0, "pitch": 1.0,
-                     "emotion": string, "pauseBeforeMs": number, "pauseAfterMs": number}
+                     "emotion": string, "pauseBeforeMs": number, "pauseAfterMs": number,
+                     "emotionIntensity": number, "delivery": string, "emphasis": [string],
+                     "breath": boolean, "paralinguisticEvent": string, "actingDirection": string}
                   ],
                   "location": string,
                   "action": string,
@@ -316,6 +376,29 @@ public class StoryEngineService {
                   "lighting": string,
                   "imagePrompt": string,
                   "negativePrompt": string,
+                  "audioSpec": {
+                    "ambience": [string],
+                    "music": {"mood": string, "intensity": number},
+                    "sfx": [ {"event": string, "timing": string, "intensity": number} ],
+                    "dialoguePriority": number
+                  },
+                  "visualSpec": {
+                    "environment": {"location": string, "timeOfDay": string, "weather": string,
+                      "season": string, "foreground": string, "midground": string, "background": string,
+                      "atmosphere": string, "particles": string, "colorPalette": string, "mood": string},
+                    "characters": [ {"name": string, "position": string, "pose": string,
+                      "expression": string, "action": string} ],
+                    "props": [string],
+                    "lighting": {"keyLight": string, "fillLight": string, "rimLight": string,
+                      "lightDirection": string, "shadows": string, "reflections": string},
+                    "camera": {"position": string, "angle": string, "shotType": string, "lens": string,
+                      "focalLength": string, "framing": string, "composition": string,
+                      "depthOfField": string, "focusSubject": string, "movement": string},
+                    "cinematicStyle": string,
+                    "continuityRequirements": [string],
+                    "environmentMotion": [string],
+                    "visualEffects": [string]
+                  },
                   "importance": "NORMAL" | "IMPORTANT" | "HERO"
                 }
               ]
@@ -327,6 +410,31 @@ public class StoryEngineService {
             consistent with the characters array. Put natural pauses into pauseBeforeMs/pauseAfterMs
             (typically 150-800ms around emotional beats), and set emotion per line. Do not put
             dialogue into narration if it is also represented as a character voice segment.
+            Break dialogue into SHORT natural segments rather than one long block per character per
+            scene - "Bunny stopped." / "Whoa..." / "Is that a rainbow?" as three segments reads and
+            performs far better than one run-on sentence. A segment can be a sentence fragment when
+            that is how a real person would actually speak it.
+            Fill emotionIntensity (0.0-1.0, how strongly the emotion should read - keep most lines in
+            the 0.3-0.6 range; reserve 0.7+ for a genuine emotional peak, not every line) and delivery
+            (a short label like "soft_excited", "flat_calm", "hushed_urgent" - how the line should be
+            performed, not what it says). Set emphasis to the 0-2 words in the line that should land
+            hardest, or omit it - not every line needs emphasis. Set breath true only where a real
+            speaker would audibly breathe (after a long line, before a big reveal), not by default.
+            paralinguisticEvent names a non-verbal sound this exact line calls for (e.g. "laugh",
+            "gasp", "sigh") if any - leave it out otherwise; do not force one onto every line.
+            actingDirection is one short sentence of real performance direction for this specific
+            line (tone, pacing, where it starts/ends emotionally) - written for a voice actor, not a
+            restatement of the emotion field.
+            WRITE LIKE PERFORMED STORYTELLING, NOT WRITTEN PROSE. This applies to both the Narrator
+            segment and every character line. Use contractions ("didn't", "it's", "let's") the way
+            someone actually speaking would, not formal written English. Vary sentence length -
+            short punchy lines for tension or excitement, longer ones for calm description. Use
+            natural exclamations, rhetorical questions, and interjections where a real storyteller
+            or a real child character would use them ("Wait... did you hear that?", "Oh no.",
+            "Really?! Let's go!"). A flat, textbook-narration sentence for an exciting or emotional
+            beat is a failure of the brief, not a stylistic choice - if a moment is exciting, scared,
+            funny or sad, the WORDS THEMSELVES should carry that, not just the emotion field.
+            """ + paralinguisticTagInstruction() + """
             The selected visual style is a HARD story-level production setting and is LOCKED across every scene.
             Treat the style name as a rendering contract, not a suggestion. For Anime, the imagePrompt MUST
             describe unmistakable Japanese 2D anime rendering (clean line art, cel shading, anime facial design,
@@ -338,11 +446,43 @@ public class StoryEngineService {
             Every imagePrompt MUST be a concrete visual description of THAT scene's action, characters, location,
             objects and composition. Do not invent unrelated characters or animals. Do not omit named story objects
             that are part of the action. The imagePrompt should never introduce a conflicting art style.
+            ALSO fill audioSpec for every scene. Keep ambience, music mood/intensity and only the sound effects that actually happen on screen; dialoguePriority should normally be 0.8-1.0.
+            ALSO fill visualSpec for every scene - a structured cinematic breakdown, not a duplicate of imagePrompt.
+            Think like a cinematographer: environment (location, time of day, weather, season, what's in the
+            foreground/midground/background, atmosphere, particles, color palette, mood), where each character is
+            positioned/posed/expressing/doing, lighting (key/fill/rim light, direction, shadows, reflections), and
+            camera (position, angle, shot type, lens, framing, composition, depth of field, focus subject,
+            movement). Be specific and concrete, not generic - "warm morning sunlight enters from the upper-left
+            through tree branches, creating soft volumetric rays" not "nice lighting". visualSpec.characters MUST
+            NEVER change a character's identity, face, body proportions, clothing, colors, accessories, or
+            signature features - only their position, pose, expression and action in THIS scene. Leave any
+            visualSpec field null/omitted rather than guessing when a scene genuinely doesn't call for it (e.g. no
+            particles in a plain indoor scene) - do not pad every field just because the schema has it.
             Set importance per scene: HERO for the single biggest moment (the climax, a magical
             reveal, or the emotional peak - usually just one or two scenes per story), IMPORTANT
             for the opening hook, a major turning point, or the ending, and NORMAL for everything
             else (setup, transitions, ordinary action). Most scenes should be NORMAL - reserve HERO
             for what truly deserves the most production attention.
+            """;
+    }
+
+    /** Only emitted when the configured TTS engine actually understands
+     *  bracket tags (ChatterBox Turbo's native paralinguistic tags - see
+     *  ChatterboxTTSProvider, which passes narration text straight through
+     *  unmodified). Piper/Edge/Sarvam would speak a literal "[laugh]" as
+     *  words, which is worse than not having the tag at all, so this must
+     *  stay conditional on the provider rather than a blanket instruction. */
+    private String paralinguisticTagInstruction() {
+        if (!"chatterbox".equalsIgnoreCase(ttsProvider)) {
+            return "";
+        }
+        return """
+            The configured narration engine supports inline paralinguistic tags. Where a real
+            performance would include one, add ONE of these tags directly in the narration or
+            character line text, in brackets, at the natural point it would occur: [laugh],
+            [chuckle], [gasp], [sigh], [cough]. Use them sparingly - only where the moment
+            genuinely calls for it, never more than one or two per scene, and never on a line
+            that doesn't need one just to use the feature.
             """;
     }
 

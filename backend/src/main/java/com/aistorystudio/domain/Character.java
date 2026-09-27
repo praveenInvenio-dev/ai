@@ -19,6 +19,10 @@ public class Character {
     @Column(name = "universe_id")
     private UUID universeId;
 
+    /** Episode-scoped character for standalone stories that do not belong to a universe. */
+    @Column(name = "episode_id")
+    private UUID episodeId;
+
     @Column(nullable = false)
     private String name;
 
@@ -39,6 +43,13 @@ public class Character {
 
     @Column(name = "attributes_json", columnDefinition = "TEXT")
     private String attributesJson;
+
+    /** Reusable VoiceProfile (Phase 1) this character speaks with in every
+     *  story - null means "no assignment yet", which ProductionPipelineService
+     *  falls back to the app-wide default TTS provider for, same as before
+     *  this field existed. */
+    @Column(name = "voice_profile_id")
+    private UUID voiceProfileId;
 
     private boolean locked = false;
     private int version = 1;

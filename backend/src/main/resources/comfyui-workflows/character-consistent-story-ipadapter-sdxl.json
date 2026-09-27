@@ -3,7 +3,18 @@
     "Character-consistency SDXL variant. Requires ComfyUI_IPAdapter_plus and:",
     "  clip_vision_h.safetensors",
     "  ip-adapter-plus_sdxl_vit-h.bin",
-    "Reference conditioning is intentionally moderate so scene composition remains driven by the prompt."
+    "Reference conditioning is intentionally moderate so scene composition remains driven by the prompt.",
+    "",
+    "Node 14 uses IPAdapterAdvanced, not the older IPAdapterApply - confirmed",
+    "via a live 400 error (\"Node 'IPAdapterApply' not found\") that current",
+    "ComfyUI_IPAdapter_plus (main branch, v2.0.0+) removed/renamed that node.",
+    "IPAdapterAdvanced was chosen over the simpler IPAdapter/IPAdapterUnifiedLoader",
+    "path because it's the one that still accepts a separate clip_vision input,",
+    "matching this file's existing explicit CLIPVisionLoader + IPAdapterModelLoader",
+    "nodes (11-13) rather than requiring a restructure to IPAdapterUnifiedLoader's",
+    "auto-detected-filename convention. weight_type 'linear' and embeds_scaling",
+    "'V only' are that node's own defaults, not tuned against a live run - verify",
+    "against your installed version if results look off."
   ],
   "3": {
     "class_type": "KSampler",
@@ -82,7 +93,7 @@
   "9": {
     "class_type": "SaveImage",
     "inputs": {
-      "filename_prefix": "ai-story-studio",
+      "filename_prefix": "{{FILENAME_PREFIX}}",
       "images": [
         "8",
         0
@@ -108,7 +119,7 @@
     }
   },
   "14": {
-    "class_type": "IPAdapterApply",
+    "class_type": "IPAdapterAdvanced",
     "inputs": {
       "ipadapter": [
         "13",
@@ -127,8 +138,11 @@
         0
       ],
       "weight": 0.52,
-      "noise": 0.0,
-      "weight_type": "original"
+      "weight_type": "linear",
+      "combine_embeds": "concat",
+      "start_at": 0.0,
+      "end_at": 1.0,
+      "embeds_scaling": "V only"
     }
   }
 }

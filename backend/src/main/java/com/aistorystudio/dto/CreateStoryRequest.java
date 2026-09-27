@@ -19,5 +19,7 @@ public record CreateStoryRequest(
         String language,
         List<UUID> characterIds,
         /** Name of a model currently installed on the Ollama server (see GET /api/models/ollama). Null = server default. */
-        String ollamaModel
+        String ollamaModel,
+        /** FAST | BALANCED | QUALITY (Phase 4) - null/blank falls back to Episode's own BALANCED default. */
+        String qualityProfile
 ) {}

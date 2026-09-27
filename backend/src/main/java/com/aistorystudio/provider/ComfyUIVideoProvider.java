@@ -50,6 +50,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
 
     private final boolean enabled;
     private final String defaultWorkflow;
+    private final String textToVideoWorkflow;
     private final String diffusionModel;
     private final String clipModel;
     private final String vaeModel;
@@ -81,6 +82,12 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
             @Value("${studio.comfyui.baseUrl:http://comfyui:8188}") String baseUrl,
             @Value("${studio.animation.local-ai.enabled:false}") boolean enabled,
             @Value("${studio.animation.local-ai.workflow:wan-image-to-video}") String defaultWorkflow,
+            // Separate workflow name, not the same file with an omitted field:
+            // the graph shape genuinely differs (no LoadImage node, no
+            // start_image wiring), and this project's convention is one
+            // template file per real graph shape rather than one file trying
+            // to serve two shapes via optional fields.
+            @Value("${studio.animation.local-ai.text-to-video-workflow:wan-ti2v-5b-text-to-video}") String textToVideoWorkflow,
             @Value("${studio.animation.local-ai.diffusion-model:}") String diffusionModel,
             @Value("${studio.animation.local-ai.clip-model:}") String clipModel,
             @Value("${studio.animation.local-ai.vae-model:}") String vaeModel,
@@ -104,6 +111,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         this.webClient = webClientBuilder.baseUrl(baseUrl).build();
         this.enabled = enabled;
         this.defaultWorkflow = defaultWorkflow;
+        this.textToVideoWorkflow = textToVideoWorkflow;
         this.diffusionModel = diffusionModel;
         this.clipModel = clipModel;
         this.vaeModel = vaeModel;
@@ -141,8 +149,13 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         if (blank(vaeModel)) {
             return "No VAE configured (studio.animation.local-ai.vae-model).";
         }
-        if (blank(clipVisionModel)) {
-            return "No CLIP vision model configured (studio.animation.local-ai.clip-vision-model).";
+        // The legacy Wan image-to-video graph uses CLIP Vision for reference
+        // conditioning. The newer TI2V-5B graph does not, so requiring it for
+        // every workflow falsely disables the newer pipeline.
+        boolean needsClipVision = defaultWorkflow != null
+                && !defaultWorkflow.toLowerCase(java.util.Locale.ROOT).contains("ti2v-5b");
+        if (needsClipVision && blank(clipVisionModel)) {
+            return "No CLIP vision model configured for the selected legacy Wan workflow.";
         }
         // Real check, not assumed (spec section 25/27): a scene attempted on
         // hardware without enough VRAM would OOM mid-generation, wasting the
@@ -211,10 +224,20 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         int rawFrames = (int) Math.round(duration * defaultFps);
         int length = Math.max(5, (((rawFrames - 1) + 3) / 4) * 4 + 1);
 
-        if (request.startingImagePath() == null) {
-            throw new IllegalStateException("Local AI video generation requires a starting image.");
+        // Text-to-video is a real mode, not an error case: no starting image
+        // means Wan22ImageToVideoLatent's optional start_image input is
+        // simply left unwired (see wan-ti2v-5b-text-to-video.json's own
+        // comment - that's genuinely how this node does T2V, per ComfyUI's
+        // own official template). request.workflow() still wins if the
+        // caller explicitly named one; otherwise the presence/absence of an
+        // image picks between the two Wan templates automatically.
+        boolean hasStartingImage = request.startingImagePath() != null;
+        if (request.workflow() == null) {
+            workflowName = hasStartingImage ? defaultWorkflow : textToVideoWorkflow;
         }
-        String startingImageFilename = uploadStartingImage(Path.of(request.startingImagePath()));
+        String startingImageFilename = hasStartingImage
+                ? uploadStartingImage(Path.of(request.startingImagePath()))
+                : null;
 
         // Unique per job, not a shared incrementing counter: VHS_VideoCombine's
         // own auto-numbering is scanned from disk per-run, and any leftover
@@ -231,7 +254,9 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
 
         String workflowJson = fillWanTemplate(workflowName, request.prompt(),
                 request.negativePrompt() == null ? "" : request.negativePrompt(),
-                seed, width, height, length, defaultFps, startingImageFilename, filenamePrefix);
+                seed, width, height, length, defaultFps,
+                request.steps() > 0 ? request.steps() : defaultSteps,
+                startingImageFilename, filenamePrefix);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         try {
@@ -278,7 +303,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
      *  same shared, typed-substitution mechanism ComfyUIImageProvider uses,
      *  not a separate ad hoc implementation. */
     private String fillWanTemplate(String workflowName, String positive, String negative,
-                                   long seed, int width, int height, int length, int fps,
+                                   long seed, int width, int height, int length, int fps, int steps,
                                    String startingImageFilename, String filenamePrefix) {
         Map<String, String> text = new LinkedHashMap<>();
         text.put("{{POSITIVE_PROMPT}}", positive == null ? "" : positive);
@@ -287,7 +312,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         text.put("{{CLIP_MODEL}}", clipModel);
         text.put("{{VAE_MODEL}}", vaeModel);
         text.put("{{CLIP_VISION_MODEL}}", clipVisionModel);
-        text.put("{{STARTING_IMAGE}}", startingImageFilename);
+        text.put("{{STARTING_IMAGE}}", startingImageFilename == null ? "" : startingImageFilename);
         text.put("{{SAMPLER}}", defaultSampler);
         text.put("{{SCHEDULER}}", defaultScheduler);
         text.put("{{FILENAME_PREFIX}}", filenamePrefix);
@@ -298,7 +323,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         numeric.put("{{HEIGHT}}", height);
         numeric.put("{{LENGTH}}", length);
         numeric.put("{{FPS}}", fps);
-        numeric.put("{{STEPS}}", defaultSteps);
+        numeric.put("{{STEPS}}", steps);
         numeric.put("{{CFG}}", defaultCfg);
 
         return WorkflowTemplateFiller.fill(mapper, workflowName, text, numeric);
@@ -335,10 +360,16 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                 .bodyToMono(JsonNode.class)
                 .block(Duration.ofSeconds(30));
 
-        if (response == null || response.get("name") == null) {
-            throw new IllegalStateException("ComfyUI did not return a filename for the uploaded starting image: " + response);
+        if (response == null || response.get("name") == null || response.get("name").asText().isBlank()) {
+            throw new IllegalStateException("ComfyUI did not return a usable filename for the uploaded starting image: " + response);
         }
-        return response.get("name").asText();
+        String name = response.get("name").asText();
+        String subfolder = response.path("subfolder").asText("");
+        String relative = subfolder.isBlank() ? name : subfolder + "/" + name;
+        if (relative.equals("input") || relative.endsWith("/input") || relative.contains("../")) {
+            throw new IllegalStateException("ComfyUI returned an invalid starting-image path: " + relative);
+        }
+        return relative;
     }
 
     // ---- polling -------------------------------------------------------------

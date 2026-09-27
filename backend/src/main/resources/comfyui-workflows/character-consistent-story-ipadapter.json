@@ -81,7 +81,7 @@
   "9": {
     "class_type": "SaveImage",
     "inputs": {
-      "filename_prefix": "ai-story-studio",
+      "filename_prefix": "{{FILENAME_PREFIX}}",
       "images": ["8", 0]
     }
   },
@@ -104,15 +104,18 @@
     }
   },
   "14": {
-    "class_type": "IPAdapterApply",
+    "class_type": "IPAdapterAdvanced",
     "inputs": {
       "ipadapter": ["13", 0],
       "clip_vision": ["12", 0],
       "image": ["11", 0],
       "model": ["4", 0],
       "weight": 0.52,
-      "noise": 0.0,
-      "weight_type": "original"
+      "weight_type": "linear",
+      "combine_embeds": "concat",
+      "start_at": 0.0,
+      "end_at": 1.0,
+      "embeds_scaling": "V only"
     }
   }
 }

@@ -15,6 +15,10 @@ public record SceneDto(
         String lighting,
         String imagePrompt,
         String negativePrompt,
+        String motionPrompt,
+        String motionNegativePrompt,
+        String visualSpecJson,
+        String audioSpecJson,
         Double narrationSeconds,
         Double imageDurationSeconds,
         String cameraMovement,
@@ -27,5 +31,7 @@ public record SceneDto(
 ) {
     public record VoiceSegmentDto(
             String character, String text, String voice, Double speed, Double pitch,
-            String emotion, Integer pauseBeforeMs, Integer pauseAfterMs) {}
+            String emotion, Integer pauseBeforeMs, Integer pauseAfterMs,
+            Double emotionIntensity, String delivery, List<String> emphasis,
+            Boolean breath, String paralinguisticEvent, String actingDirection) {}
 }

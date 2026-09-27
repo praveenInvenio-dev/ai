@@ -36,7 +36,7 @@ public class VideoGenerationController {
 
     @PostMapping("/jobs")
     public ResponseEntity<Map<String, UUID>> createJob(
-            @RequestParam("image") MultipartFile image,
+            @RequestParam(value = "image", required = false) MultipartFile image,
             @RequestParam("prompt") String prompt,
             @RequestParam(value = "negativePrompt", required = false) String negativePrompt,
             @RequestParam(value = "durationSeconds", required = false, defaultValue = "4.0") double durationSeconds,

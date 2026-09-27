@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
-import { Project, Universe, Character, CharacterReference } from '../../models/models';
+import { Project, Universe, Character, CharacterReference, VoiceProfile } from '../../models/models';
 
 @Component({
   selector: 'app-character-studio',
@@ -40,6 +40,24 @@ import { Project, Universe, Character, CharacterReference } from '../../models/m
       </div>
     </div>
 
+    <div class="card ref-sheet" *ngIf="selectedUniverseId && selectedUniverseId !== '__new__' && characters.length > 0">
+      <div class="ref-sheet-head">
+        <h3>Master character reference sheet prompt</h3>
+        <button class="btn btn-ghost" (click)="generateReferenceSheetPrompt()" [disabled]="generatingSheet">
+          {{ generatingSheet ? 'Building...' : (referenceSheetPrompt ? 'Regenerate' : 'Generate prompt') }}
+        </button>
+      </div>
+      <p class="hint">
+        One multi-pose, multi-expression prompt showing every character in this universe together -
+        generate it, use it with your image tool of choice, then lock the result per character below.
+      </p>
+      <div *ngIf="referenceSheetPrompt">
+        <textarea class="sheet-textarea" rows="10" readonly [value]="referenceSheetPrompt"></textarea>
+        <button class="btn" (click)="copyReferenceSheetPrompt()">{{ copied ? 'Copied!' : 'Copy prompt' }}</button>
+      </div>
+      <p class="ref-status error" *ngIf="sheetError">{{ sheetError }}</p>
+    </div>
+
     <div class="grid" *ngIf="selectedUniverseId && selectedUniverseId !== '__new__'">
       <article class="card char-card" *ngFor="let c of characters">
         <div class="char-head">
@@ -47,6 +65,14 @@ import { Project, Universe, Character, CharacterReference } from '../../models/m
           <span class="tag" [class.tag-amber]="c.locked">{{ c.locked ? 'Locked' : 'v' + c.version }}</span>
         </div>
         <p class="desc">{{ c.canonicalDescription }}</p>
+
+        <div class="voice-assign">
+          <label>Voice</label>
+          <select [ngModel]="c.voiceProfileId || ''" (ngModelChange)="assignVoice(c, $event)">
+            <option value="">Not assigned (default TTS)</option>
+            <option *ngFor="let vp of voiceProfiles" [value]="vp.id">{{ vp.name }} ({{ vp.provider }})</option>
+          </select>
+        </div>
 
         <div class="ref-image" *ngIf="referenceFor(c.id) as ref">
           <img [src]="imageUrl(ref)" [alt]="c.name" />
@@ -80,9 +106,20 @@ import { Project, Universe, Character, CharacterReference } from '../../models/m
     .selector { display: flex; gap: 1.5rem; margin-bottom: 1.6rem; }
     .selector > div { flex: 1; }
     .new-universe-actions { display: flex; align-items: flex-end; }
+    .ref-sheet { margin-bottom: 1.6rem; }
+    .ref-sheet-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .ref-sheet-head h3 { margin: 0; }
+    .sheet-textarea {
+      width: 100%; font-family: var(--font-body); font-size: 0.82rem; margin: 0.8em 0 0.5em;
+      background: var(--surface-raised); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+      padding: 0.7em; resize: vertical;
+    }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
     .char-head { display: flex; justify-content: space-between; align-items: baseline; }
     .desc { font-size: 0.88rem; color: var(--text); min-height: 4em; }
+    .voice-assign { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4em; }
+    .voice-assign label { font-size: 0.78rem; color: var(--muted); margin: 0; }
+    .voice-assign select { flex: 1; font-size: 0.82rem; padding: 0.25rem 0.4rem; border-radius: 6px; background: var(--surface); color: inherit; border: 1px solid var(--border); }
     .ref-image {
       width: 100%; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden;
       background: var(--surface-raised); margin: 0.6em 0;
@@ -110,10 +147,21 @@ export class CharacterStudioComponent implements OnInit {
   generating: Record<string, boolean> = {};
   genError: Record<string, string> = {};
 
+  referenceSheetPrompt = '';
+  generatingSheet = false;
+  sheetError = '';
+  copied = false;
+
+  voiceProfiles: VoiceProfile[] = [];
+
   constructor(private api: ApiService) {}
 
   ngOnInit(): void {
     this.api.listProjects().subscribe(p => this.projects = p);
+    this.api.listVoiceProfiles().subscribe({
+      next: profiles => { this.voiceProfiles = profiles; },
+      error: () => { /* voice picker just shows "not assigned" only - not fatal */ }
+    });
   }
 
   onProjectChange(): void {
@@ -126,6 +174,8 @@ export class CharacterStudioComponent implements OnInit {
   }
 
   onUniverseChange(): void {
+    this.referenceSheetPrompt = '';
+    this.sheetError = '';
     if (this.selectedUniverseId && this.selectedUniverseId !== '__new__') {
       this.api.listCharacters(this.selectedUniverseId).subscribe(chars => {
         this.characters = chars;
@@ -164,6 +214,15 @@ export class CharacterStudioComponent implements OnInit {
     });
   }
 
+  assignVoice(c: Character, voiceProfileId: string): void {
+    this.api.assignCharacterVoice(c.id, voiceProfileId || null).subscribe({
+      next: updated => {
+        this.characters = this.characters.map(x => x.id === updated.id ? updated : x);
+      },
+      error: () => { /* leave the dropdown as-is - character keeps its previous assignment */ }
+    });
+  }
+
   referenceFor(characterId: string): CharacterReference | null {
     return this.references[characterId] || null;
   }
@@ -195,6 +254,31 @@ export class CharacterStudioComponent implements OnInit {
         this.generating[c.id] = false;
         this.genError[c.id] = err?.error?.message || 'Generation failed — check the backend logs for the real reason.';
       }
+    });
+  }
+
+  generateReferenceSheetPrompt(): void {
+    if (!this.selectedUniverseId || this.selectedUniverseId === '__new__') { return; }
+    this.generatingSheet = true;
+    this.sheetError = '';
+    this.copied = false;
+    this.api.characterReferenceSheetPrompt(this.selectedUniverseId).subscribe({
+      next: res => {
+        this.referenceSheetPrompt = res.prompt;
+        this.generatingSheet = false;
+      },
+      error: err => {
+        this.sheetError = err?.error?.message || 'Could not build the reference sheet prompt.';
+        this.generatingSheet = false;
+      }
+    });
+  }
+
+  copyReferenceSheetPrompt(): void {
+    if (!this.referenceSheetPrompt) { return; }
+    navigator.clipboard.writeText(this.referenceSheetPrompt).then(() => {
+      this.copied = true;
+      setTimeout(() => { this.copied = false; }, 2000);
     });
   }
 }

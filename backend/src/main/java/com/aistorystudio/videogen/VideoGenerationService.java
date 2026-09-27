@@ -87,25 +87,31 @@ public class VideoGenerationService {
      * job the caller only discovers is broken once it starts polling.
      * The generation call itself happens afterwards, in generateAsync().
      */
+    /** Image is optional - a job with no image is text-to-video, which
+     *  ComfyUIVideoProvider now handles as a real mode rather than an error
+     *  (see its doGenerate() for how the two Wan templates get chosen). */
     public VideoGenJob createJob(MultipartFile image, String prompt) {
         String reason = providerGateway.localAiVideoUnavailableReason();
         if (reason != null) {
             throw new IllegalStateException("Video generation is not available: " + reason);
         }
         if (prompt == null || prompt.isBlank()) {
-            throw new IllegalArgumentException("A prompt describing the motion is required.");
+            throw new IllegalArgumentException("A prompt describing the video is required.");
         }
-        String extension = validateImage(image);
 
         VideoGenJob job = jobStore.create();
-        String relativePath = "video-generation/uploads/" + job.getId() + "." + extension;
-        Path stored;
-        try {
-            stored = storage.store(relativePath, image.getBytes());
-        } catch (IOException e) {
-            throw new UncheckedIOException("Could not read the uploaded image", e);
+        boolean hasImage = image != null && !image.isEmpty();
+        if (hasImage) {
+            String extension = validateImage(image);
+            String relativePath = "video-generation/uploads/" + job.getId() + "." + extension;
+            Path stored;
+            try {
+                stored = storage.store(relativePath, image.getBytes());
+            } catch (IOException e) {
+                throw new UncheckedIOException("Could not read the uploaded image", e);
+            }
+            job.setStartingImagePath(stored.toString());
         }
-        job.setStartingImagePath(stored.toString());
         return job;
     }
 
@@ -128,7 +134,7 @@ public class VideoGenerationService {
         try {
             VideoGenerationProvider.VideoGenerationRequest request = new VideoGenerationProvider.VideoGenerationRequest(
                     job.getStartingImagePath(), prompt, negativePrompt,
-                    durationSeconds, 0, 0, null, seed);
+                    durationSeconds, 0, 0, null, seed, 0);
             VideoGenerationProvider.VideoGenerationResult result = providerGateway.generateVideo(request);
 
             String relativePath = "video-generation/results/" + jobId + "." + result.fileExtension();

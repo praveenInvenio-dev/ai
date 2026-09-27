@@ -24,7 +24,11 @@ public interface VideoGenerationProvider {
             int width,
             int height,
             String workflow,
-            Long seed
+            Long seed,
+            /** 0 = use the provider's configured default (LOCAL_AI_ANIMATION_STEPS) -
+             *  same "0 means default" convention ImageGenerationRequest already
+             *  uses for width/height/steps, not a new pattern. */
+            int steps
     ) {}
 
     record VideoGenerationResult(

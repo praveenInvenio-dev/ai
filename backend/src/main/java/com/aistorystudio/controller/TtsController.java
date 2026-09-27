@@ -12,6 +12,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.aistorystudio.service.VoiceProfileService;
+import com.aistorystudio.provider.TextToSpeechProvider;
+import com.aistorystudio.repository.VoiceProfileRepository;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
@@ -38,16 +43,38 @@ public class TtsController {
     private static final int MAX_PREVIEW_CHARS = 600;
 
     private final WebClient tts;
+    private final VoiceProfileRepository voiceProfiles;
+    private final VoiceProfileService voiceProfileService;
 
     public TtsController(WebClient.Builder builder,
-                         @Value("${studio.tts.baseUrl}") String baseUrl) {
+                         @Value("${studio.tts.baseUrl}") String baseUrl,
+                         VoiceProfileRepository voiceProfiles,
+                         VoiceProfileService voiceProfileService) {
         this.tts = builder.baseUrl(baseUrl).build();
+        this.voiceProfiles = voiceProfiles;
+        this.voiceProfileService = voiceProfileService;
     }
 
     @GetMapping("/voices")
     public ResponseEntity<JsonNode> voices() {
         JsonNode body = tts.get().uri("/api/voices")
                 .retrieve().bodyToMono(JsonNode.class).block(Duration.ofSeconds(20));
+        if (body != null && body.isObject()) {
+            ObjectNode root = (ObjectNode) body;
+            ArrayNode list = root.withArray("voices");
+            voiceProfiles.findAllByOrderByNameAsc().forEach(profile -> {
+                ObjectNode v = list.addObject();
+                v.put("id", "profile:" + profile.getId());
+                v.put("label", profile.getName());
+                v.put("accent", profile.getLanguage() == null ? "custom" : profile.getLanguage());
+                v.put("gender", "custom");
+                v.put("quality", "cloned");
+                v.put("notes", profile.getPersonality() == null ? "Saved Voice Library profile" : profile.getPersonality());
+                v.put("installed", true);
+                v.put("engine", profile.getProvider());
+                v.put("isDefault", false);
+            });
+        }
         return ResponseEntity.ok(body);
     }
 
@@ -70,10 +97,25 @@ public class TtsController {
             text = text.substring(0, MAX_PREVIEW_CHARS);
         }
 
+        String voice = request.voice() == null ? "" : request.voice();
+        if (voice.startsWith("profile:")) {
+            try {
+                java.util.UUID id = java.util.UUID.fromString(voice.substring("profile:".length()));
+                TextToSpeechProvider.TtsResult result = voiceProfileService.generateTest(id, text,
+                        request.speed() == null || request.speed() <= 0 ? 1.0 : request.speed(),
+                        request.pitch() == null || request.pitch() <= 0 ? 1.0 : request.pitch());
+                return ResponseEntity.ok().contentType(MediaType.parseMediaType("audio/wav"))
+                        .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=voice-profile-preview.wav")
+                        .body(result.audioBytes());
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest().build();
+            }
+        }
+
         byte[] wav = tts.post().uri("/api/tts")
                 .bodyValue(Map.of(
                         "text", text,
-                        "voice", request.voice() == null ? "" : request.voice(),
+                        "voice", voice,
                         "speed", request.speed() == null || request.speed() <= 0 ? 1.0 : request.speed(),
                         // Pitch is a post-process (ffmpeg), not a Piper setting - it is how
                         // child voices are made without also speeding the narration up.
