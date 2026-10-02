@@ -67,11 +67,13 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
     private final Duration queueWait;
     private final long pollIntervalMs;
 
-    // Video generation is dramatically heavier per call than image generation
-    // (many more sampling steps' worth of compute, since every frame is a
-    // latent) - a separate, smaller semaphore than image generation's, sized
-    // for one at a time by default, so a single stuck video job cannot also
-    // starve out concurrent image generation on the same GPU.
+    // Shared with ComfyUIImageProvider via ComfyUiAccessCoordinator, not a
+    // separate semaphore - a separate one guaranteed nothing about what
+    // ComfyUI itself does when an image prompt arrives while a video prompt
+    // is still executing: it interrupts the in-flight one rather than
+    // queueing behind it. Confirmed live - a completed 20-step Wan job got
+    // killed during its save step by a concurrent image request. See
+    // ComfyUiAccessCoordinator's own comment for the full story.
     private final Semaphore slot;
 
     private final com.aistorystudio.system.ResourceMonitorService resourceMonitor;
@@ -105,7 +107,8 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
             @Value("${studio.animation.local-ai.poll-interval-ms:3000}") long pollIntervalMs,
             @Value("${studio.animation.local-ai.max-concurrent:1}") int maxConcurrent,
             @Value("${studio.animation.local-ai.min-vram-mb:4000}") int minVramMb,
-            com.aistorystudio.system.ResourceMonitorService resourceMonitor) {
+            com.aistorystudio.system.ResourceMonitorService resourceMonitor,
+            ComfyUiAccessCoordinator comfyUiAccessCoordinator) {
         this.resourceMonitor = resourceMonitor;
         this.minVramMb = minVramMb;
         this.webClient = webClientBuilder.baseUrl(baseUrl).build();
@@ -127,7 +130,13 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         this.timeout = Duration.ofSeconds(timeoutSeconds);
         this.queueWait = Duration.ofSeconds(queueWaitSeconds);
         this.pollIntervalMs = Math.max(500, pollIntervalMs);
-        this.slot = new Semaphore(Math.max(1, maxConcurrent), true);
+        // maxConcurrent above is intentionally no longer used to size this -
+        // see ComfyUiAccessCoordinator's comment for why a per-provider
+        // concurrency count was never actually safe against ComfyUI's real
+        // one-prompt-at-a-time behavior. The binding is left in place so an
+        // existing LOCAL_AI_ANIMATION_MAX_CONCURRENT in someone's .env
+        // doesn't become an unrecognized property; it's just inert now.
+        this.slot = comfyUiAccessCoordinator.slot();
     }
 
     @Override

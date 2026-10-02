@@ -37,8 +37,11 @@ public class CharacterController {
     }
 
     @GetMapping
-    public List<Character> listByUniverse(@RequestParam UUID universeId) {
-        return characterService.listByUniverse(universeId);
+    public List<Character> list(@RequestParam(required = false) UUID universeId,
+                                 @RequestParam(required = false) UUID episodeId) {
+        if (universeId != null) return characterService.listByUniverse(universeId);
+        if (episodeId != null) return characterService.listByEpisode(episodeId);
+        throw new IllegalArgumentException("Provide either universeId or episodeId.");
     }
 
     @GetMapping("/{id}")

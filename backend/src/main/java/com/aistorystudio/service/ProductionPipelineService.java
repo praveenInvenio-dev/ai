@@ -274,13 +274,23 @@ public class ProductionPipelineService {
                 List<Character> sceneCharacters = resolveSceneCharacters(scene, universeCharacters);
                 // IPAdapter conditions the WHOLE image on one reference photo -
                 // fine for one character, actively harmful for a multi-character
-                // scene (drags composition toward that one portrait, can bleed
-                // that character's face onto the OTHERS in frame). Skip the
-                // single-portrait reference for 2+ character scenes; the text
-                // prompt's per-character descriptions carry identity instead.
-                String referenceImagePath = sceneCharacters.size() <= 1
-                        ? resolvePrimaryReferenceImage(sceneCharacters)
-                        : null;
+                // scene UNLESS it's exactly 2 characters with the regional dual
+                // workflow (masks each character to their own half of frame -
+                // see character-consistent-story-ipadapter-sdxl-dual.json). 3+
+                // characters still has no per-character regional solution, so
+                // still skips the reference entirely - text description carries
+                // identity there, same as before.
+                String referenceImagePath = null;
+                String referenceImagePath2 = null;
+                if (sceneCharacters.size() == 1) {
+                    referenceImagePath = resolvePrimaryReferenceImage(sceneCharacters);
+                } else if (sceneCharacters.size() == 2) {
+                    String[] dual = resolveDualReferenceImages(sceneCharacters);
+                    if (dual != null) {
+                        referenceImagePath = dual[0];
+                        referenceImagePath2 = dual[1];
+                    }
+                }
                 Set<String> currentCharacterNames = sceneCharacters.stream()
                         .map(c -> c.getName() == null ? "" : c.getName().trim().toLowerCase(Locale.ROOT))
                         .filter(n -> !n.isBlank())
@@ -324,7 +334,7 @@ public class ProductionPipelineService {
                     var request = new ImageGenerationProvider.ImageGenerationRequest(
                             prompt, assembled.negativePrompt(), imageWidthFor(episode), imageHeightFor(episode), imageStepsFor(episode, qualitySteps), imageCfgFor(episode),
                             stableSeed, imageWorkflowFor(episode, referenceImagePath, visualStyle),
-                            imageModelFor(episode, visualStyle), referenceImagePath);
+                            imageModelFor(episode, visualStyle), referenceImagePath, referenceImagePath2);
                     result0 = providerGateway.generateImage(request);
                     if (result0 != null && "mock".equalsIgnoreCase(result0.workflowUsed())
                             && referenceImagePath != null) {
@@ -336,7 +346,7 @@ public class ProductionPipelineService {
                                 scene.getSceneNumber());
                         var fallbackRequest = new ImageGenerationProvider.ImageGenerationRequest(
                                 prompt, assembled.negativePrompt(), imageWidthFor(episode), imageHeightFor(episode), imageStepsFor(episode, qualitySteps), imageCfgFor(episode),
-                                stableSeed, imageWorkflowFor(episode, null, visualStyle), imageModelFor(episode, visualStyle), null);
+                                stableSeed, imageWorkflowFor(episode, null, visualStyle), imageModelFor(episode, visualStyle), null, null);
                         result0 = providerGateway.generateImage(fallbackRequest);
                     }
                     var qa = validateGeneratedImage(result0, prompt, assembled.negativePrompt(), visualStyle, scene);
@@ -601,7 +611,14 @@ public class ProductionPipelineService {
     }
 
     private UUID resolveAssignedVoiceProfileId(Episode episode, String characterName) {
-        if (characterName == null || episode.getUniverseId() == null) return null;
+        // Previously also required episode.getUniverseId() != null, which
+        // silently broke voice assignment for every standalone/episode-scoped
+        // story (no universe) - charactersForEpisode() already correctly
+        // falls back to findByEpisodeId() for that case, this guard just
+        // hadn't been updated to match when episode-scoped characters were
+        // added. A universe-less episode's characters can have assigned
+        // voices too; this was the reason they never applied.
+        if (characterName == null) return null;
         return charactersForEpisode(episode).stream()
                 .filter(c -> characterName.equalsIgnoreCase(c.getName()))
                 .map(Character::getVoiceProfileId)
@@ -1122,7 +1139,14 @@ public class ProductionPipelineService {
     private String imageWorkflowFor(Episode episode, String referenceImagePath, String visualStyle) {
         boolean hqConfigured = highQualityWorkflow != null && !highQualityWorkflow.isBlank()
                 && highQualityModel != null && !highQualityModel.isBlank();
-        if (hqConfigured && "QUALITY".equalsIgnoreCase(episode.getQualityProfile())) {
+        // A locked character reference takes priority over the QUALITY-tier
+        // checkpoint swap - previously this branch returned highQualityWorkflow
+        // unconditionally whenever QUALITY was selected, silently dropping
+        // IPAdapter conditioning (and therefore consistency) for EVERY scene
+        // with a locked character, regardless of whether the HQ workflow
+        // could even carry a reference. A scene with no reference to
+        // preserve still gets the requested HQ checkpoint as before.
+        if (hqConfigured && "QUALITY".equalsIgnoreCase(episode.getQualityProfile()) && referenceImagePath == null) {
             return highQualityWorkflow.trim();
         }
         return referenceImagePath != null ? "character-consistent-story-ipadapter" : null;
@@ -1132,6 +1156,14 @@ public class ProductionPipelineService {
         boolean hqConfigured = highQualityWorkflow != null && !highQualityWorkflow.isBlank()
                 && highQualityModel != null && !highQualityModel.isBlank();
         if (hqConfigured && "QUALITY".equalsIgnoreCase(episode.getQualityProfile())) {
+            // Model choice, unlike workflow, is safe to keep even with a
+            // reference in play - imageWorkflowFor will have already fallen
+            // back to the IPAdapter workflow above when a reference exists,
+            // and that workflow's own {{CHECKPOINT}} placeholder still needs
+            // SOME model name. Using the HQ model there works as long as it's
+            // also an SDXL checkpoint (matches ComfyUIImageProvider's own
+            // SDXL-vs-SD1.5 auto-upgrade check) - a non-SDXL HQ model paired
+            // with a reference would need its own care, not handled here.
             return highQualityModel.trim();
         }
         return styleModel(visualStyle);
@@ -1187,9 +1219,28 @@ public class ProductionPipelineService {
         try {
             List<String> names = new ArrayList<>();
             mapper.readTree(scene.getCharactersJson()).forEach(n -> names.add(n.asText().toLowerCase()));
-            return universeCharacters.stream()
-                    .filter(c -> names.contains(c.getName().toLowerCase()))
-                    .toList();
+            // Order here matters, not just membership: for a 2-character
+            // scene, this list's order IS which reference goes LEFT vs
+            // RIGHT in the regional dual-IPAdapter workflow (see
+            // resolveDualReferenceImages). The previous version filtered
+            // universeCharacters and kept ITS order (database insertion
+            // order) - completely disconnected from the scene's own
+            // narrative order. If the scene/prompt says "Bunny on the left,
+            // Squirrel on the right" but Squirrel happened to be inserted
+            // into the DB first, the mask assignment would be backwards
+            // from what the text prompt describes - a real, direct cause of
+            // the reported character-mixing, not just a style preference.
+            // Iterate the SCENE's own name order instead, looking up each
+            // Character from universeCharacters as we go.
+            Map<String, Character> byName = universeCharacters.stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            c -> c.getName().toLowerCase(), c -> c, (a, b) -> a));
+            List<Character> ordered = new ArrayList<>();
+            for (String name : names) {
+                Character c = byName.get(name);
+                if (c != null) ordered.add(c);
+            }
+            return ordered;
         } catch (Exception e) {
             return List.of();
         }
@@ -1208,23 +1259,47 @@ public class ProductionPipelineService {
      */
     private String resolvePrimaryReferenceImage(List<Character> sceneCharacters) {
         for (Character c : sceneCharacters) {
-            List<CharacterReference> refs = characterReferenceRepository.findByCharacterId(c.getId());
-            if (refs.isEmpty()) {
-                continue;
+            String path = referenceImageForCharacter(c);
+            if (path != null) {
+                return path;
             }
-            CharacterReference chosen = refs.stream()
-                    .filter(CharacterReference::isLocked)
-                    .findFirst()
-                    .orElseGet(() -> refs.stream()
-                            .filter(CharacterReference::isPrimary)
-                            .findFirst()
-                            .orElseGet(() -> refs.stream()
-                            .max(java.util.Comparator.comparing(CharacterReference::getCreatedAt))
-                            .orElse(refs.get(0))));
-            Path path = Path.of(chosen.getImagePath());
-            if (path.toFile().exists() && path.toFile().length() > 0) {
-                return path.toString();
-            }
+        }
+        return null;
+    }
+
+    /** Exactly 2 characters, both with a usable locked/primary reference -
+     *  the input to the regional dual-IPAdapter workflow (see that workflow
+     *  file's own comment for the left/right heuristic this ordering feeds).
+     *  Returns null for anything other than exactly 2 characters, or if
+     *  either one lacks a usable reference - the caller falls back to
+     *  resolvePrimaryReferenceImage's single-reference behavior in that case,
+     *  same as a 3+ character scene already does. */
+    private String[] resolveDualReferenceImages(List<Character> sceneCharacters) {
+        if (sceneCharacters.size() != 2) {
+            return null;
+        }
+        String left = referenceImageForCharacter(sceneCharacters.get(0));
+        String right = referenceImageForCharacter(sceneCharacters.get(1));
+        return (left != null && right != null) ? new String[]{left, right} : null;
+    }
+
+    private String referenceImageForCharacter(Character c) {
+        List<CharacterReference> refs = characterReferenceRepository.findByCharacterId(c.getId());
+        if (refs.isEmpty()) {
+            return null;
+        }
+        CharacterReference chosen = refs.stream()
+                .filter(CharacterReference::isLocked)
+                .findFirst()
+                .orElseGet(() -> refs.stream()
+                        .filter(CharacterReference::isPrimary)
+                        .findFirst()
+                        .orElseGet(() -> refs.stream()
+                        .max(java.util.Comparator.comparing(CharacterReference::getCreatedAt))
+                        .orElse(refs.get(0))));
+        Path path = Path.of(chosen.getImagePath());
+        if (path.toFile().exists() && path.toFile().length() > 0) {
+            return path.toString();
         }
         return null;
     }
@@ -1294,15 +1369,23 @@ public class ProductionPipelineService {
         scene.setNegativePrompt(assembled.negativePrompt());
         sceneRepository.save(scene);
 
-        // Same guard as the main pipeline loop - single-portrait IPAdapter
-        // reference must not be forced onto a multi-character scene.
-        String referenceImagePath = sceneCharacters.size() <= 1
-                ? resolvePrimaryReferenceImage(sceneCharacters)
-                : null;
+        // Same dual-vs-single-vs-none guard as the main pipeline loop - see
+        // its comment for the reasoning.
+        String referenceImagePath = null;
+        String referenceImagePath2 = null;
+        if (sceneCharacters.size() == 1) {
+            referenceImagePath = resolvePrimaryReferenceImage(sceneCharacters);
+        } else if (sceneCharacters.size() == 2) {
+            String[] dual = resolveDualReferenceImages(sceneCharacters);
+            if (dual != null) {
+                referenceImagePath = dual[0];
+                referenceImagePath2 = dual[1];
+            }
+        }
         var request = new ImageGenerationProvider.ImageGenerationRequest(
                 assembled.positivePrompt(), assembled.negativePrompt(), imageWidthFor(episode), imageHeightFor(episode), imageStepsFor(episode, qualityImageSteps(episode)), imageCfgFor(episode), null,
                 imageWorkflowFor(episode, referenceImagePath, episode.getVisualStyle()),
-                imageModelFor(episode, episode.getVisualStyle()), referenceImagePath);
+                imageModelFor(episode, episode.getVisualStyle()), referenceImagePath, referenceImagePath2);
         var result = providerGateway.generateImage(request);
         String relative = assetRelativePath(episode, String.format("images/scene-%03d.%s", scene.getSceneNumber(), result.fileExtension()));
         Path path = storageProvider.store(relative, result.imageBytes());

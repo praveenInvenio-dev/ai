@@ -67,7 +67,7 @@ public class CharacterImageService {
         // so this debug path costs the same as a real scene image and stays tunable
         // from .env rather than needing a rebuild.
         var request = new ImageGenerationProvider.ImageGenerationRequest(
-                positivePrompt, negativePrompt, 0, 0, 0, 0, null, null, null, null);
+                positivePrompt, negativePrompt, 0, 0, 0, 0, null, null, null, null, null);
         var result = providerGateway.generateImage(request);
 
         String relative = "characters/" + characterId + "/reference-" + System.currentTimeMillis() + "." + result.fileExtension();

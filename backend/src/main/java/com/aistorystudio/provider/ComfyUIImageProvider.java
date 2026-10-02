@@ -68,14 +68,17 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
     private final ObjectMapper mapper = new ObjectMapper();
 
     /**
-     * ComfyUI runs one prompt at a time. Serialising here means a caller waits for
-     * a free slot rather than piling a second prompt onto the queue behind the one
-     * it is already going to time out on.
+     * ComfyUI runs one prompt at a time - shared with ComfyUIVideoProvider via
+     * ComfyUiAccessCoordinator, not a separate semaphore, because a separate
+     * one guarantees nothing about what ComfyUI itself does when both an
+     * image and a video prompt arrive close together (it interrupts the
+     * in-flight one - see that class's comment for what this fixed).
      */
-    private final Semaphore slot = new Semaphore(1, true);
+    private final Semaphore slot;
 
     public ComfyUIImageProvider(
             WebClient.Builder webClientBuilder,
+            ComfyUiAccessCoordinator comfyUiAccessCoordinator,
             @Value("${studio.comfyui.baseUrl}") String baseUrl,
             @Value("${studio.comfyui.workflow}") String defaultWorkflow,
             @Value("${studio.comfyui.model}") String defaultModel,
@@ -90,6 +93,7 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
             @Value("${studio.comfyui.pollIntervalMs:2000}") long pollIntervalMs) {
         this.webClient = webClientBuilder.baseUrl(baseUrl).build();
         this.defaultWorkflow = defaultWorkflow;
+        this.slot = comfyUiAccessCoordinator.slot();
         this.defaultModel = defaultModel;
         this.defaultSteps = defaultSteps;
         this.defaultWidth = defaultWidth;
@@ -134,7 +138,13 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         if ("character-consistent-story-ipadapter".equals(workflowName)
                 && checkpointName != null
                 && checkpointName.toLowerCase(java.util.Locale.ROOT).contains("xl")) {
-            workflowName = "character-consistent-story-ipadapter-sdxl";
+            // Two locked character references (ProductionPipelineService only
+            // sets referenceImagePath2 for an exactly-2-character scene where
+            // both have one) get the regional dual-IPAdapter workflow instead
+            // of forcing everyone in frame onto a single reference photo.
+            workflowName = request.referenceImagePath2() != null
+                    ? "character-consistent-story-ipadapter-sdxl-dual"
+                    : "character-consistent-story-ipadapter-sdxl";
         }
 
         int width = snap(request.width() > 0 ? request.width() : defaultWidth);
@@ -168,6 +178,20 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
                         e.getMessage());
             }
         }
+        // Second reference for the dual/regional workflow - both must upload
+        // successfully or the dual workflow is abandoned entirely (see the
+        // downgrade check below), since a dual graph with only one real
+        // reference would condition BOTH halves of frame on that one image,
+        // defeating the whole point of the regional split.
+        String referenceImageFilename2 = null;
+        if (request.referenceImagePath2() != null) {
+            try {
+                referenceImageFilename2 = uploadReferenceImage(Path.of(request.referenceImagePath2()));
+            } catch (Exception e) {
+                log.warn("Could not upload second character reference image to ComfyUI, "
+                        + "falling back to single-reference generation: {}", e.getMessage());
+            }
+        }
         // The workflow must follow the resource that actually made it into ComfyUI,
         // not merely the fact that the caller supplied a local path. If upload failed
         // (or there was no reference at all), never submit an IPAdapter workflow with
@@ -176,6 +200,15 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         if (referenceImageFilename == null && workflowName.toLowerCase(java.util.Locale.ROOT).contains("ipadapter")) {
             log.info("No usable character reference uploaded; switching from {} to plain SDXL workflow.", workflowName);
             workflowName = "character-consistent-story-sdxl";
+        }
+        // Dual workflow specifically needs BOTH references - one missing
+        // means downgrade to the single-reference SDXL IPAdapter workflow
+        // (still uses referenceImageFilename, which did succeed) rather than
+        // submitting a dual graph with an empty second LoadImage value.
+        if (workflowName.endsWith("-dual") && referenceImageFilename2 == null) {
+            log.info("Second character reference unavailable; downgrading from {} to single-reference workflow.",
+                    workflowName);
+            workflowName = "character-consistent-story-ipadapter-sdxl";
         }
 
         // Unique per call, not a shared constant: every image workflow's
@@ -193,7 +226,7 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
                 mapper, workflowName, request.prompt(),
                 request.negativePrompt() == null ? "" : request.negativePrompt(),
                 seed, width, height, steps, cfg, checkpointName, defaultSampler, defaultScheduler,
-                referenceImageFilename, filenamePrefix);
+                referenceImageFilename, filenamePrefix, referenceImageFilename2, width / 2);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         try {
@@ -223,7 +256,7 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
                         mapper, fallbackWorkflow, request.prompt(),
                         request.negativePrompt() == null ? "" : request.negativePrompt(),
                         seed, width, height, steps, cfg, checkpointName, defaultSampler, defaultScheduler,
-                        null, filenamePrefix);
+                        null, filenamePrefix, null, width / 2);
                 Map<String, Object> fallbackPayload = new LinkedHashMap<>();
                 try {
                     fallbackPayload.put("prompt", mapper.readTree(fallbackJson));
@@ -252,7 +285,7 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
                         mapper, fallbackWorkflow, request.prompt(),
                         request.negativePrompt() == null ? "" : request.negativePrompt(),
                         seed, width, height, steps, cfg, checkpointName, defaultSampler, defaultScheduler,
-                        null, filenamePrefix);
+                        null, filenamePrefix, null, width / 2);
                 Map<String, Object> fallbackPayload = new LinkedHashMap<>();
                 try { fallbackPayload.put("prompt", mapper.readTree(fallbackJson)); }
                 catch (Exception parse) { throw new IllegalStateException("Invalid ComfyUI fallback workflow '" + fallbackWorkflow + "'", parse); }
@@ -537,7 +570,8 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         static String loadAndFill(ObjectMapper mapper, String workflowName, String positive, String negative,
                                    long seed, int width, int height, int steps, double cfg,
                                    String checkpointName, String sampler, String scheduler,
-                                   String referenceImageFilename, String filenamePrefix) {
+                                   String referenceImageFilename, String filenamePrefix,
+                                   String referenceImageFilename2, int halfWidth) {
             Map<String, String> text = new LinkedHashMap<>();
             text.put("{{POSITIVE_PROMPT}}", positive == null ? "" : positive);
             text.put("{{NEGATIVE_PROMPT}}", negative == null ? "" : negative);
@@ -545,6 +579,7 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
             text.put("{{SAMPLER}}", sampler);
             text.put("{{SCHEDULER}}", scheduler);
             text.put("{{FILENAME_PREFIX}}", filenamePrefix);
+            text.put("{{REFERENCE_IMAGE_2}}", referenceImageFilename2 == null ? "" : referenceImageFilename2);
             // Only substituted if the workflow actually has this placeholder
             // (the IPAdapter-capable templates) - a plain txt2img template
             // simply has no {{REFERENCE_IMAGE}} token anywhere to replace.
@@ -558,6 +593,10 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
             numeric.put("{{HEIGHT}}", height);
             numeric.put("{{STEPS}}", steps);
             numeric.put("{{CFG}}", cfg);
+            // Only used by the dual-reference workflow's mask-building nodes -
+            // harmless no-op for every other workflow, which doesn't have a
+            // {{HALF_WIDTH}} placeholder to substitute into.
+            numeric.put("{{HALF_WIDTH}}", halfWidth);
 
             return WorkflowTemplateFiller.fill(mapper, workflowName, text, numeric);
         }

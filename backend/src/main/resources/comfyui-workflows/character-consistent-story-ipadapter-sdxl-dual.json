@@ -1,0 +1,190 @@
+{
+  "_comment": [
+    "Regional (masked) IPAdapter for exactly TWO characters in one scene.",
+    "Built to fix real, live-observed 'characters mixing/bleeding into each",
+    "other' - the single-reference workflow forces IPAdapter to condition the",
+    "WHOLE frame on ONE character's portrait, which visibly bled that",
+    "character's face/features onto whoever else was in the scene. This",
+    "workflow instead applies IPAdapter TWICE, sequentially, each instance",
+    "masked to only affect its own half of the frame (attn_mask on",
+    "IPAdapterAdvanced - confirmed present on that node's schema, no new",
+    "custom node pack needed beyond what character-consistent-story-",
+    "ipadapter-sdxl.json already requires).",
+    "",
+    "Character ordering: caller decides which reference is LEFT vs RIGHT -",
+    "see ProductionPipelineService's resolveDualReferenceImages. Simple",
+    "first-character-in-scene = left heuristic for now, not derived from",
+    "SceneVisualSpec's per-character 'position' field yet (real improvement,",
+    "not done here - would need parsing 'left'/'right'/'center' text reliably).",
+    "",
+    "Only handles exactly 2 characters, left/right split down the middle -",
+    "does not generalize to 3+ (would need N-way region logic, a bigger",
+    "build). 3+ character scenes still fall back to no reference at all, per",
+    "the existing multi-character guard in ProductionPipelineService.",
+    "",
+    "UNVERIFIED like every workflow file in this project - never run against",
+    "live ComfyUI while building it. Test one 2-character scene before",
+    "trusting this for a real episode; if MaskComposite's operation='add'",
+    "doesn't behave as expected on your installed version, try 'set' instead.",
+    "",
+    "Requires the same files as character-consistent-story-ipadapter-sdxl.json:",
+    "  clip_vision_h.safetensors, ip-adapter-plus_sdxl_vit-h.bin"
+  ],
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "cfg": "{{CFG}}",
+      "denoise": 1,
+      "latent_image": ["5", 0],
+      "model": ["17", 0],
+      "negative": ["7", 0],
+      "positive": ["6", 0],
+      "sampler_name": "{{SAMPLER}}",
+      "scheduler": "{{SCHEDULER}}",
+      "seed": "{{SEED}}",
+      "steps": "{{STEPS}}"
+    }
+  },
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "{{CHECKPOINT}}"
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "batch_size": 1,
+      "height": "{{HEIGHT}}",
+      "width": "{{WIDTH}}"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["4", 1],
+      "text": "{{POSITIVE_PROMPT}}"
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["4", 1],
+      "text": "{{NEGATIVE_PROMPT}}"
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["3", 0],
+      "vae": ["4", 2]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "{{FILENAME_PREFIX}}",
+      "images": ["8", 0]
+    }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{REFERENCE_IMAGE}}"
+    }
+  },
+  "12": {
+    "class_type": "CLIPVisionLoader",
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    }
+  },
+  "13": {
+    "class_type": "IPAdapterModelLoader",
+    "inputs": {
+      "ipadapter_file": "ip-adapter-plus_sdxl_vit-h.bin"
+    }
+  },
+  "16": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{REFERENCE_IMAGE_2}}"
+    }
+  },
+  "20": {
+    "class_type": "SolidMask",
+    "inputs": {
+      "value": 0.0,
+      "width": "{{WIDTH}}",
+      "height": "{{HEIGHT}}"
+    }
+  },
+  "21": {
+    "class_type": "SolidMask",
+    "inputs": {
+      "value": 1.0,
+      "width": "{{HALF_WIDTH}}",
+      "height": "{{HEIGHT}}"
+    }
+  },
+  "22": {
+    "class_type": "MaskComposite",
+    "inputs": {
+      "destination": ["20", 0],
+      "source": ["21", 0],
+      "x": 0,
+      "y": 0,
+      "operation": "add"
+    }
+  },
+  "23": {
+    "class_type": "SolidMask",
+    "inputs": {
+      "value": 0.0,
+      "width": "{{WIDTH}}",
+      "height": "{{HEIGHT}}"
+    }
+  },
+  "25": {
+    "class_type": "MaskComposite",
+    "inputs": {
+      "destination": ["23", 0],
+      "source": ["21", 0],
+      "x": "{{HALF_WIDTH}}",
+      "y": 0,
+      "operation": "add"
+    }
+  },
+  "14": {
+    "class_type": "IPAdapterAdvanced",
+    "inputs": {
+      "ipadapter": ["13", 0],
+      "clip_vision": ["12", 0],
+      "image": ["11", 0],
+      "model": ["4", 0],
+      "attn_mask": ["22", 0],
+      "weight": 0.68,
+      "weight_type": "style transfer",
+      "combine_embeds": "concat",
+      "start_at": 0.0,
+      "end_at": 1.0,
+      "embeds_scaling": "V only"
+    }
+  },
+  "17": {
+    "class_type": "IPAdapterAdvanced",
+    "inputs": {
+      "ipadapter": ["13", 0],
+      "clip_vision": ["12", 0],
+      "image": ["16", 0],
+      "model": ["14", 0],
+      "attn_mask": ["25", 0],
+      "weight": 0.68,
+      "weight_type": "style transfer",
+      "combine_embeds": "concat",
+      "start_at": 0.0,
+      "end_at": 1.0,
+      "embeds_scaling": "V only"
+    }
+  }
+}

@@ -25,6 +25,7 @@ public class CharacterService {
     public Character create(CreateCharacterRequest req) {
         Character c = new Character();
         c.setUniverseId(req.universeId());
+        c.setEpisodeId(req.episodeId());
         c.setName(req.name());
         c.setSpecies(req.species());
         c.setAge(req.age());
@@ -37,6 +38,10 @@ public class CharacterService {
 
     public List<Character> listByUniverse(UUID universeId) {
         return characterRepository.findByUniverseId(universeId);
+    }
+
+    public List<Character> listByEpisode(UUID episodeId) {
+        return characterRepository.findByEpisodeId(episodeId);
     }
 
     /** Creates episode-scoped Character records from the Story Bible for standalone stories.

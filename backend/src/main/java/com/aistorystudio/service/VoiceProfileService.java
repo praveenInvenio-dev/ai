@@ -104,13 +104,20 @@ public class VoiceProfileService {
                 && (referenceTranscript == null || referenceTranscript.isBlank())) {
             throw new IllegalStateException("CosyVoice requires the exact transcript of the reference recording.");
         }
-        ValidationResult validation = validate(audio);
+        // Convert FIRST, validate the converted wav - not the raw upload. See
+        // validateConvertedFile()'s comment for the real bug this order
+        // fixes (raw WebM's unreliable duration metadata reporting ~2s
+        // regardless of actual recording length). One conversion, not two -
+        // this same file gets moved into permanent storage below if valid,
+        // deleted if not.
+        UUID id = UUID.randomUUID();
+        Path converted = convertToTargetFormat(audio, id);
+        ValidationResult validation = validateConvertedFile(converted);
         if (!validation.ok()) {
+            try { Files.deleteIfExists(converted); } catch (IOException ignored) { }
             throw new IllegalStateException(validation.error());
         }
 
-        UUID id = UUID.randomUUID();
-        Path converted = convertToTargetFormat(audio, id);
         try {
             Files.createDirectories(audioDir);
             Files.move(converted, audioDir.resolve(id + ".wav"));
@@ -196,62 +203,81 @@ public class VoiceProfileService {
                 profile.getLanguage(), speed, pitch, "neutral", 0.5, "natural", List.of(), false, null, null, profile.getReferenceTranscript());
     }
 
+    /** Was: probed duration/silence/clipping directly on the RAW uploaded
+     *  file. Real bug that caused this: a browser MediaRecorder WebM blob
+     *  has NO reliable duration in its container header (it's built for
+     *  streaming, not playback) - ffprobe reading that raw file returns a
+     *  bogus, often short duration (confirmed live: every recording showing
+     *  as ~2s regardless of actual length recorded) no matter how long the
+     *  real recording was. A plain WAV file (what convertToTargetFormat
+     *  already produces) has none of this ambiguity - duration is exact,
+     *  byte-count based. Fix: always validate the CONVERTED wav, never the
+     *  raw upload. This method takes an already-converted wav path;
+     *  validate(MultipartFile) below does the upload+convert+cleanup dance
+     *  around it for the preview-before-save case, and createCloned() calls
+     *  this directly on the same file it's about to store, so nothing gets
+     *  converted twice. */
+    private ValidationResult validateConvertedFile(Path wavFile) {
+        double duration = probeDuration(wavFile);
+        int sampleRate = probeSampleRate(wavFile);
+        if (duration <= 0) {
+            return new ValidationResult(false, "That file doesn't look like valid audio.", List.of(), 0, 0);
+        }
+        if (duration < 5.0) {
+            return new ValidationResult(false,
+                    "That clip is too short (" + String.format("%.1f", duration) + "s) - "
+                    + "record at least 5 seconds. For best cloning quality, use a clean 5-15 second sample and record again.", List.of(), duration, sampleRate);
+        }
+        if (duration > 60.0) {
+            return new ValidationResult(false,
+                    "That clip is too long (" + String.format("%.1f", duration) + "s) - "
+                    + "a clean 5-15 second sample clones better than a long one.", List.of(), duration, sampleRate);
+        }
+
+        List<String> warnings = new java.util.ArrayList<>();
+        if (duration < 5.0 || duration > 15.0) {
+            warnings.add("5-15 seconds is the recommended length; this clip is "
+                    + String.format("%.1f", duration) + "s.");
+        }
+
+        VolumeStats volume = probeVolume(wavFile);
+        if (volume != null) {
+            if (volume.maxVolume >= -1.0) {
+                warnings.add("This clip may be clipping (peaks very close to 0dB) - "
+                        + "re-record slightly quieter if the test sample sounds distorted.");
+            }
+            if (volume.meanVolume <= -35.0) {
+                warnings.add("This clip is very quiet overall - check the recording is actually "
+                        + "capturing your voice, not mostly silence/background noise.");
+            }
+        }
+
+        double silence = probeSilenceDuration(wavFile);
+        if (duration > 0 && silence / duration > 0.5) {
+            warnings.add("More than half of this clip appears to be silence - "
+                    + "trim dead air for a cleaner reference.");
+        }
+
+        return new ValidationResult(true, null, warnings, duration, sampleRate);
+    }
+
+    /** Preview-before-save path only - converts to a throwaway temp wav,
+     *  validates it, deletes it. createCloned() does NOT call this; it
+     *  validates the real converted file directly to avoid converting twice. */
     private ValidationResult validate(MultipartFile audio) {
         if (audio == null || audio.isEmpty()) {
             return new ValidationResult(false, "No audio was uploaded.", List.of(), 0, 0);
         }
-        Path temp;
+        Path wav;
         try {
-            temp = Files.createTempFile("voice-upload-", ".audio");
-            audio.transferTo(temp);
-        } catch (IOException e) {
+            wav = convertToTargetFormat(audio, UUID.randomUUID());
+        } catch (Exception e) {
             return new ValidationResult(false, "Could not read the uploaded audio: " + e.getMessage(), List.of(), 0, 0);
         }
-
         try {
-            double duration = probeDuration(temp);
-            int sampleRate = probeSampleRate(temp);
-            if (duration <= 0) {
-                return new ValidationResult(false, "That file doesn't look like valid audio.", List.of(), 0, 0);
-            }
-            if (duration < 5.0) {
-                return new ValidationResult(false,
-                        "That clip is too short (" + String.format("%.1f", duration) + "s) - "
-                        + "record at least 5 seconds. For best cloning quality, use a clean 5-15 second sample and record again.", List.of(), duration, sampleRate);
-            }
-            if (duration > 60.0) {
-                return new ValidationResult(false,
-                        "That clip is too long (" + String.format("%.1f", duration) + "s) - "
-                        + "a clean 5-15 second sample clones better than a long one.", List.of(), duration, sampleRate);
-            }
-
-            List<String> warnings = new java.util.ArrayList<>();
-            if (duration < 5.0 || duration > 15.0) {
-                warnings.add("5-15 seconds is the recommended length; this clip is "
-                        + String.format("%.1f", duration) + "s.");
-            }
-
-            VolumeStats volume = probeVolume(temp);
-            if (volume != null) {
-                if (volume.maxVolume >= -1.0) {
-                    warnings.add("This clip may be clipping (peaks very close to 0dB) - "
-                            + "re-record slightly quieter if the test sample sounds distorted.");
-                }
-                if (volume.meanVolume <= -35.0) {
-                    warnings.add("This clip is very quiet overall - check the recording is actually "
-                            + "capturing your voice, not mostly silence/background noise.");
-                }
-            }
-
-            double silence = probeSilenceDuration(temp);
-            if (duration > 0 && silence / duration > 0.5) {
-                warnings.add("More than half of this clip appears to be silence - "
-                        + "trim dead air for a cleaner reference.");
-            }
-
-            return new ValidationResult(true, null, warnings, duration, sampleRate);
+            return validateConvertedFile(wav);
         } finally {
-            try { Files.deleteIfExists(temp); } catch (IOException ignored) { }
+            try { Files.deleteIfExists(wav); } catch (IOException ignored) { }
         }
     }
 
