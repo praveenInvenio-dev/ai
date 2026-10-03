@@ -1,8 +1,12 @@
 package com.aistorystudio.videogen;
 
 import com.aistorystudio.config.ProviderGateway;
+import com.aistorystudio.domain.VoiceProfile;
+import com.aistorystudio.provider.MediaProcessor;
 import com.aistorystudio.provider.StorageProvider;
+import com.aistorystudio.provider.TextToSpeechProvider;
 import com.aistorystudio.provider.VideoGenerationProvider;
+import com.aistorystudio.repository.VoiceProfileRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,6 +39,9 @@ public class VideoGenerationService {
     private final ProviderGateway providerGateway;
     private final StorageProvider storage;
     private final VideoGenJobStore jobStore;
+    private final MediaProcessor mediaProcessor;
+    private final VoiceProfileRepository voiceProfileRepository;
+    private final com.aistorystudio.service.VoiceProfileService voiceProfileService;
     private final int defaultWidth;
     private final int defaultHeight;
     private final double maxDurationSeconds;
@@ -43,12 +50,18 @@ public class VideoGenerationService {
             ProviderGateway providerGateway,
             StorageProvider storage,
             VideoGenJobStore jobStore,
+            MediaProcessor mediaProcessor,
+            VoiceProfileRepository voiceProfileRepository,
+            com.aistorystudio.service.VoiceProfileService voiceProfileService,
             @Value("${studio.animation.local-ai.width:832}") int defaultWidth,
             @Value("${studio.animation.local-ai.height:480}") int defaultHeight,
             @Value("${studio.animation.local-ai.max-duration-seconds:6.0}") double maxDurationSeconds) {
         this.providerGateway = providerGateway;
         this.storage = storage;
         this.jobStore = jobStore;
+        this.mediaProcessor = mediaProcessor;
+        this.voiceProfileRepository = voiceProfileRepository;
+        this.voiceProfileService = voiceProfileService;
         this.defaultWidth = defaultWidth;
         this.defaultHeight = defaultHeight;
         this.maxDurationSeconds = maxDurationSeconds;
@@ -123,8 +136,16 @@ public class VideoGenerationService {
      *  different bean than this one (e.g. the controller) for @Async to
      *  actually intercept the call - a self-invocation runs synchronously. */
     @Async("videoGenerationExecutor")
+    /** narrationText/voiceProfileId are both optional - a silent clip (the
+     *  only option before this) is still exactly what you get when neither
+     *  is supplied. This adds a NARRATION TRACK, not lip-sync - Wan has no
+     *  concept of speech or mouth movement at all, so the character's mouth
+     *  will not match the audio. True lip-sync needs a genuinely different,
+     *  audio-driven model (e.g. LatentSync, MuseTalk) applied as a further
+     *  post-process on top of this - real, separate scope, not done here. */
     public void generateAsync(UUID jobId, String prompt, String negativePrompt,
-                               double durationSeconds, Long seed) {
+                               double durationSeconds, Long seed,
+                               String narrationText, UUID voiceProfileId, String workflow) {
         VideoGenJob job = jobStore.get(jobId);
         if (job == null) {
             log.warn("Video generation job {} vanished before it could start (past its retention window?)", jobId);
@@ -132,16 +153,42 @@ public class VideoGenerationService {
         }
         job.setStatus(VideoGenJobStatus.RUNNING);
         try {
+            String resolvedWorkflow = resolveWorkflow(workflow, job.getStartingImagePath() != null);
+            // Voice generation is deliberately kept separate from the video model.
+            // Wan and H3 create the visual clip; the selected Voice Lab/Chatterbox
+            // voice is synthesized afterwards and muxed as the final narration track.
+            String voiceReferenceAudioPath = null;
+            // The VoiceProfile is resolved later by muxNarration(). Do not pass its
+            // reference WAV into H3: standard TTS/voice cloning owns narration.
+            String generationPrompt = prompt;
+            boolean nativeH3Audio = false;
+            // Do not inject narration into H3's native audio path. H3 is used as
+            // a video model here; the app's standard cloned/expressive voice is
+            // generated separately so voice selection behaves identically for
+            // Wan 2.2 and H3.
+            if (nativeH3Audio && narrationText != null && !narrationText.isBlank()) {
+                generationPrompt = (prompt == null ? "" : prompt)
+                        + "\n\nDialogue / narration: Speaker 1 says naturally: \"" + narrationText.trim() + "\".";
+            }
             VideoGenerationProvider.VideoGenerationRequest request = new VideoGenerationProvider.VideoGenerationRequest(
-                    job.getStartingImagePath(), prompt, negativePrompt,
-                    durationSeconds, 0, 0, null, seed, 0);
+                    job.getStartingImagePath(), generationPrompt, negativePrompt,
+                    durationSeconds, 0, 0, resolvedWorkflow, voiceReferenceAudioPath, seed, 0);
             VideoGenerationProvider.VideoGenerationResult result = providerGateway.generateVideo(request);
 
-            String relativePath = "video-generation/results/" + jobId + "." + result.fileExtension();
-            Path stored = storage.store(relativePath, result.videoBytes());
+            byte[] finalVideoBytes = result.videoBytes();
+            String finalExtension = result.fileExtension();
+            // Both Wan and H3 use the same standalone voice-generation path. The final
+            // narration track is therefore deterministic and can use the selected cloned voice.
+            if (narrationText != null && !narrationText.isBlank()) {
+                finalVideoBytes = muxNarration(jobId, finalVideoBytes, finalExtension, narrationText, voiceProfileId);
+                finalExtension = "mp4";
+            }
+
+            String relativePath = "video-generation/results/" + jobId + "." + finalExtension;
+            Path stored = storage.store(relativePath, finalVideoBytes);
 
             job.setResultVideoPath(stored.toString());
-            job.setFileExtension(result.fileExtension());
+            job.setFileExtension(finalExtension);
             job.setSeedUsed(result.seedUsed());
             job.setWorkflowUsed(result.workflowUsed());
             job.setStatus(VideoGenJobStatus.SUCCEEDED);
@@ -149,6 +196,52 @@ public class VideoGenerationService {
             log.error("Video generation job {} failed", jobId, e);
             job.setErrorMessage(userMessage(e));
             job.setStatus(VideoGenJobStatus.FAILED);
+        }
+    }
+
+    private String resolveWorkflow(String workflow, boolean hasStartingImage) {
+        if (workflow == null || workflow.isBlank()) return hasStartingImage ? "wan-image-to-video" : "wan-ti2v-5b-text-to-video";
+        return switch (workflow.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "WAN_2_2" -> hasStartingImage ? "wan-ti2v-5b-image-to-video" : "wan-ti2v-5b-text-to-video";
+            case "MINIMAX_H3" -> hasStartingImage ? "minimax-h3-image-to-video" : "minimax-h3-text-to-video";
+            default -> throw new IllegalArgumentException("Unsupported video generation workflow: " + workflow);
+        };
+    }
+
+    /** Synthesizes narrationText (via the given VoiceProfile if one was
+     *  picked, else the app-wide default TTS provider) and muxes it onto the
+     *  freshly-generated video. Failure here degrades to the SILENT video
+     *  rather than failing the whole job - a narration/TTS hiccup losing the
+     *  video entirely would be a worse outcome than just not having audio. */
+    private byte[] muxNarration(UUID jobId, byte[] videoBytes, String videoExtension,
+                                 String narrationText, UUID voiceProfileId) {
+        Path videoTemp = null;
+        Path outputTemp = null;
+        try {
+            videoTemp = java.nio.file.Files.createTempFile("video-gen-" + jobId, "." + videoExtension);
+            java.nio.file.Files.write(videoTemp, videoBytes);
+
+            TextToSpeechProvider.TtsResult tts;
+            if (voiceProfileId != null) {
+                VoiceProfile profile = voiceProfileRepository.findById(voiceProfileId).orElse(null);
+                tts = profile != null
+                        ? providerGateway.synthesizeWithVoice(profile.getProvider(), profile.getVoiceName(), narrationText)
+                        : providerGateway.synthesize(new TextToSpeechProvider.TtsRequest(narrationText, null, null, 1.0, 1.0));
+            } else {
+                tts = providerGateway.synthesize(new TextToSpeechProvider.TtsRequest(narrationText, null, null, 1.0, 1.0));
+            }
+
+            outputTemp = java.nio.file.Files.createTempFile("video-gen-muxed-" + jobId, ".mp4");
+            java.nio.file.Files.deleteIfExists(outputTemp); // ffmpeg refuses to overwrite by default
+            Path muxed = mediaProcessor.addAudioTrack(videoTemp, tts.audioBytes(), outputTemp);
+            return java.nio.file.Files.readAllBytes(muxed);
+        } catch (Exception e) {
+            log.warn("Narration mux failed for video-generation job {} - keeping the silent video instead: {}",
+                    jobId, e.getMessage());
+            return videoBytes;
+        } finally {
+            try { if (videoTemp != null) java.nio.file.Files.deleteIfExists(videoTemp); } catch (IOException ignored) { }
+            try { if (outputTemp != null) java.nio.file.Files.deleteIfExists(outputTemp); } catch (IOException ignored) { }
         }
     }
 

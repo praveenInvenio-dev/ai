@@ -58,6 +58,15 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
     private final String defaultModel;
     private final String defaultSampler;
     private final String defaultScheduler;
+    private final String qwenDiffusionModel;
+    private final String qwenTextEncoder;
+    private final String qwenVae;
+    private final String qwenUpscaleModel;
+    private final int qwenResolution;
+    private final int qwenOutputWidth;
+    private final int qwenOutputHeight;
+    private final String qwenReferenceWorkflow;
+    private final String qwenReferenceModel;
     private final int defaultSteps;
     private final int defaultWidth;
     private final int defaultHeight;
@@ -88,6 +97,15 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
             @Value("${studio.comfyui.cfg:7.0}") double defaultCfg,
             @Value("${studio.comfyui.sampler:dpmpp_2m}") String defaultSampler,
             @Value("${studio.comfyui.scheduler:karras}") String defaultScheduler,
+            @Value("${studio.comfyui.qwen.diffusion-model:qwen_image_2.1_int8_convrot.safetensors}") String qwenDiffusionModel,
+            @Value("${studio.comfyui.qwen.text-encoder:qwen3vl_8b_int8_convrot.safetensors}") String qwenTextEncoder,
+            @Value("${studio.comfyui.qwen.vae:qwen_image_2.1_vae_bf16.safetensors}") String qwenVae,
+            @Value("${studio.comfyui.qwen.upscale-model:RealESRGAN_x2.pth}") String qwenUpscaleModel,
+            @Value("${studio.comfyui.qwen.resolution:1024}") int qwenResolution,
+            @Value("${studio.comfyui.qwen.output-width:864}") int qwenOutputWidth,
+            @Value("${studio.comfyui.qwen.output-height:1536}") int qwenOutputHeight,
+            @Value("${studio.comfyui.qwen.reference-workflow:character-consistent-story-ipadapter-sdxl}") String qwenReferenceWorkflow,
+            @Value("${studio.comfyui.qwen.reference-model:DreamShaperXL_Lightning.safetensors}") String qwenReferenceModel,
             @Value("${studio.comfyui.timeoutSeconds:900}") long timeoutSeconds,
             @Value("${studio.comfyui.queueWaitSeconds:3600}") long queueWaitSeconds,
             @Value("${studio.comfyui.pollIntervalMs:2000}") long pollIntervalMs) {
@@ -101,6 +119,15 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         this.defaultCfg = defaultCfg;
         this.defaultSampler = defaultSampler;
         this.defaultScheduler = defaultScheduler;
+        this.qwenDiffusionModel = qwenDiffusionModel;
+        this.qwenTextEncoder = qwenTextEncoder;
+        this.qwenVae = qwenVae;
+        this.qwenUpscaleModel = qwenUpscaleModel;
+        this.qwenResolution = qwenResolution;
+        this.qwenOutputWidth = qwenOutputWidth;
+        this.qwenOutputHeight = qwenOutputHeight;
+        this.qwenReferenceWorkflow = qwenReferenceWorkflow;
+        this.qwenReferenceModel = qwenReferenceModel;
         this.timeout = Duration.ofSeconds(timeoutSeconds);
         this.queueWait = Duration.ofSeconds(queueWaitSeconds);
         this.pollIntervalMs = Math.max(250, pollIntervalMs);
@@ -132,6 +159,17 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         long seed = request.seed() != null ? request.seed() : ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
         String workflowName = request.workflow() != null ? request.workflow() : defaultWorkflow;
         String checkpointName = request.model() != null ? request.model() : defaultModel;
+        boolean qwenWorkflow = "qwen-image-2-1-16gb-t2i".equalsIgnoreCase(workflowName);
+        if (qwenWorkflow && request.referenceImagePath() != null) {
+            // Qwen T2I is the 16GB high-detail path. Character-reference scenes
+            // stay on the SDXL IPAdapter path so identity conditioning is not
+            // silently discarded.
+            workflowName = qwenReferenceWorkflow;
+            checkpointName = qwenReferenceModel;
+            qwenWorkflow = false;
+        } else if (qwenWorkflow) {
+            checkpointName = qwenDiffusionModel;
+        }
         // The bundled reference workflow is SD1.5-specific. Selecting it for an
         // SDXL checkpoint produces either a node/model mismatch or weak identity
         // conditioning. Automatically choose the matching SDXL IPAdapter template.
@@ -147,10 +185,10 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
                     : "character-consistent-story-ipadapter-sdxl";
         }
 
-        int width = snap(request.width() > 0 ? request.width() : defaultWidth);
-        int height = snap(request.height() > 0 ? request.height() : defaultHeight);
-        int steps = request.steps() > 0 ? request.steps() : defaultSteps;
-        double cfg = request.cfg() > 0 ? request.cfg() : defaultCfg;
+        int width = snap(request.width() > 0 ? request.width() : (qwenWorkflow ? 576 : defaultWidth));
+        int height = snap(request.height() > 0 ? request.height() : (qwenWorkflow ? 1024 : defaultHeight));
+        int steps = request.steps() > 0 ? request.steps() : (qwenWorkflow ? 20 : defaultSteps);
+        double cfg = request.cfg() > 0 ? request.cfg() : (qwenWorkflow ? 1.0 : defaultCfg);
 
         // SDXL-Lightning is distilled for the Euler/SGM-Uniform schedule. The
         // older dpmpp_2m/karras defaults are valid for ordinary SD1.5 but waste
@@ -221,6 +259,40 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         // relying on ComfyUI to keep count correctly.
         String clientId = UUID.randomUUID().toString();
         String filenamePrefix = "ai-story-studio-" + clientId;
+
+        if (qwenWorkflow) {
+            Map<String, String> qwenText = new LinkedHashMap<>();
+            qwenText.put("{{POSITIVE_PROMPT}}", request.prompt() == null ? "" : request.prompt());
+            qwenText.put("{{NEGATIVE_PROMPT}}", request.negativePrompt() == null ? "" : request.negativePrompt());
+            qwenText.put("{{QWEN_DIFFUSION_MODEL}}", qwenDiffusionModel);
+            qwenText.put("{{QWEN_TEXT_ENCODER}}", qwenTextEncoder);
+            qwenText.put("{{QWEN_VAE}}", qwenVae);
+            qwenText.put("{{UPSCALE_MODEL}}", qwenUpscaleModel);
+            qwenText.put("{{FILENAME_PREFIX}}", filenamePrefix);
+            Map<String, Number> qwenNumeric = new LinkedHashMap<>();
+            qwenNumeric.put("{{SEED}}", seed);
+            qwenNumeric.put("{{WIDTH}}", width);
+            qwenNumeric.put("{{HEIGHT}}", height);
+            qwenNumeric.put("{{STEPS}}", steps);
+            qwenNumeric.put("{{QWEN_RESOLUTION}}", qwenResolution);
+            qwenNumeric.put("{{OUTPUT_WIDTH}}", qwenOutputWidth);
+            qwenNumeric.put("{{OUTPUT_HEIGHT}}", qwenOutputHeight);
+            String workflowJson = WorkflowTemplateFiller.fill(mapper, workflowName, qwenText, qwenNumeric);
+            Map<String, Object> qwenPayload = new LinkedHashMap<>();
+            try { qwenPayload.put("prompt", mapper.readTree(workflowJson)); }
+            catch (Exception e) { throw new IllegalStateException("Invalid ComfyUI workflow template '" + workflowName + "'", e); }
+            qwenPayload.put("client_id", clientId);
+            JsonNode qwenQueue = submitPrompt(qwenPayload);
+            if (qwenQueue == null || qwenQueue.get("prompt_id") == null) {
+                throw new IllegalStateException("ComfyUI did not accept the Qwen image workflow: " + qwenQueue);
+            }
+            JsonNode qwenErrors = qwenQueue.path("node_errors");
+            if (qwenErrors.isObject() && qwenErrors.size() > 0) {
+                throw new IllegalStateException("ComfyUI reported Qwen node errors: " + qwenErrors);
+            }
+            byte[] qwenImage = pollForImage(qwenQueue.get("prompt_id").asText());
+            return new ImageGenerationResult(qwenImage, "png", seed, qwenDiffusionModel, workflowName);
+        }
 
         String workflowJson = WorkflowTemplateLoader.loadAndFill(
                 mapper, workflowName, request.prompt(),

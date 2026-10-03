@@ -55,6 +55,12 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
     private final String clipModel;
     private final String vaeModel;
     private final String clipVisionModel;
+    private final String h3DiffusionModel;
+    private final String h3Ref2vaDiffusionModel;
+    private final String h3TextEncoder;
+    private final String h3VideoVae;
+    private final String h3AudioVae;
+    private final int h3Steps;
     private final int defaultWidth;
     private final int defaultHeight;
     private final int defaultFps;
@@ -75,6 +81,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
     // killed during its save step by a concurrent image request. See
     // ComfyUiAccessCoordinator's own comment for the full story.
     private final Semaphore slot;
+    private final int h3MinVramMb;
 
     private final com.aistorystudio.system.ResourceMonitorService resourceMonitor;
     private final int minVramMb;
@@ -91,6 +98,12 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
             // to serve two shapes via optional fields.
             @Value("${studio.animation.local-ai.text-to-video-workflow:wan-ti2v-5b-text-to-video}") String textToVideoWorkflow,
             @Value("${studio.animation.local-ai.diffusion-model:}") String diffusionModel,
+            @Value("${studio.animation.local-ai.minimax-h3-diffusion-model:minimax_h3_fl2va_pruned_int8_convrot.safetensors}") String h3DiffusionModel,
+            @Value("${studio.animation.local-ai.minimax-h3-ref2va-diffusion-model:minimax_h3_ref2va_pruned_int8_convrot.safetensors}") String h3Ref2vaDiffusionModel,
+            @Value("${studio.animation.local-ai.minimax-h3-text-encoder:qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors}") String h3TextEncoder,
+            @Value("${studio.animation.local-ai.minimax-h3-video-vae:minimax_h3_video_vae_fp16.safetensors}") String h3VideoVae,
+            @Value("${studio.animation.local-ai.minimax-h3-audio-vae:minimax_h3_audio_vae_fp32.safetensors}") String h3AudioVae,
+            @Value("${studio.animation.local-ai.minimax-h3-steps:8}") int h3Steps,
             @Value("${studio.animation.local-ai.clip-model:}") String clipModel,
             @Value("${studio.animation.local-ai.vae-model:}") String vaeModel,
             @Value("${studio.animation.local-ai.clip-vision-model:}") String clipVisionModel,
@@ -106,16 +119,24 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
             @Value("${studio.animation.local-ai.queue-wait-seconds:3600}") long queueWaitSeconds,
             @Value("${studio.animation.local-ai.poll-interval-ms:3000}") long pollIntervalMs,
             @Value("${studio.animation.local-ai.max-concurrent:1}") int maxConcurrent,
-            @Value("${studio.animation.local-ai.min-vram-mb:4000}") int minVramMb,
+            @Value("${studio.animation.local-ai.min-vram-mb:14000}") int minVramMb,
+            @Value("${studio.animation.local-ai.minimax-h3-min-vram-mb:24000}") int h3MinVramMb,
             com.aistorystudio.system.ResourceMonitorService resourceMonitor,
             ComfyUiAccessCoordinator comfyUiAccessCoordinator) {
         this.resourceMonitor = resourceMonitor;
         this.minVramMb = minVramMb;
+        this.h3MinVramMb = h3MinVramMb;
         this.webClient = webClientBuilder.baseUrl(baseUrl).build();
         this.enabled = enabled;
         this.defaultWorkflow = defaultWorkflow;
         this.textToVideoWorkflow = textToVideoWorkflow;
         this.diffusionModel = diffusionModel;
+        this.h3DiffusionModel = h3DiffusionModel;
+        this.h3Ref2vaDiffusionModel = h3Ref2vaDiffusionModel;
+        this.h3TextEncoder = h3TextEncoder;
+        this.h3VideoVae = h3VideoVae;
+        this.h3AudioVae = h3AudioVae;
+        this.h3Steps = h3Steps;
         this.clipModel = clipModel;
         this.vaeModel = vaeModel;
         this.clipVisionModel = clipVisionModel;
@@ -149,22 +170,17 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         if (!enabled) {
             return "Local AI video generation is disabled (studio.animation.local-ai.enabled=false).";
         }
-        if (blank(diffusionModel)) {
-            return "No Wan diffusion model configured (studio.animation.local-ai.diffusion-model).";
+        boolean wanConfigured = !blank(diffusionModel) && !blank(clipModel) && !blank(vaeModel);
+        boolean h3Configured = !blank(h3DiffusionModel) && !blank(h3TextEncoder) && !blank(h3VideoVae) && !blank(h3AudioVae);
+        boolean h3VoiceConfigured = !blank(h3Ref2vaDiffusionModel) && !blank(h3TextEncoder) && !blank(h3VideoVae) && !blank(h3AudioVae);
+        if (h3Configured && !h3VoiceConfigured) { log.warn("MiniMax H3 base workflow is configured but H3 Ref2VA voice-reference model is not configured."); }
+        if (!wanConfigured && !h3Configured) {
+            return "No local video model configuration is complete (Wan 2.2 or MiniMax H3).";
         }
-        if (blank(clipModel)) {
-            return "No text encoder configured (studio.animation.local-ai.clip-model).";
-        }
-        if (blank(vaeModel)) {
-            return "No VAE configured (studio.animation.local-ai.vae-model).";
-        }
-        // The legacy Wan image-to-video graph uses CLIP Vision for reference
-        // conditioning. The newer TI2V-5B graph does not, so requiring it for
-        // every workflow falsely disables the newer pipeline.
-        boolean needsClipVision = defaultWorkflow != null
-                && !defaultWorkflow.toLowerCase(java.util.Locale.ROOT).contains("ti2v-5b");
-        if (needsClipVision && blank(clipVisionModel)) {
-            return "No CLIP vision model configured for the selected legacy Wan workflow.";
+        // The legacy Wan image-to-video graph uses CLIP Vision for reference conditioning.
+        boolean needsClipVision = defaultWorkflow != null && !defaultWorkflow.toLowerCase(java.util.Locale.ROOT).contains("ti2v-5b");
+        if (wanConfigured && needsClipVision && blank(clipVisionModel)) {
+            log.warn("Wan legacy workflow is configured without a CLIP vision model; H3 can still be used independently.");
         }
         // Real check, not assumed (spec section 25/27): a scene attempted on
         // hardware without enough VRAM would OOM mid-generation, wasting the
@@ -190,6 +206,14 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         String reason = unavailableReason();
         if (reason != null) {
             throw new IllegalStateException("Local AI video generation is not available: " + reason);
+        }
+        if (request.workflow() != null && request.workflow().toLowerCase(java.util.Locale.ROOT).startsWith("minimax-h3")) {
+            var gpu = resourceMonitor.current();
+            if (gpu.gpuVramTotalMb() != null && gpu.gpuVramTotalMb() < h3MinVramMb) {
+                throw new IllegalStateException("MiniMax H3 local ComfyUI workflow requires at least " + h3MinVramMb
+                        + "MB VRAM in this build; current GPU has " + gpu.gpuVramTotalMb()
+                        + "MB. Use Wan 2.2 TI2V-5B on 16GB or move H3 to a larger GPU.");
+            }
         }
         boolean acquired;
         try {
@@ -230,8 +254,10 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         // guarantees the raw Wan clip is always >= the requested duration, so
         // the later FFmpeg trim (which expects that) actually has something to
         // trim from instead of coming up short.
-        int rawFrames = (int) Math.round(duration * defaultFps);
-        int length = Math.max(5, (((rawFrames - 1) + 3) / 4) * 4 + 1);
+        int rawFrames = (int) Math.round(duration * (workflowName.startsWith("minimax-h3") ? 24 : defaultFps));
+        int length = workflowName.startsWith("minimax-h3")
+                ? Math.max(5, rawFrames + ((17 - (rawFrames - 5) % 17) % 17))
+                : Math.max(5, (((rawFrames - 1) + 3) / 4) * 4 + 1);
 
         // Text-to-video is a real mode, not an error case: no starting image
         // means Wan22ImageToVideoLatent's optional start_image input is
@@ -261,11 +287,14 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         String clientId = UUID.randomUUID().toString();
         String filenamePrefix = "ai-story-studio-wan-" + clientId;
 
-        String workflowJson = fillWanTemplate(workflowName, request.prompt(),
-                request.negativePrompt() == null ? "" : request.negativePrompt(),
-                seed, width, height, length, defaultFps,
-                request.steps() > 0 ? request.steps() : defaultSteps,
-                startingImageFilename, filenamePrefix);
+        String workflowJson = workflowName.startsWith("minimax-h3")
+                ? fillMiniMaxH3Template(workflowName, request.prompt(), seed, width, height, length,
+                    request.steps() > 0 ? request.steps() : h3Steps, startingImageFilename, request.voiceReferenceAudioPath())
+                : fillWanTemplate(workflowName, request.prompt(),
+                    request.negativePrompt() == null ? "" : request.negativePrompt(),
+                    seed, width, height, length, defaultFps,
+                    request.steps() > 0 ? request.steps() : defaultSteps,
+                    startingImageFilename, filenamePrefix);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         try {
@@ -311,6 +340,30 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
      *  parse/substitute mechanism to {@link WorkflowTemplateFiller} - the
      *  same shared, typed-substitution mechanism ComfyUIImageProvider uses,
      *  not a separate ad hoc implementation. */
+    private String fillMiniMaxH3Template(String workflowName, String positive, long seed, int width, int height, int length, int steps, String startingImageFilename, String voiceReferenceAudioPath) {
+        boolean useVoiceReference = voiceReferenceAudioPath != null && !voiceReferenceAudioPath.isBlank();
+        String template = useVoiceReference
+                ? (startingImageFilename != null ? "minimax-h3-reference-to-video" : "minimax-h3-voice-to-video")
+                : (startingImageFilename != null ? "minimax-h3-image-to-video" : "minimax-h3-text-to-video");
+        String uploadedVoiceFilename = useVoiceReference ? uploadMedia(Path.of(voiceReferenceAudioPath)) : null;
+        Map<String, String> text = new LinkedHashMap<>();
+        text.put("{{POSITIVE_PROMPT}}", positive == null ? "" : positive);
+        text.put("{{STARTING_IMAGE}}", startingImageFilename == null ? "" : startingImageFilename);
+        text.put("{{VOICE_REFERENCE_AUDIO}}", uploadedVoiceFilename == null ? "" : uploadedVoiceFilename);
+        text.put("{{FILENAME_PREFIX}}", "ai-story-studio-minimax-h3-" + UUID.randomUUID());
+        text.put("{{H3_DIFFUSION_MODEL}}", useVoiceReference ? h3Ref2vaDiffusionModel : h3DiffusionModel);
+        text.put("{{H3_TEXT_ENCODER}}", h3TextEncoder);
+        text.put("{{H3_VIDEO_VAE}}", h3VideoVae);
+        text.put("{{H3_AUDIO_VAE}}", h3AudioVae);
+        Map<String, Number> numeric = new LinkedHashMap<>();
+        numeric.put("{{SEED}}", seed);
+        numeric.put("{{WIDTH}}", width);
+        numeric.put("{{HEIGHT}}", height);
+        numeric.put("{{LENGTH}}", length);
+        numeric.put("{{STEPS}}", steps);
+        return WorkflowTemplateFiller.fill(mapper, template, text, numeric);
+    }
+
     private String fillWanTemplate(String workflowName, String positive, String negative,
                                    long seed, int width, int height, int length, int fps, int steps,
                                    String startingImageFilename, String filenamePrefix) {
@@ -322,6 +375,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         text.put("{{VAE_MODEL}}", vaeModel);
         text.put("{{CLIP_VISION_MODEL}}", clipVisionModel);
         text.put("{{STARTING_IMAGE}}", startingImageFilename == null ? "" : startingImageFilename);
+        text.put("{{FILENAME_PREFIX}}", "ai-story-studio-minimax-h3-" + UUID.randomUUID());
         text.put("{{SAMPLER}}", defaultSampler);
         text.put("{{SCHEDULER}}", defaultScheduler);
         text.put("{{FILENAME_PREFIX}}", filenamePrefix);
@@ -342,23 +396,30 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
      *  images - this is ComfyUI's own documented way to feed an external
      *  image into any workflow's LoadImage node. */
     private String uploadStartingImage(Path imagePath) {
-        if (!Files.exists(imagePath)) {
-            throw new IllegalStateException("Starting image not found on disk: " + imagePath);
+        return uploadMedia(imagePath);
+    }
+
+    /** Uploads an image or audio reference through ComfyUI's generic media upload endpoint. */
+    private String uploadMedia(Path mediaPath) {
+        if (mediaPath == null || !Files.isRegularFile(mediaPath)) {
+            throw new IllegalStateException("Reference media not found on disk: " + mediaPath);
         }
         byte[] bytes;
         try {
-            bytes = Files.readAllBytes(imagePath);
+            bytes = Files.readAllBytes(mediaPath);
         } catch (IOException e) {
-            throw new IllegalStateException("Could not read starting image: " + imagePath, e);
+            throw new IllegalStateException("Could not read reference media: " + mediaPath, e);
         }
+        String ext = mediaPath.getFileName().toString();
+        int dot = ext.lastIndexOf('.');
+        ext = dot >= 0 ? ext.substring(dot).toLowerCase(java.util.Locale.ROOT) : ".bin";
+        String prefix = ext.equals(".wav") || ext.equals(".mp3") || ext.equals(".flac") || ext.equals(".m4a") ? "h3-voice-" : "wan-start-";
+        String filename = prefix + UUID.randomUUID() + ext;
 
         MultipartBodyBuilder body = new MultipartBodyBuilder();
         body.part("image", new ByteArrayResource(bytes) {
-            @Override
-            public String getFilename() {
-                return "wan-start-" + UUID.randomUUID() + ".png";
-            }
-        }).contentType(MediaType.IMAGE_PNG);
+            @Override public String getFilename() { return filename; }
+        }).contentType(MediaType.APPLICATION_OCTET_STREAM);
         body.part("overwrite", "true");
 
         JsonNode response = webClient.post()
@@ -370,13 +431,13 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                 .block(Duration.ofSeconds(30));
 
         if (response == null || response.get("name") == null || response.get("name").asText().isBlank()) {
-            throw new IllegalStateException("ComfyUI did not return a usable filename for the uploaded starting image: " + response);
+            throw new IllegalStateException("ComfyUI did not return a usable filename for uploaded reference media: " + response);
         }
         String name = response.get("name").asText();
         String subfolder = response.path("subfolder").asText("");
         String relative = subfolder.isBlank() ? name : subfolder + "/" + name;
         if (relative.equals("input") || relative.endsWith("/input") || relative.contains("../")) {
-            throw new IllegalStateException("ComfyUI returned an invalid starting-image path: " + relative);
+            throw new IllegalStateException("ComfyUI returned an invalid reference-media path: " + relative);
         }
         return relative;
     }

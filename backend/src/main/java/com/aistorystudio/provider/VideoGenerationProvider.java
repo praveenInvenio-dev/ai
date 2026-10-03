@@ -24,6 +24,7 @@ public interface VideoGenerationProvider {
             int width,
             int height,
             String workflow,
+            String voiceReferenceAudioPath,
             Long seed,
             /** 0 = use the provider's configured default (LOCAL_AI_ANIMATION_STEPS) -
              *  same "0 means default" convention ImageGenerationRequest already

@@ -53,7 +53,13 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("chatterbox-server")
 
-DEVICE = os.environ.get("CHATTERBOX_DEVICE", "cpu")
+DEVICE = os.environ.get("CHATTERBOX_DEVICE", "auto")
+if DEVICE == "auto":
+    try:
+        import torch
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    except Exception:
+        DEVICE = "cpu"
 VOICES_DIR = os.environ.get("CHATTERBOX_VOICES_DIR", "/voices")
 # Shared with the backend container (VoiceProfileService writes here) - a
 # voice recorded/uploaded through the Voice Library UI lands here under its
@@ -61,24 +67,35 @@ VOICES_DIR = os.environ.get("CHATTERBOX_VOICES_DIR", "/voices")
 VOICE_PROFILES_DIR = os.environ.get("CHATTERBOX_VOICE_PROFILES_DIR", "/voice-profiles")
 DEFAULT_VOICE = os.environ.get("CHATTERBOX_DEFAULT_VOICE", "narrator")
 
-_model = None
+_models = {}
 _model_lock = threading.Lock()
+_generation_lock = threading.Lock()
+
+MODEL_TYPE = os.environ.get("CHATTERBOX_MODEL_TYPE", "standard").strip().lower()
+DEFAULT_LANGUAGE = os.environ.get("CHATTERBOX_DEFAULT_LANGUAGE", "en").strip().lower()
 
 
-def get_model():
-    """Lazy-loaded, once, behind a lock - loading a 350M-parameter model on
-    every request would make every single line of narration pay the full
-    load cost. Same pattern as tts-indic's model loading."""
-    global _model
-    if _model is None:
+def get_model(language: str = "en"):
+    """Load the real current Chatterbox model once and cache it.
+
+    standard = high-quality English/reference-voice model; multilingual =
+    Chatterbox Multilingual V3 for supported non-English languages. Turbo is
+    intentionally not the default because Voice Lab and scene narration need
+    the standard model's expressive conditioning and stable reference cloning.
+    """
+    key = "multilingual" if MODEL_TYPE == "multilingual" or language.lower() != "en" else "standard"
+    if key not in _models:
         with _model_lock:
-            if _model is None:
-                log.info("Loading ChatterboxTurboTTS on device=%s (first request - this can take a while)...", DEVICE)
-                from chatterbox.tts_turbo import ChatterboxTurboTTS
-                _model = ChatterboxTurboTTS.from_pretrained(device=DEVICE)
-                log.info("ChatterboxTurboTTS loaded.")
-    return _model
-
+            if key not in _models:
+                log.info("Loading Chatterbox %s model on device=%s...", key, DEVICE)
+                if key == "multilingual":
+                    from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+                    _models[key] = ChatterboxMultilingualTTS.from_pretrained(device=DEVICE, t3_model="v3")
+                else:
+                    from chatterbox.tts import ChatterboxTTS
+                    _models[key] = ChatterboxTTS.from_pretrained(device=DEVICE)
+                log.info("Chatterbox %s model loaded.", key)
+    return _models[key]
 
 def voice_reference_path(voice: str):
     """A voice is just a reference clip. Checks the Voice Library's shared
@@ -108,6 +125,18 @@ def list_voices():
     return sorted(names)
 
 
+def audio_rms_db(wav_bytes: bytes) -> float:
+    """Return RMS level in dBFS; used to reject silent/invalid synthesis."""
+    try:
+        data, _ = sf.read(io.BytesIO(wav_bytes), dtype="float32")
+        if data.size == 0:
+            return -120.0
+        rms = float(np.sqrt(np.mean(np.square(data))))
+        return 20.0 * np.log10(max(rms, 1e-8))
+    except Exception:
+        return -120.0
+
+
 def shift_pitch(wav_bytes: bytes, pitch: float) -> bytes:
     """Same approach as tts/server.py's shift_pitch: post-process with a
     resample trick rather than a model-native pitch parameter, since
@@ -127,7 +156,7 @@ def shift_pitch(wav_bytes: bytes, pitch: float) -> bytes:
 
 @app.get("/health")
 def health():
-    return jsonify({"status": "ok", "device": DEVICE, "modelLoaded": _model is not None})
+    return jsonify({"status": "ok", "device": DEVICE, "modelType": MODEL_TYPE, "loadedModels": sorted(_models.keys())})
 
 
 @app.get("/api/voices")
@@ -145,62 +174,71 @@ def synthesize():
     text = (body.get("text") or "").strip()
     if not text:
         return jsonify({"error": "text is required"}), 400
+    if len(text) > 1200:
+        text = text[:1200]
 
     voice = body.get("voice") or DEFAULT_VOICE
-    speed = body.get("speed") or 1.0
-    pitch = body.get("pitch") or 1.0
-
-    # Structured Voice Director metadata is converted to ChatterBox-native
-    # paralinguistic tags only inside this provider. Other TTS engines never
-    # see literal [gasp]/[laugh] text.
+    language = str(body.get("language") or DEFAULT_LANGUAGE).lower()
+    speed = float(body.get("speed") or 1.0)
+    pitch = float(body.get("pitch") or 1.0)
+    emotion = str(body.get("emotion") or "neutral").strip().lower()
+    intensity = float(body.get("emotionIntensity") or 0.5)
+    intensity = max(0.0, min(1.0, intensity))
     event = str(body.get("paralinguisticEvent") or "").strip().lower()
-    if event in {"laugh", "chuckle", "gasp", "sigh", "cough"} and f"[{event}]" not in text.lower():
-        text = f"{text} [{event}]"
 
     reference = voice_reference_path(voice)
     if reference is None:
-        return jsonify({
-            "error": f"No reference clip for voice '{voice}' at {VOICES_DIR}/{voice}.wav. "
-                     f"ChatterBox needs a short (~10s) reference clip per voice to clone - "
-                     f"add one and restart, or select an existing voice from /api/voices."
-        }), 400
+        return jsonify({"error": f"No reference audio found for voice '{voice}'. Expected {VOICE_PROFILES_DIR}/{voice}.wav or {VOICES_DIR}/{voice}.wav."}), 400
+
+    # Chatterbox uses reference speech as the speaker/style prompt. Scene
+    # emotion is mapped to exaggeration; supported paralinguistic events are
+    # added explicitly rather than pretending Chatterbox has a generic
+    # emotion/instruction parameter.
+    if event in {"laugh", "chuckle", "gasp", "sigh", "cough", "groan", "sniff", "shush", "clear throat"}:
+        if f"[{event}]" not in text.lower():
+            text = f"{text} [{event}]"
+    if emotion in {"excited", "happy", "joyful", "surprised", "angry", "fearful", "sad", "dramatic"}:
+        intensity = max(intensity, 0.65 if emotion in {"excited", "dramatic", "angry", "surprised"} else 0.55)
 
     try:
-        model = get_model()
-    except Exception as exc:  # noqa: BLE001 - report exactly what failed to load, not a generic 500
-        log.exception("Could not load ChatterboxTurboTTS")
-        return jsonify({"error": f"Model failed to load: {exc}"}), 500
+        model = get_model(language)
+    except Exception as exc:
+        log.exception("Could not load Chatterbox")
+        return jsonify({"error": f"Chatterbox model failed to load: {exc}"}), 500
 
     try:
         import torchaudio as ta
-        generate_kwargs = {"audio_prompt_path": reference}
-        log.info("Voice Director: emotion=%s intensity=%s delivery=%s emphasis=%s breath=%s acting=%s",
-                 body.get("emotion"), body.get("emotionIntensity"), body.get("delivery"),
-                 body.get("emphasis"), body.get("breath"), body.get("actingDirection"))
-        # Best-effort: the documented Turbo signature doesn't show a speed
-        # kwarg, but if a future/different chatterbox-tts version does
-        # support one, use it instead of silently ignoring the request.
-        # Falls back to generating at native speed and logging once rather
-        # than failing the whole request over a cosmetic parameter.
-        try:
-            wav_tensor = model.generate(text, speed=speed, **generate_kwargs)
-        except TypeError:
-            wav_tensor = model.generate(text, **generate_kwargs)
-            if abs(speed - 1.0) > 0.01:
-                log.warning("This chatterbox-tts version's generate() has no speed parameter; "
-                            "requested speed=%.2f was ignored for this line.", speed)
+        kwargs = {
+            "audio_prompt_path": reference,
+            "exaggeration": 0.25 + (intensity * 1.0),
+            "temperature": 0.65 if intensity < 0.7 else 0.8,
+            "cfg_weight": 0.5,
+        }
+        if language != "en" or MODEL_TYPE == "multilingual":
+            kwargs["language_id"] = language
 
-        buf = io.BytesIO()
-        ta.save(buf, wav_tensor, model.sr, format="wav")
-        wav_bytes = buf.getvalue()
-    except Exception as exc:  # noqa: BLE001
-        log.exception("ChatterBox synthesis failed for voice=%s", voice)
-        return jsonify({"error": f"Synthesis failed: {exc}"}), 500
+        log.info("Generating voice=%s model=%s language=%s emotion=%s intensity=%.2f reference=%s",
+                 voice, type(model).__name__, language, emotion, intensity, reference)
+        # Chatterbox mutates model conditionals during generate(); serialize
+        # requests so concurrent scenes cannot corrupt each other's voice.
+        with _generation_lock:
+            wav_tensor = model.generate(text, **kwargs)
+            buf = io.BytesIO()
+            ta.save(buf, wav_tensor, model.sr, format="wav")
+            wav_bytes = buf.getvalue()
+    except Exception as exc:
+        log.exception("Chatterbox synthesis failed for voice=%s", voice)
+        return jsonify({"error": f"Voice generation failed for '{voice}': {exc}"}), 500
 
+    if len(wav_bytes) < 1000:
+        return jsonify({"error": "Chatterbox returned an invalid/empty WAV."}), 502
+    rms_db = audio_rms_db(wav_bytes)
+    if rms_db < -48.0:
+        log.error("Rejecting effectively silent Chatterbox output: %.1f dBFS", rms_db)
+        return jsonify({"error": f"Chatterbox generated effectively silent audio ({rms_db:.1f} dBFS). The voice reference/model generation failed; no silent sample was returned."}), 502
     if abs(pitch - 1.0) > 0.01:
         wav_bytes = shift_pitch(wav_bytes, pitch)
-
-    return Response(wav_bytes, mimetype="audio/wav")
+    return Response(wav_bytes, mimetype="audio/wav", headers={"Content-Disposition": 'inline; filename="voice.wav"'})
 
 
 if __name__ == "__main__":

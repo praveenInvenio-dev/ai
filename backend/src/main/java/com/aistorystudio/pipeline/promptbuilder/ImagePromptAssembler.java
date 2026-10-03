@@ -74,6 +74,16 @@ public class ImagePromptAssembler {
     private static final int SDXL_STYLE_TOKENS = 55;
     private static final int SDXL_CONTINUITY_TOKENS = 24;
 
+    // Qwen Image 2.1 has a much larger text-conditioning window than the
+    // legacy CLIP paths. On the 16GB preset we deliberately spend that room
+    // on concrete environment/lighting/material detail rather than adding a
+    // second prompt-enhancer model, which would consume another large chunk
+    // of VRAM.
+    private static final int QWEN_CHARACTER_TOKENS = 120;
+    private static final int QWEN_SCENE_TOKENS = 120;
+    private static final int QWEN_STYLE_TOKENS = 90;
+    private static final int QWEN_CONTINUITY_TOKENS = 50;
+
     public record AssembledPrompt(String positivePrompt, String negativePrompt) {}
 
     /** Back-compat overload - no checkpoint hint means the SD1.5-tier budget,
@@ -87,11 +97,13 @@ public class ImagePromptAssembler {
     public AssembledPrompt assemble(Scene scene, List<Character> charactersInScene,
                                      List<String> continuityFacts, String visualStyle, String colorPalette,
                                      String checkpointName) {
-        boolean sdxl = checkpointName != null && checkpointName.toLowerCase(java.util.Locale.ROOT).contains("xl");
-        int characterTokens = sdxl ? SDXL_CHARACTER_TOKENS : CHARACTER_TOKENS;
-        int sceneTokens = sdxl ? SDXL_SCENE_TOKENS : SCENE_TOKENS;
-        int styleTokens = sdxl ? SDXL_STYLE_TOKENS : STYLE_TOKENS;
-        int continuityTokens = sdxl ? SDXL_CONTINUITY_TOKENS : CONTINUITY_TOKENS;
+        String modelName = checkpointName == null ? "" : checkpointName.toLowerCase(java.util.Locale.ROOT);
+        boolean qwen = modelName.contains("qwen_image") || modelName.contains("qwen-image");
+        boolean sdxl = modelName.contains("xl");
+        int characterTokens = qwen ? QWEN_CHARACTER_TOKENS : (sdxl ? SDXL_CHARACTER_TOKENS : CHARACTER_TOKENS);
+        int sceneTokens = qwen ? QWEN_SCENE_TOKENS : (sdxl ? SDXL_SCENE_TOKENS : SCENE_TOKENS);
+        int styleTokens = qwen ? QWEN_STYLE_TOKENS : (sdxl ? SDXL_STYLE_TOKENS : STYLE_TOKENS);
+        int continuityTokens = qwen ? QWEN_CONTINUITY_TOKENS : (sdxl ? SDXL_CONTINUITY_TOKENS : CONTINUITY_TOKENS);
 
         // Order is the whole point: identity, then what is happening, then how it
         // is rendered. Reordering these silently degrades character consistency.

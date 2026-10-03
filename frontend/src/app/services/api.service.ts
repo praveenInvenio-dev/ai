@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 import {
   Project, Universe, Character, Episode, SceneDto,
@@ -367,13 +368,17 @@ export class ApiService {
   }
 
   createVideoGenerationJob(
-    image: File | null, prompt: string, negativePrompt: string, durationSeconds: number
+    image: File | null, prompt: string, negativePrompt: string, durationSeconds: number,
+    narrationText?: string, voiceProfileId?: string, workflow?: string
   ): Observable<{ jobId: string }> {
     const form = new FormData();
     if (image) { form.append('image', image, image.name); }
     form.append('prompt', prompt);
     if (negativePrompt) { form.append('negativePrompt', negativePrompt); }
     form.append('durationSeconds', String(durationSeconds));
+    if (narrationText) { form.append('narrationText', narrationText); }
+    if (voiceProfileId) { form.append('voiceProfileId', voiceProfileId); }
+    if (workflow) { form.append('workflow', workflow); }
     return this.http.post<{ jobId: string }>(`${this.base}/video-generation/jobs`, form);
   }
 
@@ -418,8 +423,15 @@ export class ApiService {
     return this.http.post<VoiceProfile>(`${this.base}/voice-profiles/cloned`, form);
   }
 
-  testVoiceProfile(id: string, text: string): Observable<Blob> {
-    return this.http.post(`${this.base}/voice-profiles/${id}/test`, { text }, { responseType: 'blob' });
+  /** warning is set when the audio is actually MockTTSProvider's silent
+   *  placeholder (the assigned voice provider failed and fell back) - see
+   *  VoiceProfileController's X-Tts-Warning header. Without this, a failed
+   *  ChatterBox/CosyVoice call plays back as genuine silence with zero
+   *  indication why. */
+  testVoiceProfile(id: string, text: string): Observable<{ blob: Blob; warning: string | null }> {
+    return this.http.post(`${this.base}/voice-profiles/${id}/test`, { text },
+      { responseType: 'blob', observe: 'response' }
+    ).pipe(map(res => ({ blob: res.body as Blob, warning: res.headers.get('X-Tts-Warning') })));
   }
 
   getVoiceReferenceAudio(id: string): Observable<Blob> {

@@ -57,7 +57,7 @@ public class Episode {
      *  DB default so an episode created before this field existed still
      *  reads as BALANCED, not null. */
     @Column(name = "quality_profile", nullable = false)
-    private String qualityProfile = "BALANCED";
+    private String qualityProfile = "QUALITY";
 
     @Column(columnDefinition = "TEXT")
     private String language = "English";

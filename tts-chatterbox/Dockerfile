@@ -15,9 +15,8 @@ ARG TORCH_PACKAGES="torch==2.4.1 torchaudio==2.4.1"
 RUN pip install --no-cache-dir --index-url ${TORCH_INDEX_URL} ${TORCH_PACKAGES}
 
 # Real pip package, confirmed at https://pypi.org/project/chatterbox-tts/
-# (Resemble AI). Turbo-specific import path is chatterbox.tts_turbo -
-# verify this still matches whatever version installs here; Resemble has
-# reorganised module paths between releases before.
+# (Resemble AI). The service uses the current chatterbox.tts / chatterbox.mtl_tts APIs for
+# standard and Multilingual V3 voice cloning.
 RUN pip install --no-cache-dir \
       chatterbox-tts \
       flask==3.0.3 \

@@ -141,27 +141,25 @@ public class ProviderGateway {
         return videoGenerationProvider.unavailableReason();
     }
 
-    /** VoiceProfile-scoped synthesis: picks the provider by the profile's own
-     *  stored value rather than the app-wide TTS_PROVIDER selection, so a
-     *  chatterbox-cloned voice works even when the episode default is piper,
-     *  and vice versa. Falls back to the mock provider on failure, same as
-     *  synthesize() below, for the same reason (a broken TTS sidecar
-     *  shouldn't crash a voice preview). */
+    /** VoiceProfile-scoped synthesis. A saved voice is a real user-selected asset:
+     * provider failures must surface instead of silently replacing it with the
+     * mock WAV. The normal app-wide TTS path below may still use the mock fallback
+     * for demo/offline pipeline execution. */
     public TextToSpeechProvider.TtsResult synthesizeWithVoice(String provider, String voiceName, String text,
                                                                 String language, double speed, double pitch) {
         TextToSpeechProvider selected = selectTtsProvider(provider);
         TextToSpeechProvider.TtsRequest request = new TextToSpeechProvider.TtsRequest(text, voiceName, language, speed, pitch);
         if (demoMode) {
-            return mockTtsProvider.synthesize(request);
+            throw new IllegalStateException("Saved voice preview/narration requires DEMO_MODE=false and a real local TTS provider.");
         }
         try {
-            return selected.synthesize(request);
+            TextToSpeechProvider.TtsResult result = selected.synthesize(request);
+            if (result == null || result.audioBytes() == null || result.audioBytes().length < 1000) {
+                throw new IllegalStateException("Voice provider returned empty audio.");
+            }
+            return result;
         } catch (Exception e) {
-            String warning = "Voice provider '" + selected.providerName() + "' failed (" + e.getMessage()
-                    + "); this line used a silent placeholder instead of the assigned voice.";
-            log.warn(warning);
-            var mock = mockTtsProvider.synthesize(request);
-            return new TextToSpeechProvider.TtsResult(mock.audioBytes(), mock.durationSeconds(), mock.format(), warning);
+            throw new IllegalStateException("Voice provider '" + selected.providerName() + "' failed: " + e.getMessage(), e);
         }
     }
 
@@ -175,14 +173,17 @@ public class ProviderGateway {
         TextToSpeechProvider.TtsRequest request = new TextToSpeechProvider.TtsRequest(
                 text, voiceName, language, speed, pitch, emotion, emotionIntensity, delivery,
                 emphasis == null ? java.util.List.of() : emphasis, breath, paralinguisticEvent, actingDirection, referenceTranscript);
-        if (demoMode) return mockTtsProvider.synthesize(request);
-        try { return selected.synthesize(request); }
-        catch (Exception e) {
-            String warning = "Voice provider '" + selected.providerName() + "' failed (" + e.getMessage()
-                    + "); this line used a silent placeholder instead of the assigned voice.";
-            log.warn(warning);
-            var mock = mockTtsProvider.synthesize(request);
-            return new TextToSpeechProvider.TtsResult(mock.audioBytes(), mock.durationSeconds(), mock.format(), warning);
+        if (demoMode) {
+            throw new IllegalStateException("Saved voice narration requires DEMO_MODE=false and a real local TTS provider.");
+        }
+        try {
+            TextToSpeechProvider.TtsResult result = selected.synthesize(request);
+            if (result == null || result.audioBytes() == null || result.audioBytes().length < 1000) {
+                throw new IllegalStateException("Voice provider returned empty audio.");
+            }
+            return result;
+        } catch (Exception e) {
+            throw new IllegalStateException("Voice provider '" + selected.providerName() + "' failed: " + e.getMessage(), e);
         }
     }
 
@@ -218,6 +219,29 @@ public class ProviderGateway {
      *  carry. Real narration synthesis (ProductionPipelineService) uses the
      *  6-arg version above so scene-level prosody still applies to an
      *  assigned VoiceProfile exactly as it would to the app-wide default. */
+    /** Strict voice-preview path: never replace a failed cloned voice with the silent mock.
+     * The caller needs the real provider error so a saved voice can never appear playable while
+     * actually containing silence. Production narration keeps the existing graceful fallback. */
+    public TextToSpeechProvider.TtsResult synthesizeWithVoiceStrict(String provider, String voiceName, String text,
+                                                                     String language, String referenceTranscript) {
+        TextToSpeechProvider selected = selectTtsProvider(provider);
+        TextToSpeechProvider.TtsRequest request = new TextToSpeechProvider.TtsRequest(
+                text, voiceName, language, 1.0, 1.0, "neutral", 0.5, "natural",
+                java.util.List.of(), false, null, null, referenceTranscript);
+        if (demoMode) {
+            throw new IllegalStateException("Voice preview is disabled in DEMO_MODE; select a real TTS provider.");
+        }
+        try {
+            TextToSpeechProvider.TtsResult result = selected.synthesize(request);
+            if (result == null || result.audioBytes() == null || result.audioBytes().length < 1000) {
+                throw new IllegalStateException("Voice provider returned empty audio.");
+            }
+            return result;
+        } catch (Exception e) {
+            throw new IllegalStateException("Voice provider '" + selected.providerName() + "' failed: " + e.getMessage(), e);
+        }
+    }
+
     public TextToSpeechProvider.TtsResult synthesizeWithVoice(String provider, String voiceName, String text) {
         return synthesizeWithVoice(provider, voiceName, text, null, 1.0, 1.0);
     }

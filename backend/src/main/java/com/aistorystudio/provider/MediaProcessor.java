@@ -11,6 +11,19 @@ public interface MediaProcessor {
     /** Burn-in or produce sidecar subtitles from an SRT file. */
     Path muxSubtitles(Path videoPath, Path srtPath, boolean burnIn);
 
+    /**
+     * Adds (or replaces) the audio track on an otherwise-silent video - the
+     * generative video models this project uses (Wan) have no audio channel
+     * at all, so a narration/voiceover track is always a separate mux step
+     * after the fact, not something the video model itself produces. Video
+     * stream is copied unchanged (fast, no re-encode, no quality loss);
+     * audio is re-encoded to AAC to match the mp4 container. Trims to
+     * whichever of video/audio is SHORTER (ffmpeg's -shortest) rather than
+     * looping or padding - a mismatch here should be visible/obvious to the
+     * caller (e.g. "narration ran long"), not silently papered over.
+     */
+    Path addAudioTrack(Path videoPath, byte[] audioBytes, Path outputPath);
+
     /** Produce a vertical short (9:16) from a sub-range of scenes. */
     Path renderShort(Path sourceVideo, double startSeconds, double endSeconds, Path outputPath);
 

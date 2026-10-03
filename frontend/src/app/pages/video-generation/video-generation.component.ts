@@ -2,7 +2,7 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, VideoGenerationStatus, VideoGenerationJob } from '../../services/api.service';
-import { Project, Episode, SceneDto } from '../../models/models';
+import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
 
 /**
  * Standalone "Video generation" page: animate one uploaded image from a text
@@ -36,6 +36,15 @@ import { Project, Episode, SceneDto } from '../../models/models';
     </section>
 
     <section class="panel" *ngIf="statusLoaded && status?.available">
+      <div class="field workflow-field">
+        <label for="workflow">Generation workflow</label>
+        <select id="workflow" [(ngModel)]="workflow">
+          <option value="WAN_2_2">Wan 2.2 (ComfyUI)</option>
+          <option value="MINIMAX_H3">MiniMax H3 (ComfyUI)</option>
+        </select>
+        <p class="muted">Both options use the local ComfyUI server. MiniMax H3 is the native/open-weights ComfyUI workflow, not the MiniMax API.</p>
+      </div>
+
       <div class="field">
         <label>Mode</label>
         <div class="mode-toggle">
@@ -98,6 +107,22 @@ import { Project, Episode, SceneDto } from '../../models/models';
                step="0.5" [(ngModel)]="durationSeconds">
       </div>
 
+      <div class="field">
+        <label for="narration">Narration (optional)</label>
+        <textarea id="narration" rows="2" [(ngModel)]="narrationText"
+                  placeholder="Add a voiceover track to the generated video - leave blank for a silent clip"></textarea>
+        <p class="muted" *ngIf="narrationText">
+          Adds an audio track, not lip-sync - the character's mouth won't match the words.
+        </p>
+      </div>
+      <div class="field" *ngIf="narrationText">
+        <label for="voice">Voice</label>
+        <select id="voice" [(ngModel)]="voiceProfileId">
+          <option value="">Default voice</option>
+          <option *ngFor="let vp of voiceProfiles" [value]="vp.id">{{ vp.name }} ({{ vp.provider }})</option>
+        </select>
+      </div>
+
       <button class="btn btn-primary" (click)="submit()"
               [disabled]="submitting || (mode === 'i2v' && !selectedFile) || !prompt.trim()">
         {{ submitting ? 'Working...' : 'Generate video' }}
@@ -121,7 +146,8 @@ import { Project, Episode, SceneDto } from '../../models/models';
   `,
   styles: [`
     .page-head { margin-bottom: 1.6rem; max-width: 720px; }
-    .panel { max-width: 640px; display: flex; flex-direction: column; gap: 1.2rem; }
+    .panel { max-width: 760px; display: flex; flex-direction: column; gap: 1.2rem; }
+    .workflow-field { padding: .9rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
     .field { display: flex; flex-direction: column; gap: 0.4em; }
     .mode-toggle { display: flex; gap: 0.4rem; }
     .pill {
@@ -146,9 +172,13 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   selectedFile?: File;
   previewUrl?: string;
   mode: 'i2v' | 't2v' = 'i2v';
+  workflow: 'WAN_2_2' | 'MINIMAX_H3' = 'WAN_2_2';
   prompt = '';
   negativePrompt = '';
   durationSeconds = 4;
+  narrationText = '';
+  voiceProfileId = '';
+  voiceProfiles: VoiceProfile[] = [];
 
   // "Use an image from a story" picker
   projects: Project[] = [];
@@ -184,6 +214,10 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     this.api.listProjects().subscribe({
       next: projects => { this.projects = projects; },
       error: () => { /* Picker just stays empty - not fatal to the page. */ }
+    });
+    this.api.listVoiceProfiles().subscribe({
+      next: profiles => { this.voiceProfiles = profiles; },
+      error: () => { /* Falls back to "Default voice" only - not fatal. */ }
     });
   }
 
@@ -280,7 +314,8 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     this.job = undefined;
 
     const image = this.mode === 'i2v' ? (this.selectedFile ?? null) : null;
-    this.api.createVideoGenerationJob(image, this.prompt, this.negativePrompt, this.durationSeconds)
+    this.api.createVideoGenerationJob(image, this.prompt, this.negativePrompt, this.durationSeconds,
+      this.narrationText || undefined, this.voiceProfileId || undefined, this.workflow)
       .subscribe({
         next: res => {
           this.submitting = false;

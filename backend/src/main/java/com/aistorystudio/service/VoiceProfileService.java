@@ -95,7 +95,7 @@ public class VoiceProfileService {
     public VoiceProfile createCloned(String name, String language, String provider,
                                       String personality, String referenceTranscript, MultipartFile audio) {
         String normalizedProvider = provider == null ? "" : provider.toLowerCase(java.util.Locale.ROOT);
-        if (!Set.of("chatterbox", "cosyvoice", "cosyvoice3").contains(normalizedProvider)) {
+        if (!Set.of("chatterbox", "cosyvoice", "cosyvoice3", "minimax-h3").contains(normalizedProvider)) {
             throw new IllegalStateException(
                     "Unsupported voice provider for a cloned voice: " + provider
                     + " (supported: chatterbox, cosyvoice)");
@@ -171,6 +171,19 @@ public class VoiceProfileService {
         }
     }
 
+    /** Absolute path used by native H3 Reference-to-Video voice conditioning. */
+    public Path getReferenceAudioPath(UUID id) {
+        VoiceProfile profile = get(id);
+        if (profile.getReferenceAudioKey() == null || profile.getReferenceAudioKey().isBlank()) {
+            throw new IllegalStateException("This voice does not have a stored reference recording.");
+        }
+        Path file = audioDir.resolve(profile.getReferenceAudioKey() + ".wav").normalize();
+        if (!file.startsWith(audioDir.normalize()) || !Files.isRegularFile(file)) {
+            throw new IllegalStateException("The stored reference recording is missing for voice profile " + id);
+        }
+        return file;
+    }
+
     public void delete(UUID id) {
         VoiceProfile profile = get(id);
         if (profile.getReferenceAudioKey() != null) {
@@ -199,8 +212,8 @@ public class VoiceProfileService {
         // provider=piper, or this profile's stored filename key for a
         // cloned provider - both already sit in voiceName, so this call
         // doesn't need to branch on provider itself.
-        return providerGateway.synthesizeWithVoice(profile.getProvider(), profile.getVoiceName(), text,
-                profile.getLanguage(), speed, pitch, "neutral", 0.5, "natural", List.of(), false, null, null, profile.getReferenceTranscript());
+        return providerGateway.synthesizeWithVoiceStrict(profile.getProvider(), profile.getVoiceName(), text,
+                profile.getLanguage(), profile.getReferenceTranscript());
     }
 
     /** Was: probed duration/silence/clipping directly on the RAW uploaded
@@ -235,8 +248,8 @@ public class VoiceProfileService {
         }
 
         List<String> warnings = new java.util.ArrayList<>();
-        if (duration < 5.0 || duration > 15.0) {
-            warnings.add("5-15 seconds is the recommended length; this clip is "
+        if (duration < 5.0 || duration > 10.0) {
+            warnings.add("5-10 seconds is the recommended length; this clip is "
                     + String.format("%.1f", duration) + "s.");
         }
 

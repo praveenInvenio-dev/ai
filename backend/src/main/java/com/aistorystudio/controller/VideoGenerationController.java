@@ -40,12 +40,19 @@ public class VideoGenerationController {
             @RequestParam("prompt") String prompt,
             @RequestParam(value = "negativePrompt", required = false) String negativePrompt,
             @RequestParam(value = "durationSeconds", required = false, defaultValue = "4.0") double durationSeconds,
-            @RequestParam(value = "seed", required = false) Long seed) {
+            @RequestParam(value = "seed", required = false) Long seed,
+            // Optional narration track - NOT lip-sync (Wan has no concept of
+            // speech/mouth movement at all). A voiceProfileId without text
+            // is a no-op; null/blank text skips audio entirely, same silent
+            // clip as before this existed.
+            @RequestParam(value = "narrationText", required = false) String narrationText,
+            @RequestParam(value = "voiceProfileId", required = false) UUID voiceProfileId,
+            @RequestParam(value = "workflow", required = false, defaultValue = "WAN_2_2") String workflow) {
         VideoGenJob job = service.createJob(image, prompt);
         // Fired from this controller bean (not a self-invocation inside the
         // service), which is what lets @Async actually intercept the call -
         // see the note on generateAsync().
-        service.generateAsync(job.getId(), prompt, negativePrompt, durationSeconds, seed);
+        service.generateAsync(job.getId(), prompt, negativePrompt, durationSeconds, seed, narrationText, voiceProfileId, workflow);
         return ResponseEntity.accepted().body(Map.of("jobId", job.getId()));
     }
 

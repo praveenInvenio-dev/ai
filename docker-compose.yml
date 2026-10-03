@@ -108,7 +108,7 @@ x-app-env: &app-env
   SARVAM_SPEAKER: ${SARVAM_SPEAKER:-anushka}
   SARVAM_LANGUAGE: ${SARVAM_LANGUAGE:-en-IN}
   CHATTERBOX_TTS_BASE_URL: ${CHATTERBOX_TTS_BASE_URL:-http://tts-chatterbox:5004}
-  CHATTERBOX_DEVICE: ${CHATTERBOX_DEVICE:-cpu}
+  CHATTERBOX_DEVICE: ${CHATTERBOX_DEVICE:-auto}
   COSYVOICE_TTS_BASE_URL: ${COSYVOICE_TTS_BASE_URL:-http://tts-cosyvoice:5005}
   COSYVOICE_VOICE: ${COSYVOICE_VOICE:-default}
   COMFYUI_POLL_INTERVAL_MS: ${COMFYUI_POLL_INTERVAL_MS:-2000}
@@ -239,14 +239,16 @@ services:
       - ai-story-studio-net
   # Start with:
   #   docker compose --profile chatterbox up -d tts-chatterbox
-  # ...and set TTS_PROVIDER=chatterbox in .env.
+  ## Set TTS_PROVIDER=chatterbox in .env for the standard local voice engine.
   tts-chatterbox:
     profiles: ["chatterbox"]
     build:
       context: ./tts-chatterbox
     environment:
-      CHATTERBOX_DEVICE: ${CHATTERBOX_DEVICE:-cpu}
+      CHATTERBOX_DEVICE: ${CHATTERBOX_DEVICE:-auto}
       CHATTERBOX_DEFAULT_VOICE: ${CHATTERBOX_VOICE:-narrator}
+      CHATTERBOX_MODEL_TYPE: ${CHATTERBOX_MODEL_TYPE:-standard}
+      CHATTERBOX_DEFAULT_LANGUAGE: ${CHATTERBOX_DEFAULT_LANGUAGE:-en}
     volumes:
       - ./tts-chatterbox/voices:/voices
       # Same volume the backend writes Voice Library recordings/uploads into

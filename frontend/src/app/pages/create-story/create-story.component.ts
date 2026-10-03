@@ -62,8 +62,8 @@ import { Project, Universe, Character } from '../../models/models';
           <label>Generation speed</label>
           <select [(ngModel)]="qualityProfile">
             <option value="FAST">Fast (quick test, lower detail)</option>
-            <option value="BALANCED">Balanced (default)</option>
-            <option value="QUALITY">Quality (slower, more detail)</option>
+            <option value="BALANCED">Balanced (lower GPU load)</option>
+            <option value="QUALITY">Quality (16GB cinematic, slower)</option>
           </select>
         </div>
         <div>
@@ -197,7 +197,7 @@ export class CreateStoryComponent implements OnInit {
   genre = 'Adventure';
   tone = 'Funny';
   visualStyle = '3D Realistic';
-  qualityProfile: 'FAST' | 'BALANCED' | 'QUALITY' = 'BALANCED';
+  qualityProfile: 'FAST' | 'BALANCED' | 'QUALITY' = 'QUALITY';
   language = 'English';
 
   genres = ['Adventure', 'Comedy', 'Fantasy', 'Educational', 'Mystery', 'Bedtime', 'Friendship', 'Moral', 'Science', 'Animals'];

@@ -94,8 +94,25 @@ public class VoiceProfileController {
     public ResponseEntity<byte[]> test(@PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
         String sampleText = body != null ? body.get("text") : null;
         TextToSpeechProvider.TtsResult result = service.generateTest(id, sampleText);
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType("audio/wav"))
-                .body(result.audioBytes());
+        // providerWarning means this is actually MockTTSProvider's SILENT
+        // placeholder audio (all-zero bytes) wearing the real voice's name -
+        // the assigned provider failed and fell back. Previously that
+        // warning only reached the story-narration pipeline (GenerationStep.
+        // warningMessage); here it just vanished, so "Test voice" played a
+        // genuinely silent clip with zero indication why - confirmed real
+        // report: "when i select n play nothing is audible". A custom
+        // header is the only way to attach it alongside a raw audio/wav
+        // body without changing the response shape entirely.
+        var responseBuilder = ResponseEntity.ok().contentType(MediaType.parseMediaType("audio/wav"));
+        if (result.providerWarning() != null) {
+            // HTTP header values can't contain newlines/control characters -
+            // an exception message safely logged is not automatically safe
+            // as a header value. Strip and cap length rather than risk a
+            // malformed response over a secondary diagnostic field.
+            String safe = result.providerWarning().replaceAll("[\\r\\n]+", " ").trim();
+            if (safe.length() > 200) safe = safe.substring(0, 200);
+            responseBuilder = responseBuilder.header("X-Tts-Warning", safe);
+        }
+        return responseBuilder.body(result.audioBytes());
     }
 }

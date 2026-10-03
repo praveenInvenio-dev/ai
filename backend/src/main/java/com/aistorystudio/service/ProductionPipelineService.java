@@ -62,7 +62,9 @@ public class ProductionPipelineService {
     @Value("${studio.comfyui.highQualitySteps:24}") private int highQualitySteps;
     @Value("${studio.comfyui.highQualityWidth:1024}") private int highQualityWidth;
     @Value("${studio.comfyui.highQualityHeight:1024}") private int highQualityHeight;
-    @Value("${studio.comfyui.highQualityCfg:5.0}") private double highQualityCfg;
+    @Value("${studio.comfyui.highQualityCfg:1.0}") private double highQualityCfg;
+    @Value("${studio.comfyui.qwen.reference-workflow:character-consistent-story-ipadapter-sdxl}") private String qwenReferenceWorkflow;
+    @Value("${studio.comfyui.qwen.reference-model:DreamShaperXL_Lightning.safetensors}") private String qwenReferenceModel;
     @Value("${studio.comfyui.styleModels.anime:}") private String animeModel;
     @Value("${studio.comfyui.styleModels.cartoon:}") private String cartoonModel;
     @Value("${studio.comfyui.styleModels.3dAnimated:}") private String threeDAnimatedModel;
@@ -334,7 +336,7 @@ public class ProductionPipelineService {
                     var request = new ImageGenerationProvider.ImageGenerationRequest(
                             prompt, assembled.negativePrompt(), imageWidthFor(episode), imageHeightFor(episode), imageStepsFor(episode, qualitySteps), imageCfgFor(episode),
                             stableSeed, imageWorkflowFor(episode, referenceImagePath, visualStyle),
-                            imageModelFor(episode, visualStyle), referenceImagePath, referenceImagePath2);
+                            imageModelFor(episode, visualStyle, referenceImagePath), referenceImagePath, referenceImagePath2);
                     result0 = providerGateway.generateImage(request);
                     if (result0 != null && "mock".equalsIgnoreCase(result0.workflowUsed())
                             && referenceImagePath != null) {
@@ -346,7 +348,7 @@ public class ProductionPipelineService {
                                 scene.getSceneNumber());
                         var fallbackRequest = new ImageGenerationProvider.ImageGenerationRequest(
                                 prompt, assembled.negativePrompt(), imageWidthFor(episode), imageHeightFor(episode), imageStepsFor(episode, qualitySteps), imageCfgFor(episode),
-                                stableSeed, imageWorkflowFor(episode, null, visualStyle), imageModelFor(episode, visualStyle), null, null);
+                                stableSeed, imageWorkflowFor(episode, null, visualStyle), imageModelFor(episode, visualStyle, null), null, null);
                         result0 = providerGateway.generateImage(fallbackRequest);
                     }
                     var qa = validateGeneratedImage(result0, prompt, assembled.negativePrompt(), visualStyle, scene);
@@ -906,7 +908,7 @@ public class ProductionPipelineService {
                     : "static, blurry, distorted, extra limbs";
             var request = new VideoGenerationProvider.VideoGenerationRequest(
                     sceneImage.toString(), prompt, negativePrompt,
-                    duration, 0, 0, null, null, qualityVideoSteps(episode));
+                    duration, 0, 0, null, null, null, qualityVideoSteps(episode));
             long start = System.currentTimeMillis();
             var result = providerGateway.generateVideo(request);
             Path path = storageProvider.store(
@@ -1149,21 +1151,23 @@ public class ProductionPipelineService {
         if (hqConfigured && "QUALITY".equalsIgnoreCase(episode.getQualityProfile()) && referenceImagePath == null) {
             return highQualityWorkflow.trim();
         }
+        if (referenceImagePath != null && qwenReferenceWorkflow != null && !qwenReferenceWorkflow.isBlank()) {
+            return qwenReferenceWorkflow.trim();
+        }
         return referenceImagePath != null ? "character-consistent-story-ipadapter" : null;
     }
 
     private String imageModelFor(Episode episode, String visualStyle) {
+        return imageModelFor(episode, visualStyle, null);
+    }
+
+    private String imageModelFor(Episode episode, String visualStyle, String referenceImagePath) {
         boolean hqConfigured = highQualityWorkflow != null && !highQualityWorkflow.isBlank()
                 && highQualityModel != null && !highQualityModel.isBlank();
         if (hqConfigured && "QUALITY".equalsIgnoreCase(episode.getQualityProfile())) {
-            // Model choice, unlike workflow, is safe to keep even with a
-            // reference in play - imageWorkflowFor will have already fallen
-            // back to the IPAdapter workflow above when a reference exists,
-            // and that workflow's own {{CHECKPOINT}} placeholder still needs
-            // SOME model name. Using the HQ model there works as long as it's
-            // also an SDXL checkpoint (matches ComfyUIImageProvider's own
-            // SDXL-vs-SD1.5 auto-upgrade check) - a non-SDXL HQ model paired
-            // with a reference would need its own care, not handled here.
+            if (referenceImagePath != null && qwenReferenceModel != null && !qwenReferenceModel.isBlank()) {
+                return qwenReferenceModel.trim();
+            }
             return highQualityModel.trim();
         }
         return styleModel(visualStyle);
@@ -1385,7 +1389,7 @@ public class ProductionPipelineService {
         var request = new ImageGenerationProvider.ImageGenerationRequest(
                 assembled.positivePrompt(), assembled.negativePrompt(), imageWidthFor(episode), imageHeightFor(episode), imageStepsFor(episode, qualityImageSteps(episode)), imageCfgFor(episode), null,
                 imageWorkflowFor(episode, referenceImagePath, episode.getVisualStyle()),
-                imageModelFor(episode, episode.getVisualStyle()), referenceImagePath, referenceImagePath2);
+                imageModelFor(episode, episode.getVisualStyle(), referenceImagePath), referenceImagePath, referenceImagePath2);
         var result = providerGateway.generateImage(request);
         String relative = assetRelativePath(episode, String.format("images/scene-%03d.%s", scene.getSceneNumber(), result.fileExtension()));
         Path path = storageProvider.store(relative, result.imageBytes());

@@ -167,7 +167,7 @@ interface VoiceGroup {
       <div class="field">
         <label for="vp-provider">Voice engine</label>
         <select id="vp-provider" [(ngModel)]="newVoiceProvider">
-          <option value="chatterbox">ChatterBox — expressive English</option>
+          <option value="chatterbox">Chatterbox — high-quality voice cloning</option>
           <option value="cosyvoice">CosyVoice 3 — multilingual cloning</option>
         </select>
       </div>
@@ -478,7 +478,7 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
       },
       {
         key: 'chatterbox', title: 'ChatterBox', badge: 'expressive · cloned', chipClass: 'chip-amber',
-        note: 'Saved expressive character voices. Record or upload a clean reference in Add a voice.', emptyHint: 'No ChatterBox voices saved yet.', voices: []
+        note: 'Saved expressive character voices using the standard Chatterbox reference-voice model. Record 5-10 seconds of clean speech.', emptyHint: 'No ChatterBox voices saved yet.', voices: []
       },
       {
         key: 'cosyvoice', title: 'CosyVoice', badge: 'multilingual · cloned', chipClass: 'chip-teal',
@@ -672,7 +672,7 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
     // clone look broken even when the reference was 5-15 seconds long.
     const sampleText = 'Hello! This is a voice test for your story. I am speaking clearly and naturally so you can check the voice, pronunciation, pacing, and overall sound before using it in your video.';
     this.api.testVoiceProfile(vp.id, sampleText).subscribe({
-      next: blob => {
+      next: ({ blob, warning }) => {
         if (this.testAudioUrl[vp.id]) { URL.revokeObjectURL(this.testAudioUrl[vp.id]); }
         const url = URL.createObjectURL(blob);
         this.testAudioUrl[vp.id] = url;
@@ -681,13 +681,37 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
           this.testDurationSeconds[vp.id] = Number.isFinite(probe.duration) ? probe.duration : 0;
           this.cdr.detectChanges();
         }, { once: true });
+        // warning means this IS actually silent - the assigned voice
+        // provider failed and this played a placeholder instead. Without
+        // this, "nothing audible on play" looked like a broken player, not
+        // a provider failure, with no way to tell the difference.
+        this.testErrors[vp.id] = warning
+          ? `This sample is silent - ${warning}`
+          : '';
         this.testing[vp.id] = false;
         this.cdr.detectChanges();
       },
       error: err => {
         this.testing[vp.id] = false;
-        this.testErrors[vp.id] = err?.error?.message || `Could not generate a test sample for "${vp.name}".`;
-        this.cdr.detectChanges();
+        const fallback = `Could not generate a test sample for "${vp.name}".`;
+        const body = err?.error;
+        if (body instanceof Blob) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const parsed = JSON.parse(String(reader.result));
+              this.testErrors[vp.id] = parsed.message || parsed.error || fallback;
+            } catch {
+              this.testErrors[vp.id] = fallback;
+            }
+            this.cdr.detectChanges();
+          };
+          reader.onerror = () => { this.testErrors[vp.id] = fallback; this.cdr.detectChanges(); };
+          reader.readAsText(body);
+        } else {
+          this.testErrors[vp.id] = body?.message || err?.message || fallback;
+          this.cdr.detectChanges();
+        }
       }
     });
   }

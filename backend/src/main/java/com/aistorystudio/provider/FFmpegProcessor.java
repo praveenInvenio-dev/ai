@@ -115,8 +115,8 @@ public class FFmpegProcessor implements MediaProcessor {
                 double actual = probeDurationSeconds(segment);
                 double expected = Math.max(0.1, scene.durationSeconds());
                 if (actual > 0 && actual + 0.20 < expected) {
-                    log.warn("Scene {} segment is %.3fs but %.3fs was requested; invalidating cache and re-rendering.",
-                            index + 1, actual, expected);
+                    log.warn("Scene {} segment is {}s but {}s was requested; invalidating cache and re-rendering.",
+                            index + 1, fmt(actual), fmt(expected));
                     Path rerender = workDir.resolve("segment-rerender-" + String.format("%03d", index) + ".mp4");
                     if (scene.aiVideoPath() != null) {
                         renderSceneSegmentFromAiVideo(scene, scene.aiVideoPath(), request.width(), request.height(), rerender);
@@ -669,6 +669,8 @@ public class FFmpegProcessor implements MediaProcessor {
         } else if (audioInputIndex >= 0) {
             args.add("-map");
             args.add(audioInputIndex + ":a");
+            args.add("-af");
+            args.add("apad=whole_dur=" + fmt(Math.max(0.1, scene.durationSeconds())));
             args.add("-c:a");
             args.add("aac");
             args.add("-b:a");
@@ -814,6 +816,8 @@ public class FFmpegProcessor implements MediaProcessor {
         } else if (audioInputIndex >= 0) {
             args.add("-map");
             args.add(audioInputIndex + ":a");
+            args.add("-af");
+            args.add("apad=whole_dur=" + fmt(Math.max(0.1, scene.durationSeconds())));
             args.add("-c:a");
             args.add("aac");
             args.add("-b:a");
@@ -947,6 +951,8 @@ public class FFmpegProcessor implements MediaProcessor {
         args.add("yuv420p");
         args.add("-map");
         args.add(audioInputIndex + ":a");
+        args.add("-af");
+        args.add("apad=whole_dur=" + fmt(Math.max(0.1, scene.durationSeconds())));
         args.add("-c:a");
         args.add("aac");
         args.add("-b:a");
@@ -1460,6 +1466,38 @@ public class FFmpegProcessor implements MediaProcessor {
     }
 
     @Override
+    public Path addAudioTrack(Path videoPath, byte[] audioBytes, Path outputPath) {
+        Path audioTemp = null;
+        try {
+            audioTemp = Files.createTempFile("video-audio-", ".wav");
+            Files.write(audioTemp, audioBytes);
+
+            List<String> args = new ArrayList<>();
+            args.add(ffmpegBin);
+            args.add("-y");
+            args.add("-i");
+            args.add(videoPath.toAbsolutePath().toString());
+            args.add("-i");
+            args.add(audioTemp.toAbsolutePath().toString());
+            args.add("-c:v");
+            args.add("copy"); // video stream untouched - no re-encode, no quality loss
+            args.add("-c:a");
+            args.add("aac");
+            args.add("-b:a");
+            args.add("192k");
+            args.add("-shortest"); // trim to whichever of video/audio is shorter, no looping/padding
+            args.add(outputPath.toAbsolutePath().toString());
+            run(args);
+            return outputPath;
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException("Could not stage audio for muxing", e);
+        } finally {
+            if (audioTemp != null) {
+                try { Files.deleteIfExists(audioTemp); } catch (IOException ignored) { }
+            }
+        }
+    }
+
     public Path muxSubtitles(Path videoPath, Path srtPath, boolean burnIn) {
         try {
             Path output = videoPath.resolveSibling("final-with-subs-" + UUID.randomUUID() + ".mp4");
