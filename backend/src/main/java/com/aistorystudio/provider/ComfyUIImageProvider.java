@@ -67,6 +67,10 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
     private final int qwenOutputHeight;
     private final String qwenReferenceWorkflow;
     private final String qwenReferenceModel;
+    /** True: scenes with locked character references stay on Qwen Image 2.1 and
+     *  pass the references natively (TextEncodeQwenImage21 images.image_N).
+     *  False: legacy behaviour, reroute reference scenes to SDXL + IPAdapter. */
+    private final boolean qwenUseReferences;
     private final int defaultSteps;
     private final int defaultWidth;
     private final int defaultHeight;
@@ -102,10 +106,11 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
             @Value("${studio.comfyui.qwen.vae:qwen_image_2.1_vae_bf16.safetensors}") String qwenVae,
             @Value("${studio.comfyui.qwen.upscale-model:RealESRGAN_x2.pth}") String qwenUpscaleModel,
             @Value("${studio.comfyui.qwen.resolution:1024}") int qwenResolution,
-            @Value("${studio.comfyui.qwen.output-width:864}") int qwenOutputWidth,
-            @Value("${studio.comfyui.qwen.output-height:1536}") int qwenOutputHeight,
+            @Value("${studio.comfyui.qwen.output-width:1080}") int qwenOutputWidth,
+            @Value("${studio.comfyui.qwen.output-height:1920}") int qwenOutputHeight,
             @Value("${studio.comfyui.qwen.reference-workflow:character-consistent-story-ipadapter-sdxl}") String qwenReferenceWorkflow,
             @Value("${studio.comfyui.qwen.reference-model:DreamShaperXL_Lightning.safetensors}") String qwenReferenceModel,
+            @Value("${studio.comfyui.qwen.use-references:true}") boolean qwenUseReferences,
             @Value("${studio.comfyui.timeoutSeconds:900}") long timeoutSeconds,
             @Value("${studio.comfyui.queueWaitSeconds:3600}") long queueWaitSeconds,
             @Value("${studio.comfyui.pollIntervalMs:2000}") long pollIntervalMs) {
@@ -128,6 +133,7 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         this.qwenOutputHeight = qwenOutputHeight;
         this.qwenReferenceWorkflow = qwenReferenceWorkflow;
         this.qwenReferenceModel = qwenReferenceModel;
+        this.qwenUseReferences = qwenUseReferences;
         this.timeout = Duration.ofSeconds(timeoutSeconds);
         this.queueWait = Duration.ofSeconds(queueWaitSeconds);
         this.pollIntervalMs = Math.max(250, pollIntervalMs);
@@ -159,15 +165,16 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         long seed = request.seed() != null ? request.seed() : ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
         String workflowName = request.workflow() != null ? request.workflow() : defaultWorkflow;
         String checkpointName = request.model() != null ? request.model() : defaultModel;
-        boolean qwenWorkflow = "qwen-image-2-1-16gb-t2i".equalsIgnoreCase(workflowName);
-        if (qwenWorkflow && request.referenceImagePath() != null) {
-            // Qwen T2I is the 16GB high-detail path. Character-reference scenes
-            // stay on the SDXL IPAdapter path so identity conditioning is not
-            // silently discarded.
-            workflowName = qwenReferenceWorkflow;
-            checkpointName = qwenReferenceModel;
-            qwenWorkflow = false;
-        } else if (qwenWorkflow) {
+        boolean qwenWorkflow = isQwenWorkflow(workflowName);
+        if (qwenWorkflow && request.referenceImagePath() != null && !qwenUseReferences) {
+            // Legacy path (COMFYUI_QWEN_USE_REFERENCES=false): reference scenes
+            // go to SDXL + IPAdapter. The request carries the Qwen-tier size/
+            // steps/cfg; SDXL-Lightning at 20 steps, cfg 1.0 and 576x1024 is
+            // what produced soft, background-less frames, so those are reset
+            // to the SDXL defaults (studio.comfyui.*) instead of inherited.
+            return doGenerate(sdxlFallbackRequest(request));
+        }
+        if (qwenWorkflow) {
             checkpointName = qwenDiffusionModel;
         }
         // The bundled reference workflow is SD1.5-specific. Selecting it for an
@@ -185,9 +192,9 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
                     : "character-consistent-story-ipadapter-sdxl";
         }
 
-        int width = snap(request.width() > 0 ? request.width() : (qwenWorkflow ? 576 : defaultWidth));
-        int height = snap(request.height() > 0 ? request.height() : (qwenWorkflow ? 1024 : defaultHeight));
-        int steps = request.steps() > 0 ? request.steps() : (qwenWorkflow ? 20 : defaultSteps);
+        int width = snap(request.width() > 0 ? request.width() : (qwenWorkflow ? 768 : defaultWidth));
+        int height = snap(request.height() > 0 ? request.height() : (qwenWorkflow ? 1344 : defaultHeight));
+        int steps = request.steps() > 0 ? request.steps() : (qwenWorkflow ? 30 : defaultSteps);
         double cfg = request.cfg() > 0 ? request.cfg() : (qwenWorkflow ? 1.0 : defaultCfg);
 
         // SDXL-Lightning is distilled for the Euler/SGM-Uniform schedule. The
@@ -261,8 +268,26 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         String filenamePrefix = "ai-story-studio-" + clientId;
 
         if (qwenWorkflow) {
+            // One model for every scene: references (if any made it into
+            // ComfyUI) are passed straight into TextEncodeQwenImage21.
+            int refCount = referenceImageFilename == null ? 0 : (referenceImageFilename2 == null ? 1 : 2);
+            workflowName = refCount == 2 ? "qwen-image-2-1-16gb-ref-dual"
+                    : refCount == 1 ? "qwen-image-2-1-16gb-ref"
+                    : "qwen-image-2-1-16gb-t2i";
+            String qwenPrompt = qwenPromptWithReferences(request.prompt(), refCount);
+            // Final size: configured output (1080x1920) when the request is the
+            // usual 9:16 scene frame; otherwise (e.g. a square character
+            // reference sheet) just the 2x RealESRGAN result at its own aspect.
+            int outW = qwenOutputWidth;
+            int outH = qwenOutputHeight;
+            if (Math.abs((double) width / height - (double) qwenOutputWidth / qwenOutputHeight) > 0.03) {
+                outW = width * 2;
+                outH = height * 2;
+            }
             Map<String, String> qwenText = new LinkedHashMap<>();
-            qwenText.put("{{POSITIVE_PROMPT}}", request.prompt() == null ? "" : request.prompt());
+            qwenText.put("{{POSITIVE_PROMPT}}", qwenPrompt);
+            qwenText.put("{{REFERENCE_IMAGE}}", referenceImageFilename == null ? "" : referenceImageFilename);
+            qwenText.put("{{REFERENCE_IMAGE_2}}", referenceImageFilename2 == null ? "" : referenceImageFilename2);
             qwenText.put("{{NEGATIVE_PROMPT}}", request.negativePrompt() == null ? "" : request.negativePrompt());
             qwenText.put("{{QWEN_DIFFUSION_MODEL}}", qwenDiffusionModel);
             qwenText.put("{{QWEN_TEXT_ENCODER}}", qwenTextEncoder);
@@ -275,14 +300,30 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
             qwenNumeric.put("{{HEIGHT}}", height);
             qwenNumeric.put("{{STEPS}}", steps);
             qwenNumeric.put("{{QWEN_RESOLUTION}}", qwenResolution);
-            qwenNumeric.put("{{OUTPUT_WIDTH}}", qwenOutputWidth);
-            qwenNumeric.put("{{OUTPUT_HEIGHT}}", qwenOutputHeight);
+            qwenNumeric.put("{{OUTPUT_WIDTH}}", outW);
+            qwenNumeric.put("{{OUTPUT_HEIGHT}}", outH);
             String workflowJson = WorkflowTemplateFiller.fill(mapper, workflowName, qwenText, qwenNumeric);
             Map<String, Object> qwenPayload = new LinkedHashMap<>();
             try { qwenPayload.put("prompt", mapper.readTree(workflowJson)); }
             catch (Exception e) { throw new IllegalStateException("Invalid ComfyUI workflow template '" + workflowName + "'", e); }
             qwenPayload.put("client_id", clientId);
-            JsonNode qwenQueue = submitPrompt(qwenPayload);
+            log.info("ComfyUI submit: workflow={} model={} {}x{} -> {}x{} steps={} refs={} seed={}",
+                    workflowName, qwenDiffusionModel, width, height, outW, outH, steps, refCount, seed);
+            JsonNode qwenQueue;
+            try {
+                qwenQueue = submitPrompt(qwenPayload);
+            } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+                String body = e.getResponseBodyAsString();
+                if (body != null && body.contains("missing_node_type")) {
+                    // ComfyUI checkout predates Qwen Image 2.1 (no QwenImage21Cache /
+                    // TextEncodeQwenImage21). Render this scene on SDXL rather than
+                    // failing it; update ComfyUI to get Qwen quality back.
+                    log.warn("ComfyUI is missing Qwen Image 2.1 nodes - update ComfyUI. "
+                            + "Falling back to SDXL for this image. ComfyUI said: {}", body);
+                    return doGenerate(sdxlFallbackRequest(request));
+                }
+                throw e;
+            }
             if (qwenQueue == null || qwenQueue.get("prompt_id") == null) {
                 throw new IllegalStateException("ComfyUI did not accept the Qwen image workflow: " + qwenQueue);
             }
@@ -386,6 +427,46 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
                 .retrieve()
                 .bodyToMono(JsonNode.class)
                 .block(Duration.ofSeconds(30));
+    }
+
+    private static boolean isQwenWorkflow(String workflowName) {
+        return workflowName != null
+                && workflowName.toLowerCase(java.util.Locale.ROOT).startsWith("qwen-image-2-1-16gb");
+    }
+
+    /** Same request, re-targeted at the SDXL reference workflow with every
+     *  size/steps/cfg set to 0 so the SDXL defaults (studio.comfyui.*) apply
+     *  instead of the Qwen-tier values the caller sent. */
+    private ImageGenerationRequest sdxlFallbackRequest(ImageGenerationRequest r) {
+        String wf = r.referenceImagePath() != null ? qwenReferenceWorkflow : "character-consistent-story-sdxl";
+        String prompt = r.prompt() == null ? "" : r.prompt();
+        return new ImageGenerationRequest(prompt, r.negativePrompt(), 0, 0, 0, 0, r.seed(), wf,
+                qwenReferenceModel, r.referenceImagePath(), r.referenceImagePath2());
+    }
+
+    /**
+     * Qwen Image 2.1 addresses reference images as {@code <image1>}, {@code <image2>}.
+     * The pipeline orders characters so the first described character owns
+     * image1 and the second owns image2. The instruction also tells the model
+     * NOT to copy the reference sheet's plain studio background or pose -
+     * the cause of "no background detail" with the old IPAdapter path.
+     */
+    static String qwenPromptWithReferences(String prompt, int refCount) {
+        String p = prompt == null ? "" : prompt.trim();
+        if (refCount <= 0) {
+            return p;
+        }
+        String mapping = refCount == 1
+                ? "<image1> is the official character design reference for the first character described below."
+                : "<image1> is the official character design reference for the first character described below, "
+                  + "<image2> is the official character design reference for the second character.";
+        return mapping
+                + " Keep each referenced character exactly on-model: same face shape, eyes, hairstyle, skin tone, "
+                + "outfit, colors, accessories and body proportions as the reference. "
+                + "Draw a completely new scene: new pose, new camera angle, new expression as described, "
+                + "and a fully rendered, richly detailed environment. Do not copy the reference image's plain "
+                + "background, framing or pose, and do not draw the reference sheet itself.\n\n"
+                + p;
     }
 
     private boolean isMissingIpAdapterNode(String workflowName, String body) {

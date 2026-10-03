@@ -82,6 +82,14 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
     // ComfyUiAccessCoordinator's own comment for the full story.
     private final Semaphore slot;
     private final int h3MinVramMb;
+    /** "16gb" (quantized w6a8 DiT + ComfyUI offload, 480x832, <=5s) or "24gb"
+     *  (pruned INT8 DiT, legacy behaviour). Only H3 reads these; Wan never does. */
+    private final String h3Profile;
+    private final int h3MinRamMb;
+    private final int h3Width;
+    private final int h3Height;
+    private final double h3MaxDurationSeconds;
+    private final boolean h3FreeVramBeforeRun;
 
     private final com.aistorystudio.system.ResourceMonitorService resourceMonitor;
     private final int minVramMb;
@@ -98,12 +106,12 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
             // to serve two shapes via optional fields.
             @Value("${studio.animation.local-ai.text-to-video-workflow:wan-ti2v-5b-text-to-video}") String textToVideoWorkflow,
             @Value("${studio.animation.local-ai.diffusion-model:}") String diffusionModel,
-            @Value("${studio.animation.local-ai.minimax-h3-diffusion-model:minimax_h3_fl2va_pruned_int8_convrot.safetensors}") String h3DiffusionModel,
-            @Value("${studio.animation.local-ai.minimax-h3-ref2va-diffusion-model:minimax_h3_ref2va_pruned_int8_convrot.safetensors}") String h3Ref2vaDiffusionModel,
+            @Value("${studio.animation.local-ai.minimax-h3-diffusion-model:}") String h3DiffusionModel,
+            @Value("${studio.animation.local-ai.minimax-h3-ref2va-diffusion-model:}") String h3Ref2vaDiffusionModel,
             @Value("${studio.animation.local-ai.minimax-h3-text-encoder:qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors}") String h3TextEncoder,
             @Value("${studio.animation.local-ai.minimax-h3-video-vae:minimax_h3_video_vae_fp16.safetensors}") String h3VideoVae,
             @Value("${studio.animation.local-ai.minimax-h3-audio-vae:minimax_h3_audio_vae_fp32.safetensors}") String h3AudioVae,
-            @Value("${studio.animation.local-ai.minimax-h3-steps:8}") int h3Steps,
+            @Value("${studio.animation.local-ai.minimax-h3-steps:0}") int h3Steps,
             @Value("${studio.animation.local-ai.clip-model:}") String clipModel,
             @Value("${studio.animation.local-ai.vae-model:}") String vaeModel,
             @Value("${studio.animation.local-ai.clip-vision-model:}") String clipVisionModel,
@@ -120,12 +128,40 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
             @Value("${studio.animation.local-ai.poll-interval-ms:3000}") long pollIntervalMs,
             @Value("${studio.animation.local-ai.max-concurrent:1}") int maxConcurrent,
             @Value("${studio.animation.local-ai.min-vram-mb:14000}") int minVramMb,
-            @Value("${studio.animation.local-ai.minimax-h3-min-vram-mb:24000}") int h3MinVramMb,
+            @Value("${studio.animation.local-ai.minimax-h3-min-vram-mb:0}") int h3MinVramMb,
+            @Value("${studio.animation.local-ai.minimax-h3-profile:16gb}") String h3Profile,
+            @Value("${studio.animation.local-ai.minimax-h3-min-ram-mb:-1}") int h3MinRamMb,
+            @Value("${studio.animation.local-ai.minimax-h3-width:0}") int h3Width,
+            @Value("${studio.animation.local-ai.minimax-h3-height:0}") int h3Height,
+            @Value("${studio.animation.local-ai.minimax-h3-max-duration-seconds:0}") double h3MaxDurationSeconds,
+            @Value("${studio.animation.local-ai.minimax-h3-free-vram-before-run:true}") boolean h3FreeVramBeforeRun,
             com.aistorystudio.system.ResourceMonitorService resourceMonitor,
             ComfyUiAccessCoordinator comfyUiAccessCoordinator) {
         this.resourceMonitor = resourceMonitor;
         this.minVramMb = minVramMb;
-        this.h3MinVramMb = h3MinVramMb;
+        // Profile supplies every H3 default; any explicit env value still wins.
+        boolean h3Small = !"24gb".equalsIgnoreCase(h3Profile == null ? "" : h3Profile.trim());
+        this.h3Profile = h3Small ? "16gb" : "24gb";
+        // nvidia-smi reports ~16300-16380 MiB on a "16 GB" card, so 15000 not 16000.
+        this.h3MinVramMb = h3MinVramMb > 0 ? h3MinVramMb : (h3Small ? 15000 : 24000);
+        // Offload parks the DiT + 32B text encoder in host RAM between stages.
+        this.h3MinRamMb = h3MinRamMb >= 0 ? h3MinRamMb : (h3Small ? 48000 : 0);
+        this.h3Width = h3Width > 0 ? h3Width : 480;
+        this.h3Height = h3Height > 0 ? h3Height : 832;
+        this.h3MaxDurationSeconds = h3MaxDurationSeconds > 0 ? h3MaxDurationSeconds : (h3Small ? 5.0 : 6.0);
+        this.h3FreeVramBeforeRun = h3FreeVramBeforeRun;
+        if (blank(h3DiffusionModel)) {
+            h3DiffusionModel = h3Small ? "minimax_h3_fl2va_pruned_w6a8.safetensors"
+                    : "minimax_h3_fl2va_pruned_int8_convrot.safetensors";
+        }
+        if (blank(h3Ref2vaDiffusionModel)) {
+            h3Ref2vaDiffusionModel = h3Small ? "minimax_h3_ref2va_pruned_w6a8.safetensors"
+                    : "minimax_h3_ref2va_pruned_int8_convrot.safetensors";
+        }
+        // Base (non-Turbo) H3 needs ~20 steps; 8 is a Turbo/distilled setting.
+        if (h3Steps <= 0) {
+            h3Steps = 20;
+        }
         this.webClient = webClientBuilder.baseUrl(baseUrl).build();
         this.enabled = enabled;
         this.defaultWorkflow = defaultWorkflow;
@@ -197,6 +233,52 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         return null;
     }
 
+    /** H3-only gate. Replaces the old hard 24 GB guard with the active profile's
+     *  VRAM floor plus a host-RAM floor (the 16gb profile depends on offload). */
+    String h3UnavailableReason() {
+        var gpu = resourceMonitor.current();
+        if (gpu.gpuVramTotalMb() != null && gpu.gpuVramTotalMb() < h3MinVramMb) {
+            return "MiniMax H3 (" + h3Profile + " profile) needs at least " + h3MinVramMb + "MB VRAM; current GPU has "
+                    + gpu.gpuVramTotalMb() + "MB. Use Wan 2.2 TI2V-5B instead.";
+        }
+        long hostRamMb = hostRamTotalMb();
+        if (h3MinRamMb > 0 && hostRamMb > 0 && hostRamMb < h3MinRamMb) {
+            return "MiniMax H3 (" + h3Profile + " profile) offloads model weights to system RAM and needs at least "
+                    + h3MinRamMb + "MB RAM; this host has " + hostRamMb + "MB. Add RAM/swap, or set "
+                    + "LOCAL_AI_ANIMATION_MINIMAX_H3_MIN_RAM_MB=0 to try anyway.";
+        }
+        return null;
+    }
+
+    /** Host RAM from /proc/meminfo (the JVM heap figure in ResourceStatus is not host RAM).
+     *  0 when unreadable - the RAM check is then skipped rather than guessed. */
+    private static long hostRamTotalMb() {
+        try {
+            for (String line : Files.readAllLines(Path.of("/proc/meminfo"))) {
+                if (line.startsWith("MemTotal:")) {
+                    return Long.parseLong(line.replaceAll("[^0-9]", "")) / 1024;
+                }
+            }
+        } catch (Exception ignored) {
+            // non-Linux dev box
+        }
+        return 0;
+    }
+
+    /** ComfyUI's /free endpoint: unload whatever image/Wan model is still resident
+     *  so H3 starts from an empty 16 GB card. Best-effort; never fails the job. */
+    private void freeComfyMemory() {
+        try {
+            webClient.post().uri("/free")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(Map.of("unload_models", true, "free_memory", true))
+                    .retrieve().toBodilessEntity().block(Duration.ofSeconds(30));
+            log.info("ComfyUI models unloaded before MiniMax H3 run.");
+        } catch (Exception e) {
+            log.warn("Could not free ComfyUI memory before H3 run: {}", e.getMessage());
+        }
+    }
+
     private boolean blank(String s) {
         return s == null || s.isBlank();
     }
@@ -208,11 +290,9 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
             throw new IllegalStateException("Local AI video generation is not available: " + reason);
         }
         if (request.workflow() != null && request.workflow().toLowerCase(java.util.Locale.ROOT).startsWith("minimax-h3")) {
-            var gpu = resourceMonitor.current();
-            if (gpu.gpuVramTotalMb() != null && gpu.gpuVramTotalMb() < h3MinVramMb) {
-                throw new IllegalStateException("MiniMax H3 local ComfyUI workflow requires at least " + h3MinVramMb
-                        + "MB VRAM in this build; current GPU has " + gpu.gpuVramTotalMb()
-                        + "MB. Use Wan 2.2 TI2V-5B on 16GB or move H3 to a larger GPU.");
+            String h3Reason = h3UnavailableReason();
+            if (h3Reason != null) {
+                throw new IllegalStateException(h3Reason);
             }
         }
         boolean acquired;
@@ -236,10 +316,13 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
     private VideoGenerationResult doGenerate(VideoGenerationRequest request) {
         long seed = request.seed() != null ? request.seed() : ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
         String workflowName = request.workflow() != null ? request.workflow() : defaultWorkflow;
-        int width = request.width() > 0 ? request.width() : defaultWidth;
-        int height = request.height() > 0 ? request.height() : defaultHeight;
+        boolean h3 = workflowName.toLowerCase(java.util.Locale.ROOT).startsWith("minimax-h3");
+        // H3 has its own size/duration caps (profile-driven); Wan keeps its own.
+        int width = request.width() > 0 ? request.width() : (h3 ? h3Width : defaultWidth);
+        int height = request.height() > 0 ? request.height() : (h3 ? h3Height : defaultHeight);
 
-        double duration = Math.max(0.5, Math.min(maxDurationSeconds, request.durationSeconds()));
+        double duration = Math.max(0.5, Math.min(h3 ? h3MaxDurationSeconds : maxDurationSeconds,
+                request.durationSeconds()));
         // Wan's frame count needs to land on 4n+1 for its causal VAE - round to
         // the nearest valid length rather than passing an arbitrary frame count
         // the workflow might reject.
@@ -287,6 +370,12 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         String clientId = UUID.randomUUID().toString();
         String filenamePrefix = "ai-story-studio-wan-" + clientId;
 
+        if (h3 && h3FreeVramBeforeRun) {
+            freeComfyMemory();
+        }
+        log.info("ComfyUI video submit: workflow={} profile={} {}x{} length={} steps={}",
+                workflowName, h3 ? h3Profile : "wan", width, height, length,
+                request.steps() > 0 ? request.steps() : (h3 ? h3Steps : defaultSteps));
         String workflowJson = workflowName.startsWith("minimax-h3")
                 ? fillMiniMaxH3Template(workflowName, request.prompt(), seed, width, height, length,
                     request.steps() > 0 ? request.steps() : h3Steps, startingImageFilename, request.voiceReferenceAudioPath())

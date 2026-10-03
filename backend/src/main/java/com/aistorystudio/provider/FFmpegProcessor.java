@@ -630,7 +630,14 @@ public class FFmpegProcessor implements MediaProcessor {
                         current = "[cue]";
                     }
                 }
-                finalAudioLabel = current;
+                graph.append(';').append(current).append("apad=whole_dur=")
+                     .append(fmt(Math.max(0.1, scene.durationSeconds()))).append("[aout_padded]");
+                // amix duration=first ends the mix with the narration track. A
+                // narration shorter than the scene (pauses, placeholder audio)
+                // then made -shortest cut the whole VIDEO short ("Scene 2
+                // rendered only 7.850s of expected 8.450s"). Pad audio to the
+                // scene length so the video always decides the duration.
+                finalAudioLabel = "[aout_padded]";
             }
 
             args.add("-filter_complex");
@@ -790,7 +797,14 @@ public class FFmpegProcessor implements MediaProcessor {
                     current = "[cue]";
                 }
             }
-            finalAudioLabel = current;
+            graph.append(';').append(current).append("apad=whole_dur=")
+                 .append(fmt(Math.max(0.1, scene.durationSeconds()))).append("[aout_padded]");
+            // amix duration=first ends the mix with the narration track. A
+            // narration shorter than the scene (pauses, placeholder audio)
+            // then made -shortest cut the whole VIDEO short ("Scene 2
+            // rendered only 7.850s of expected 8.450s"). Pad audio to the
+            // scene length so the video always decides the duration.
+            finalAudioLabel = "[aout_padded]";
         }
 
         args.add("-filter_complex");

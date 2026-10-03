@@ -63,6 +63,9 @@ public class ProductionPipelineService {
     @Value("${studio.comfyui.highQualityWidth:1024}") private int highQualityWidth;
     @Value("${studio.comfyui.highQualityHeight:1024}") private int highQualityHeight;
     @Value("${studio.comfyui.highQualityCfg:1.0}") private double highQualityCfg;
+    /** Keep reference scenes on Qwen Image 2.1 (native image references) instead of
+     *  rerouting them to SDXL + IPAdapter. Must match ComfyUIImageProvider's flag. */
+    @Value("${studio.comfyui.qwen.use-references:true}") private boolean qwenUseReferences;
     @Value("${studio.comfyui.qwen.reference-workflow:character-consistent-story-ipadapter-sdxl}") private String qwenReferenceWorkflow;
     @Value("${studio.comfyui.qwen.reference-model:DreamShaperXL_Lightning.safetensors}") private String qwenReferenceModel;
     @Value("${studio.comfyui.styleModels.anime:}") private String animeModel;
@@ -273,7 +276,14 @@ public class ProductionPipelineService {
             var step = jobService.startStep(jobId, scene.getId(), "GENERATE_IMAGE", "image", null);
             long start = System.currentTimeMillis();
             try {
-                List<Character> sceneCharacters = resolveSceneCharacters(scene, universeCharacters);
+                boolean qwenRefs = qwenReferenceMode(episode);
+                SceneRefs qwenSceneRefs = qwenRefs
+                        ? qwenSceneReferences(resolveSceneCharacters(scene, universeCharacters)) : null;
+                // In Qwen reference mode the characters that own a reference come
+                // first, so "first/second character" in the prompt lines up with
+                // <image1>/<image2>.
+                List<Character> sceneCharacters = qwenRefs
+                        ? qwenSceneRefs.ordered() : resolveSceneCharacters(scene, universeCharacters);
                 // IPAdapter conditions the WHOLE image on one reference photo -
                 // fine for one character, actively harmful for a multi-character
                 // scene UNLESS it's exactly 2 characters with the regional dual
@@ -297,7 +307,15 @@ public class ProductionPipelineService {
                         .map(c -> c.getName() == null ? "" : c.getName().trim().toLowerCase(Locale.ROOT))
                         .filter(n -> !n.isBlank())
                         .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-                if (referenceImagePath == null && lastContinuityReference != null
+                if (qwenRefs) {
+                    // Qwen takes up to 2 references natively - no "exactly 2, both
+                    // with refs" restriction like the regional IPAdapter graph.
+                    referenceImagePath = qwenSceneRefs.ref1();
+                    referenceImagePath2 = qwenSceneRefs.ref2();
+                }
+                // Previous-scene image as a stand-in reference is skipped for Qwen:
+                // feeding a generated frame back in compounds drift scene by scene.
+                if (!qwenRefs && referenceImagePath == null && lastContinuityReference != null
                         && !currentCharacterNames.isEmpty()
                         && currentCharacterNames.stream().anyMatch(lastContinuityCharacters::contains)
                         && lastContinuityReference.toFile().exists()) {
@@ -1133,6 +1151,32 @@ public class ProductionPipelineService {
                 && highQualityModel != null && !highQualityModel.isBlank();
     }
 
+    private boolean qwenReferenceMode(Episode episode) {
+        return qwenUseReferences && highQualityEnabled(episode)
+                && highQualityWorkflow.trim().toLowerCase(Locale.ROOT).startsWith("qwen-image-2-1-16gb");
+    }
+
+    /** Scene characters reordered so the (max 2) that own a locked/primary
+     *  reference come first, plus those reference paths in the same order. */
+    private record SceneRefs(List<Character> ordered, String ref1, String ref2) {}
+
+    private SceneRefs qwenSceneReferences(List<Character> sceneCharacters) {
+        List<Character> withRef = new ArrayList<>();
+        List<Character> without = new ArrayList<>();
+        List<String> paths = new ArrayList<>();
+        for (Character c : sceneCharacters) {
+            String path = paths.size() < 2 ? referenceImageForCharacter(c) : null;
+            if (path != null) {
+                withRef.add(c);
+                paths.add(path);
+            } else {
+                without.add(c);
+            }
+        }
+        withRef.addAll(without);
+        return new SceneRefs(withRef, paths.isEmpty() ? null : paths.get(0), paths.size() > 1 ? paths.get(1) : null);
+    }
+
     private int imageWidthFor(Episode episode) { return highQualityEnabled(episode) ? highQualityWidth : 0; }
     private int imageHeightFor(Episode episode) { return highQualityEnabled(episode) ? highQualityHeight : 0; }
     private int imageStepsFor(Episode episode, int fallback) { return highQualityEnabled(episode) ? highQualitySteps : fallback; }
@@ -1148,7 +1192,10 @@ public class ProductionPipelineService {
         // with a locked character, regardless of whether the HQ workflow
         // could even carry a reference. A scene with no reference to
         // preserve still gets the requested HQ checkpoint as before.
-        if (hqConfigured && "QUALITY".equalsIgnoreCase(episode.getQualityProfile()) && referenceImagePath == null) {
+        if (hqConfigured && "QUALITY".equalsIgnoreCase(episode.getQualityProfile())
+                && (referenceImagePath == null || qwenReferenceMode(episode))) {
+            // Qwen reference mode: one model for every scene. The provider picks
+            // the t2i / 1-ref / 2-ref graph from the references it could upload.
             return highQualityWorkflow.trim();
         }
         if (referenceImagePath != null && qwenReferenceWorkflow != null && !qwenReferenceWorkflow.isBlank()) {
@@ -1165,7 +1212,8 @@ public class ProductionPipelineService {
         boolean hqConfigured = highQualityWorkflow != null && !highQualityWorkflow.isBlank()
                 && highQualityModel != null && !highQualityModel.isBlank();
         if (hqConfigured && "QUALITY".equalsIgnoreCase(episode.getQualityProfile())) {
-            if (referenceImagePath != null && qwenReferenceModel != null && !qwenReferenceModel.isBlank()) {
+            if (referenceImagePath != null && !qwenReferenceMode(episode)
+                    && qwenReferenceModel != null && !qwenReferenceModel.isBlank()) {
                 return qwenReferenceModel.trim();
             }
             return highQualityModel.trim();
@@ -1366,7 +1414,9 @@ public class ProductionPipelineService {
                 .stream().findFirst().orElse(null);
         List<Character> characters = charactersForEpisode(episode);
 
-        List<Character> sceneCharacters = resolveSceneCharacters(scene, characters);
+        boolean qwenRefs = qwenReferenceMode(episode);
+        SceneRefs qwenSceneRefs = qwenRefs ? qwenSceneReferences(resolveSceneCharacters(scene, characters)) : null;
+        List<Character> sceneCharacters = qwenRefs ? qwenSceneRefs.ordered() : resolveSceneCharacters(scene, characters);
         String colorPalette = extractColorPalette(bible);
         var assembled = imagePromptAssembler.assemble(scene, sceneCharacters, List.of(), episode.getVisualStyle(), colorPalette, imageModelFor(episode, episode.getVisualStyle()));
         scene.setImagePrompt(assembled.positivePrompt());
@@ -1385,6 +1435,10 @@ public class ProductionPipelineService {
                 referenceImagePath = dual[0];
                 referenceImagePath2 = dual[1];
             }
+        }
+        if (qwenRefs) {
+            referenceImagePath = qwenSceneRefs.ref1();
+            referenceImagePath2 = qwenSceneRefs.ref2();
         }
         var request = new ImageGenerationProvider.ImageGenerationRequest(
                 assembled.positivePrompt(), assembled.negativePrompt(), imageWidthFor(episode), imageHeightFor(episode), imageStepsFor(episode, qualityImageSteps(episode)), imageCfgFor(episode), null,
