@@ -3,8 +3,7 @@
 > **Current model stack (v18.16):** images = Qwen Image 2.1 only (character references
 > passed natively); video = Wan 2.2 TI2V-5B (fast), Wan 2.2 I2V-A14B (best), MiniMax H3
 > (optional, native audio). See **MODELS.md** and `./download-models.sh`.
-> Sections below that mention SD1.5 / SDXL / LCM / IPAdapter describe the old pipeline
-> and no longer apply; older release notes are in `docs/history/`.
+> Older release notes are in `docs/history/`, changes in `CHANGELOG.md`.
 
 
 A self-hosted creative studio that turns a short idea into a fully produced
@@ -37,8 +36,9 @@ recurring characters and continuity carried across episodes.
 Angular (4200) --REST/SSE--> Spring Boot (8080) ---> PostgreSQL
                                     |
                                     +--> Ollama (story LLM)
-                                    +--> ComfyUI (images)
-                                    +--> Piper/local TTS (narration)
+                                    +--> ComfyUI (Qwen Image 2.1 images,
+                                    |             Wan 2.2 / MiniMax H3 video)
+                                    +--> Chatterbox / Piper / Indic TTS (narration)
                                     +--> FFmpeg (video assembly)
                                     +--> Local disk storage (/data/projects)
 ```
@@ -58,15 +58,15 @@ STORY DIRECTOR
    |
 SCENE JSON  (per scene: emotion, camera, importance, animation mode)
    |
-COMFYUI  (character-reference-conditioned when a reference exists)
+COMFYUI  Qwen Image 2.1 (locked character refs passed natively as <image1>/<image2>)
    |
 IMAGE
    |
-2.5D ANIMATION ENGINE  (FFmpeg-based - Ken Burns, parallax, particles)
+2.5D ANIMATION ENGINE (FFmpeg) or AI VIDEO (Wan 2.2 TI2V-5B / I2V-A14B, MiniMax H3)
    |
 CHARACTER MOTION / PARALLAX / CAMERA / TALKING-CHARACTER LIP-SYNC
    |
-PIPER TTS
+CHATTERBOX / PIPER TTS
    |
 NARRATION PERFORMANCE ENGINE  (punctuation + emotion pause/pace/breath)
    |
@@ -90,40 +90,42 @@ verified and what still needs your own review before commercial use.
 
 ## 3. Requirements
 
-- Docker + Docker Compose v2
-- ~10 GB disk for model downloads (skip this if you stay in `DEMO_MODE`)
-- Optional: an NVIDIA GPU + NVIDIA Container Toolkit for fast image generation
+- Docker + Docker Compose v2, NVIDIA Container Toolkit
+- NVIDIA GPU with 16 GB VRAM (the model stack is sized for this)
+- 64 GB system RAM recommended (Wan 14B / H3 offload weights to RAM); 32 GB is
+  enough for images + Wan TI2V-5B
+- ~100 GB free disk for all models (~50 GB without Wan 14B and H3) - see `MODELS.md`
 
 ## 4. GPU requirements
 
-Image generation is the only GPU-heavy stage. With a GPU, a scene image
-takes seconds; on CPU it can take minutes. The app never fails without a
-GPU — it just runs slower and a "CPU mode enabled" note is shown.
+All real image/video generation runs on the GPU through ComfyUI:
+Qwen Image 2.1 (images), Wan 2.2 TI2V-5B / I2V-A14B and MiniMax H3 (video).
+Start the stack with the GPU overlay:
+`docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d`.
 
 ## 5. CPU mode
 
-Nothing to configure — CPU is the default (`docker-compose.yml` alone). Use
-`docker-compose.gpu.yml` as an override once you have the NVIDIA Container
-Toolkit set up.
+`docker-compose.yml` alone runs ComfyUI on CPU. That is only useful with
+`DEMO_MODE=true` (placeholder media) to try the flow; Qwen Image 2.1 and the
+video models are not practical on CPU.
 
 ## 6. Docker installation
 
 ```bash
 git clone <this-repo>
 cd ai-story-studio
-cp .env.example .env
-docker compose up -d
+cp .env.example .env          # then set DB_PASSWORD, OLLAMA_MODEL etc.
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 ```
 
-Open http://localhost:4200.
+Open http://localhost:4200. Or run `./setup-ai-story-studio.sh` for the
+scripted server setup (stack + models + smoke tests).
 
 ## 7. First startup
 
-On first boot `DEMO_MODE=true` (the `.env.example` default), so the studio
-works immediately with fast placeholder images and silent-timed narration —
-useful to try the full idea → draft → approve → produce → download flow
-without downloading any models. Flip `DEMO_MODE=false` once you've installed
-real models (see below) for actual generated content.
+`.env.example` ships with `DEMO_MODE=false`. Until the models are downloaded
+(`./download-models.sh`), set `DEMO_MODE=true` to try the idea -> draft ->
+approve -> produce -> download flow with placeholder images and timed silence.
 
 ## 8. Model installation
 
@@ -158,27 +160,33 @@ docker compose up -d --force-recreate backend
 docker compose exec ollama ollama pull llama3.1
 ```
 
-### Image model (ComfyUI)
+### Image and video models (ComfyUI)
 
-Open the ComfyUI UI at http://localhost:8188 and use its built-in model
-manager to download a checkpoint (e.g. SDXL base), or drop a `.safetensors`
-file into the `comfyui-data` volume's `models/checkpoints` directory.
+One model per job - see `MODELS.md` for the full table:
 
-Whatever you download, set `COMFYUI_MODEL` in `.env` to the exact filename:
+| Job | Model |
+|---|---|
+| Scene images + character references | Qwen Image 2.1 int8 (+ Qwen3-VL 8B, VAE, RealESRGAN x2) |
+| Video, fast (text or image to video, 720p@24) | Wan 2.2 TI2V-5B fp8 |
+| Video, best (image to video, 480p@16) | Wan 2.2 I2V-A14B fp8 (high + low noise experts) |
+| Video + native audio (optional) | MiniMax H3 pruned w6a8 (16gb profile) |
+
+Download everything after ComfyUI finished its first start:
 
 ```bash
-docker compose exec comfyui ls /root/ComfyUI/models/checkpoints
+chmod +x download-models.sh
+nohup ./download-models.sh > download.log 2>&1 &   # SKIP_H3=1 / SKIP_WAN14B=1 to skip parts
 ```
 
-**On CPU, use SD1.5, not SDXL.** SDXL is another 5-10x slower again and needs
-1024x1024 to look right, which compounds the cost. The default is
-`v1-5-pruned-emaonly-fp16.safetensors` for that reason. Switch to SDXL (and
-raise `COMFYUI_WIDTH`/`COMFYUI_HEIGHT` to 1024) only once you are on a GPU -
-the GPU compose file already does both.
+ComfyUI must be recent enough to include the native Qwen Image 2.1 nodes
+(`TextEncodeQwenImage21`, `QwenImage21Cache`) and MiniMax H3 nodes. Check:
 
-Note: an `fp16` checkpoint still loads as `torch.float32` on CPU. That is
-correct, not a misconfiguration - CPU fp16 arithmetic is slower than fp32, so
-ComfyUI upcasts deliberately.
+```bash
+docker compose exec comfyui grep -c "class QwenImage21Cache\|class TextEncodeQwenImage21" /root/ComfyUI/comfy_extras/nodes_qwen.py   # -> 2
+```
+
+Character consistency: generate a reference in Character Studio and **lock** it.
+Up to two locked references per scene are passed to Qwen as `<image1>`/`<image2>`.
 
 ### AI Video Editor
 
@@ -296,70 +304,19 @@ far slower than real time. Sarvam works on any hardware and breaks the
 offline-only property. Both plug in behind `TextToSpeechProvider` the same way
 `LocalTTSProvider` does.
 
-### Image generation speed (read this before blaming the app)
+### Generation speed
 
-Time per image = `steps x seconds-per-step`, and seconds-per-step scales with
-`width x height`. Watch the real number in the ComfyUI log - the progress bar
-prints `s/it`:
+Watch the real numbers in `docker compose logs -f comfyui` (`s/it`). Levers:
 
-```bash
-docker compose logs -f comfyui
-```
+1. **Qwen steps:** `COMFYUI_QWEN_STEPS` (default 30; FAST profile uses 20).
+2. **Wan 14B:** `WAN14B_LIGHTNING=true` = 4-step LoRAs, about 5x faster, slightly softer.
+3. **Clip size/length:** 14B at 480x832 is the safe 16 GB setting; 720p is much slower.
+4. **One job at a time:** image and video share one ComfyUI slot; before 14B/H3 runs
+   the backend calls ComfyUI `/free` so the card starts empty.
+5. **Host RAM:** too little RAM for offload = swapping = everything slows down.
 
-Rough CPU-only numbers with an SD1.5 checkpoint:
-
-| Settings           | Rate      | Per image  |
-|--------------------|-----------|------------|
-| 1024x576, 30 steps | ~90 s/it  | ~45 min    |
-| 512x512, 8 steps   | ~25 s/it  | ~3-4 min   |
-| 448x448, 6 steps   | ~18 s/it  | ~2 min     |
-
-The defaults ship at 512x512 / 8 steps for that reason. Levers, in order of
-how much they actually help:
-
-1. **Use a GPU.** `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d`.
-   This is a 20-50x difference and no amount of CPU tuning approaches it.
-2. **Lower `COMFYUI_WIDTH`/`COMFYUI_HEIGHT`.** Cost is roughly linear in pixel
-   count. FFmpeg upscales to 1080p during video assembly regardless, and SD1.5
-   generates *worse* images above ~768px (duplicated heads and limbs), so
-   generating large is usually paying more for less.
-3. **Lower `COMFYUI_STEPS`.** `dpmpp_2m` + `karras` holds together down to
-   about 8 steps on a normal checkpoint.
-4. **Use a low-step model.** An SD-Turbo / SDXL-Lightning checkpoint runs at
-   4-6 steps with `COMFYUI_CFG=1.5`. Or keep your checkpoint and add the
-   LCM-LoRA with the bundled `character-consistent-story-lcm` workflow:
-   download `pytorch_lora_weights.safetensors` from
-   [lcm-lora-sdv1-5](https://huggingface.co/latent-consistency/lcm-lora-sdv1-5)
-   into `models/loras` as `lcm-lora.safetensors`, then set:
-   ```
-   COMFYUI_WORKFLOW=character-consistent-story-lcm
-   COMFYUI_STEPS=6
-   COMFYUI_CFG=1.5
-   COMFYUI_SAMPLER=lcm
-   COMFYUI_SCHEDULER=sgm_uniform
-   ```
-5. **Give Docker more CPU.** Docker Desktop > Settings > Resources, then set
-   `COMFYUI_THREADS` to your physical core count. More threads than physical
-   cores generally makes diffusion slower.
-6. **`--preview-method none`** is already set for you in `docker-compose.yml`.
-   Live previews VAE-decode the latent every step, which on CPU can cost more
-   than the sampling itself.
-
-   The compose file passes `--cpu --preview-method none` as a hard-coded
-   string, and `--cpu` is deliberately not overridable: the container's flags
-   are set through `CLI_ARGS`, which *replaces* the image's own defaults rather
-   than adding to them, so any value missing `--cpu` sends ComfyUI looking for
-   CUDA and it crash-loops on `AssertionError: Torch not compiled with CUDA
-   enabled`. Extra flags go in `COMFYUI_EXTRA_CLI_ARGS`, which is appended.
-   If your `.env` still has a `COMFYUI_CLI_ARGS` line from an earlier version,
-   delete it - it is no longer read.
-
-If an image still exceeds `COMFYUI_TIMEOUT_SECONDS`, the backend now
-interrupts and de-queues that prompt rather than abandoning it, and only one
-prompt is ever in flight at a time - an over-long scene can no longer starve
-the scenes queued behind it. Set `COMFYUI_FALLBACK_PLACEHOLDER=false` while
-debugging so failures surface as failed jobs instead of placeholder frames
-quietly appearing in the finished video.
+If a job exceeds its timeout (`COMFYUI_TIMEOUT_SECONDS`,
+`LOCAL_AI_ANIMATION_TIMEOUT_SECONDS`) the backend interrupts and de-queues it.
 
 ### TTS
 
@@ -491,18 +448,11 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d   # GPU mod
   wired into the Maven `validate` phase) if two Flyway migration files ever
   claim the same version number - `docker compose up -d --build` will stop
   with a clear error instead of producing a jar that crashes on boot.
-- ComfyUI integration assumes a text-to-image workflow shaped like
-  `backend/src/main/resources/comfyui-workflows/character-consistent-story.json`;
-  swap in your own workflow export and update node IDs if your setup differs.
-  Templates support `{{POSITIVE_PROMPT}}`, `{{NEGATIVE_PROMPT}}`, `{{SEED}}`,
-  `{{WIDTH}}`, `{{HEIGHT}}`, `{{STEPS}}`, `{{CFG}}`, `{{CHECKPOINT}}`,
-  `{{SAMPLER}}` and `{{SCHEDULER}}`; numeric placeholders are injected as JSON
-  numbers, not strings. Top-level keys starting with `_` are stripped before
-  submission, so templates can carry `_comment` documentation.
-- Reference-image-conditioned generation (upload a character photo → locked
-  visual identity) is wired at the data-model level (`CharacterReference`)
-  but the ComfyUI workflow template included here is text-to-image only —
-  extend it with an image-conditioning workflow for full fidelity.
+- ComfyUI graphs live in `backend/src/main/resources/comfyui-workflows/`
+  (API format, `{{PLACEHOLDER}}` values filled by the backend; numeric
+  placeholders become JSON numbers; top-level `_comment` keys are stripped).
+- Scenes with 3+ characters pass at most two locked references to Qwen; the
+  others are carried by the text description only.
 - The Model Manager UI (spec section 50) and first-run setup wizard (section
   49) are not yet built; `/api/health` covers the same signal today.
 - Continuity checking is a heuristic (regex-based prop tracking), not an LLM
@@ -516,7 +466,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d   # GPU mod
    browser instead of `docker compose exec`).
 2. Per-scene "Regenerate image / Regenerate narration" endpoints and UI
    wiring (the data model already supports asset versioning).
-3. Image-conditioned ComfyUI workflow for character reference fidelity.
+3. Optional SageAttention build of ComfyUI for faster sampling at the same quality.
 4. Automated tests: mock-provider pipeline tests, FFmpeg argument tests,
    repository tests.
 5. Drag-and-drop scene reordering in the storyboard.

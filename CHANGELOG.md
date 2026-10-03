@@ -13,7 +13,7 @@
 - pre-start.sh: installs ComfyUI-VideoHelperSuite instead of IPAdapter Plus.
 - New download-models.sh + MODELS.md; setup-ai-story-studio.sh uses it.
 - .env / .env.example / docker-compose cleaned to the current settings only.
-- Old notes moved to docs/history/.
+- Old notes moved to docs/history/. README rewritten for the current stack.
 
 ## v18.15 Wan 2.2 I2V-A14B   ## v18.14 Wan 720p fix   ## v18.13 H3 16 GB profile
 ## v18.12 FFmpeg audio-pad + chatterbox profile   ## v18.11 Qwen image quality

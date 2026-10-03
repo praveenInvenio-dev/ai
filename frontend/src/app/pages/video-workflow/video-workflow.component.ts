@@ -32,7 +32,7 @@ import { FormsModule } from '@angular/forms';
       </div>
       <div class="notice" *ngIf="!isH3">
         <strong>Wan 2.2 preserved</strong>
-        <p>TI2V-5B (720p@24fps, text or image to video) and I2V-A14B (best quality, image to video, 480p@16fps) are picked on the Video Generation page.</p>
+        <p>TI2V-5B (720p at 24fps, text or image to video) and I2V-A14B (best quality, image to video, 480p at 16fps) are picked on the Video Generation page.</p>
       </div>
     </section>
   `,
