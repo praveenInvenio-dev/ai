@@ -40,6 +40,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
         <label for="workflow">Generation workflow</label>
         <select id="workflow" [(ngModel)]="workflow">
           <option value="WAN_2_2">Wan 2.2 (ComfyUI)</option>
+          <option value="WAN_2_2_14B">Wan 2.2 14B I2V - best quality, needs starting image (ComfyUI)</option>
           <option value="MINIMAX_H3">MiniMax H3 (ComfyUI)</option>
         </select>
         <p class="muted">Both options use the local ComfyUI server. MiniMax H3 is the native/open-weights ComfyUI workflow, not the MiniMax API.</p>
@@ -172,7 +173,7 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   selectedFile?: File;
   previewUrl?: string;
   mode: 'i2v' | 't2v' = 'i2v';
-  workflow: 'WAN_2_2' | 'MINIMAX_H3' = 'WAN_2_2';
+  workflow: 'WAN_2_2' | 'WAN_2_2_14B' | 'MINIMAX_H3' = 'WAN_2_2';
   prompt = '';
   negativePrompt = '';
   durationSeconds = 4;

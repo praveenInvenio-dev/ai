@@ -19,13 +19,9 @@ public interface ImageGenerationProvider {
             String workflow,
             String model,
             String referenceImagePath,
-            /** Null for a single-character (or no-reference) scene. Set only
-             *  when exactly 2 characters in the scene each have their own
-             *  locked reference - triggers the regional dual-IPAdapter
-             *  workflow (character-consistent-story-ipadapter-sdxl-dual.json)
-             *  instead of the single-reference one. First reference is the
-             *  LEFT half of frame, second is RIGHT - see that workflow's own
-             *  comment for the ordering heuristic. */
+            /** Second locked character reference (becomes <image2> in the Qwen
+             *  prompt), or null. workflow/model above are ignored by the Qwen
+             *  provider - there is one image engine - and kept only for the mock. */
             String referenceImagePath2
     ) {}
 

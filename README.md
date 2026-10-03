@@ -1,5 +1,12 @@
 # AI Story & Content Production Studio
 
+> **Current model stack (v18.16):** images = Qwen Image 2.1 only (character references
+> passed natively); video = Wan 2.2 TI2V-5B (fast), Wan 2.2 I2V-A14B (best), MiniMax H3
+> (optional, native audio). See **MODELS.md** and `./download-models.sh`.
+> Sections below that mention SD1.5 / SDXL / LCM / IPAdapter describe the old pipeline
+> and no longer apply; older release notes are in `docs/history/`.
+
+
 A self-hosted creative studio that turns a short idea into a fully produced
 video: story, characters, storyboard, images, narration, music, subtitles,
 thumbnail and Shorts — with an explicit approval step before anything

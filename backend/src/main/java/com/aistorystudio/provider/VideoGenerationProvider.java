@@ -9,7 +9,7 @@ package com.aistorystudio.provider;
  *
  * Deliberately image-to-video, not pure text-to-video: the starting image is
  * the scene's own already-generated image, which itself may already be
- * character-consistent (via IPAdapter reference-conditioning, see
+ * character-consistent (via Qwen Image 2.1 native character references, see
  * ComfyUIImageProvider). Animating that exact frame is what keeps a
  * character looking like the same character in motion, rather than the
  * video model re-imagining them from text alone on every call.

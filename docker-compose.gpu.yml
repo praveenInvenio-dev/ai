@@ -4,12 +4,9 @@
 # Windows) Docker Desktop running on the WSL2 backend. Check with:
 #   docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
 #
-# VRAM matters more than raw speed here. Rough guide:
-#   >= 8 GB : SDXL at 1024x1024, or SD1.5 at anything.
-#    4-6 GB : SD1.5 comfortably; SDXL only with --lowvram and patience.
-#    2-3 GB : SD1.5 at 512x512 ONLY, with --lowvram (see COMFYUI_EXTRA_CLI_ARGS).
-# This file does NOT change the model or image size - those stay in .env, so
-# whatever works on CPU keeps working here.
+# Target: 16 GB NVIDIA card. Qwen Image 2.1 (images), Wan 2.2 TI2V-5B / I2V-A14B
+# and MiniMax H3 (video). ComfyUI offloads weights to system RAM when needed,
+# so 64 GB host RAM is recommended for the 14B / H3 video paths.
 
 services:
   tts-chatterbox:
@@ -77,6 +74,8 @@ services:
       # Keep a small explicit value instead of exporting an empty string.
       OMP_NUM_THREADS: ${OMP_NUM_THREADS:-4}
       MKL_NUM_THREADS: ${MKL_NUM_THREADS:-4}
+      # pre-start.sh: download Qwen Image 2.1 files on first start.
+      DOWNLOAD_16GB_IMAGE_MODELS: ${DOWNLOAD_16GB_IMAGE_MODELS:-true}
     # The :cpu image ships ComfyUI inside the image. The :cu124-slim image does
     # NOT - it git-clones ComfyUI into /root on first start. Inheriting the base
     # file's volumes would pre-create /root/ComfyUI/models and /root/ComfyUI/output,
@@ -89,14 +88,12 @@ services:
     # Consequence: the GPU stack has its own model store, separate from the CPU
     # stack's comfyui-data volume. Download checkpoints again AFTER ComfyUI has
     # started once and finished its first-run setup:
-    #   docker compose exec comfyui aria2c -c -x4 -d /root/ComfyUI/models/checkpoints
-    #     -o DreamShaper8_LCM.safetensors
-    #     https://huggingface.co/Lykon/dreamshaper-8-lcm/resolve/main/DreamShaper8_LCM.safetensors
+    #   ./download-models.sh   (see MODELS.md)
     volumes: !override
       - comfyui-gpu-root:/root
       # Runs after the ComfyUI bundle is copied into /root and before the
-      # server starts. Installs the IPAdapter Plus custom node once so the
-      # bundled character-reference workflow does not fail on a fresh GPU volume.
+      # server starts. Installs ComfyUI-VideoHelperSuite and (optionally) downloads
+      # the Qwen Image 2.1 files, so a fresh GPU volume works out of the box.
       - ./comfyui-gpu/pre-start.sh:/root/user-scripts/pre-start.sh
     deploy:
       resources:
@@ -106,23 +103,10 @@ services:
               count: all
               capabilities: [gpu]
 
-  # Model, size, steps, cfg and sampler are deliberately NOT overridden here -
-  # they come from .env, the same as on CPU. An earlier version defaulted this
-  # block to SDXL at 1024x576, which out-of-memories instantly on a 2-4 GB card.
-  # Only the timeouts change, because a GPU that hasn't finished in 5 minutes
-  # has hit a real problem rather than just being slow.
-  #
-  # On 8 GB+ you can raise quality in .env:
-  #   COMFYUI_MODEL=sd_xl_base_1.0.safetensors
-  #   COMFYUI_WIDTH=1024
-  #   COMFYUI_HEIGHT=1024
-  #   COMFYUI_STEPS=25
-  #   COMFYUI_CFG=7.0
-  #   COMFYUI_SAMPLER=dpmpp_2m
-  #   COMFYUI_SCHEDULER=karras
+  # Image/video model settings come from .env. Only timeouts change here.
   backend:
     environment:
-      COMFYUI_TIMEOUT_SECONDS: ${COMFYUI_TIMEOUT_SECONDS:-300}
+      COMFYUI_TIMEOUT_SECONDS: ${COMFYUI_TIMEOUT_SECONDS:-900}
       COMFYUI_QUEUE_WAIT_SECONDS: ${COMFYUI_QUEUE_WAIT_SECONDS:-1800}
       # eclipse-temurin (backend's base image) is a plain JRE image, not built
       # from nvidia/cuda like comfyui/ollama are - those bake this var in

@@ -19,7 +19,8 @@
     "  1. wan2.2_ti2v_5B model in models/diffusion_models/",
     "  2. umt5_xxl text encoder in models/text_encoders/",
     "  3. wan2.2_vae.safetensors in models/vae/",
-    "  4. ComfyUI-VideoHelperSuite custom node pack"
+    "  4. ComfyUI-VideoHelperSuite custom node pack",
+    "v18.14: VAEDecodeTiled - 704x1280x121 frames (TI2V-5B native 720p@24fps) decoded in tiles so it fits 16 GB."
   ],
   "1": {
     "class_type": "UNETLoader",
@@ -31,7 +32,10 @@
   "2": {
     "class_type": "ModelSamplingSD3",
     "inputs": {
-      "model": ["1", 0],
+      "model": [
+        "1",
+        0
+      ],
       "shift": 8
     }
   },
@@ -45,14 +49,20 @@
   "4": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "clip": ["3", 0],
+      "clip": [
+        "3",
+        0
+      ],
       "text": "{{POSITIVE_PROMPT}}"
     }
   },
   "5": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "clip": ["3", 0],
+      "clip": [
+        "3",
+        0
+      ],
       "text": "{{NEGATIVE_PROMPT}}"
     }
   },
@@ -65,7 +75,10 @@
   "8": {
     "class_type": "Wan22ImageToVideoLatent",
     "inputs": {
-      "vae": ["6", 0],
+      "vae": [
+        "6",
+        0
+      ],
       "width": "{{WIDTH}}",
       "height": "{{HEIGHT}}",
       "length": "{{LENGTH}}",
@@ -75,10 +88,22 @@
   "9": {
     "class_type": "KSampler",
     "inputs": {
-      "model": ["2", 0],
-      "positive": ["4", 0],
-      "negative": ["5", 0],
-      "latent_image": ["8", 0],
+      "model": [
+        "2",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "latent_image": [
+        "8",
+        0
+      ],
       "seed": "{{SEED}}",
       "steps": "{{STEPS}}",
       "cfg": "{{CFG}}",
@@ -88,16 +113,29 @@
     }
   },
   "10": {
-    "class_type": "VAEDecode",
+    "class_type": "VAEDecodeTiled",
     "inputs": {
-      "samples": ["9", 0],
-      "vae": ["6", 0]
+      "samples": [
+        "9",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ],
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 64,
+      "temporal_overlap": 8
     }
   },
   "11": {
     "class_type": "VHS_VideoCombine",
     "inputs": {
-      "images": ["10", 0],
+      "images": [
+        "10",
+        0
+      ],
       "frame_rate": "{{FPS}}",
       "loop_count": 0,
       "filename_prefix": "{{FILENAME_PREFIX}}",

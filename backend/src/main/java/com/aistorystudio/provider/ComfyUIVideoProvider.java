@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Real local AI image-to-video generation via ComfyUI's native Wan support
- * (see comfyui-workflows/wan-image-to-video.json for the node graph and its
+ * (see comfyui-workflows/wan-ti2v-5b-image-to-video.json for the node graph and its
  * extensive requirements/version notes - read that file before assuming this
  * class works out of the box).
  *
@@ -45,6 +45,13 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
 
     private static final Logger log = LoggerFactory.getLogger(ComfyUIVideoProvider.class);
 
+    /** Wan 2.2's own default negative prompt (from the official repo config). With
+     *  cfg 5 an empty negative leaves the model free to produce static, washed-out,
+     *  deformed frames; this is what the reference pipeline always sends. */
+    static final String WAN_DEFAULT_NEGATIVE = "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，"
+            + "最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，"
+            + "形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，倒着走";
+
     private final WebClient webClient;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -54,7 +61,6 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
     private final String diffusionModel;
     private final String clipModel;
     private final String vaeModel;
-    private final String clipVisionModel;
     private final String h3DiffusionModel;
     private final String h3Ref2vaDiffusionModel;
     private final String h3TextEncoder;
@@ -90,6 +96,22 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
     private final int h3Height;
     private final double h3MaxDurationSeconds;
     private final boolean h3FreeVramBeforeRun;
+    /** Wan 2.2 I2V-A14B (MoE high/low-noise experts). Image-to-video only; separate
+     *  settings from the TI2V-5B path so selecting it never changes 5B behaviour. */
+    private final String a14bHighModel;
+    private final String a14bLowModel;
+    private final String a14bVae;
+    private final int a14bWidth;
+    private final int a14bHeight;
+    private final int a14bFps;
+    private final int a14bSteps;
+    private final double a14bCfg;
+    private final double a14bShift;
+    private final double a14bMaxDurationSeconds;
+    private final boolean a14bLightning;
+    private final String a14bLoraHigh;
+    private final String a14bLoraLow;
+    private final int a14bMinVramMb;
 
     private final com.aistorystudio.system.ResourceMonitorService resourceMonitor;
     private final int minVramMb;
@@ -98,7 +120,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
             WebClient.Builder webClientBuilder,
             @Value("${studio.comfyui.baseUrl:http://comfyui:8188}") String baseUrl,
             @Value("${studio.animation.local-ai.enabled:false}") boolean enabled,
-            @Value("${studio.animation.local-ai.workflow:wan-image-to-video}") String defaultWorkflow,
+            @Value("${studio.animation.local-ai.workflow:wan-ti2v-5b-image-to-video}") String defaultWorkflow,
             // Separate workflow name, not the same file with an omitted field:
             // the graph shape genuinely differs (no LoadImage node, no
             // start_image wiring), and this project's convention is one
@@ -114,7 +136,6 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
             @Value("${studio.animation.local-ai.minimax-h3-steps:0}") int h3Steps,
             @Value("${studio.animation.local-ai.clip-model:}") String clipModel,
             @Value("${studio.animation.local-ai.vae-model:}") String vaeModel,
-            @Value("${studio.animation.local-ai.clip-vision-model:}") String clipVisionModel,
             @Value("${studio.animation.local-ai.width:832}") int defaultWidth,
             @Value("${studio.animation.local-ai.height:480}") int defaultHeight,
             @Value("${studio.animation.local-ai.fps:16}") int defaultFps,
@@ -135,6 +156,20 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
             @Value("${studio.animation.local-ai.minimax-h3-height:0}") int h3Height,
             @Value("${studio.animation.local-ai.minimax-h3-max-duration-seconds:0}") double h3MaxDurationSeconds,
             @Value("${studio.animation.local-ai.minimax-h3-free-vram-before-run:true}") boolean h3FreeVramBeforeRun,
+            @Value("${studio.animation.local-ai.a14b.high-noise-model:wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors}") String a14bHighModel,
+            @Value("${studio.animation.local-ai.a14b.low-noise-model:wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors}") String a14bLowModel,
+            @Value("${studio.animation.local-ai.a14b.vae:wan_2.1_vae.safetensors}") String a14bVae,
+            @Value("${studio.animation.local-ai.a14b.width:480}") int a14bWidth,
+            @Value("${studio.animation.local-ai.a14b.height:832}") int a14bHeight,
+            @Value("${studio.animation.local-ai.a14b.fps:16}") int a14bFps,
+            @Value("${studio.animation.local-ai.a14b.steps:20}") int a14bSteps,
+            @Value("${studio.animation.local-ai.a14b.cfg:3.5}") double a14bCfg,
+            @Value("${studio.animation.local-ai.a14b.shift:5.0}") double a14bShift,
+            @Value("${studio.animation.local-ai.a14b.max-duration-seconds:5.0}") double a14bMaxDurationSeconds,
+            @Value("${studio.animation.local-ai.a14b.lightning:false}") boolean a14bLightning,
+            @Value("${studio.animation.local-ai.a14b.lora-high:wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors}") String a14bLoraHigh,
+            @Value("${studio.animation.local-ai.a14b.lora-low:wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors}") String a14bLoraLow,
+            @Value("${studio.animation.local-ai.a14b.min-vram-mb:15000}") int a14bMinVramMb,
             com.aistorystudio.system.ResourceMonitorService resourceMonitor,
             ComfyUiAccessCoordinator comfyUiAccessCoordinator) {
         this.resourceMonitor = resourceMonitor;
@@ -150,6 +185,20 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         this.h3Height = h3Height > 0 ? h3Height : 832;
         this.h3MaxDurationSeconds = h3MaxDurationSeconds > 0 ? h3MaxDurationSeconds : (h3Small ? 5.0 : 6.0);
         this.h3FreeVramBeforeRun = h3FreeVramBeforeRun;
+        this.a14bHighModel = a14bHighModel;
+        this.a14bLowModel = a14bLowModel;
+        this.a14bVae = a14bVae;
+        this.a14bWidth = a14bWidth;
+        this.a14bHeight = a14bHeight;
+        this.a14bFps = a14bFps;
+        this.a14bSteps = a14bSteps;
+        this.a14bCfg = a14bCfg;
+        this.a14bShift = a14bShift;
+        this.a14bMaxDurationSeconds = a14bMaxDurationSeconds;
+        this.a14bLightning = a14bLightning;
+        this.a14bLoraHigh = a14bLoraHigh;
+        this.a14bLoraLow = a14bLoraLow;
+        this.a14bMinVramMb = a14bMinVramMb;
         if (blank(h3DiffusionModel)) {
             h3DiffusionModel = h3Small ? "minimax_h3_fl2va_pruned_w6a8.safetensors"
                     : "minimax_h3_fl2va_pruned_int8_convrot.safetensors";
@@ -175,7 +224,6 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         this.h3Steps = h3Steps;
         this.clipModel = clipModel;
         this.vaeModel = vaeModel;
-        this.clipVisionModel = clipVisionModel;
         this.defaultWidth = defaultWidth;
         this.defaultHeight = defaultHeight;
         this.defaultFps = defaultFps;
@@ -212,11 +260,6 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         if (h3Configured && !h3VoiceConfigured) { log.warn("MiniMax H3 base workflow is configured but H3 Ref2VA voice-reference model is not configured."); }
         if (!wanConfigured && !h3Configured) {
             return "No local video model configuration is complete (Wan 2.2 or MiniMax H3).";
-        }
-        // The legacy Wan image-to-video graph uses CLIP Vision for reference conditioning.
-        boolean needsClipVision = defaultWorkflow != null && !defaultWorkflow.toLowerCase(java.util.Locale.ROOT).contains("ti2v-5b");
-        if (wanConfigured && needsClipVision && blank(clipVisionModel)) {
-            log.warn("Wan legacy workflow is configured without a CLIP vision model; H3 can still be used independently.");
         }
         // Real check, not assumed (spec section 25/27): a scene attempted on
         // hardware without enough VRAM would OOM mid-generation, wasting the
@@ -295,6 +338,14 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                 throw new IllegalStateException(h3Reason);
             }
         }
+        if (isA14b(request.workflow() != null ? request.workflow() : defaultWorkflow)
+                && request.startingImagePath() != null) {
+            var gpu = resourceMonitor.current();
+            if (gpu.gpuVramTotalMb() != null && gpu.gpuVramTotalMb() < a14bMinVramMb) {
+                throw new IllegalStateException("Wan 2.2 I2V-A14B needs at least " + a14bMinVramMb
+                        + "MB VRAM; current GPU has " + gpu.gpuVramTotalMb() + "MB. Use Wan 2.2 TI2V-5B.");
+            }
+        }
         boolean acquired;
         try {
             acquired = slot.tryAcquire(queueWait.toMillis(), TimeUnit.MILLISECONDS);
@@ -316,13 +367,25 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
     private VideoGenerationResult doGenerate(VideoGenerationRequest request) {
         long seed = request.seed() != null ? request.seed() : ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
         String workflowName = request.workflow() != null ? request.workflow() : defaultWorkflow;
+        if (request.workflow() == null && request.startingImagePath() == null) {
+            workflowName = textToVideoWorkflow;
+        }
+        boolean a14b = isA14b(workflowName);
+        if (a14b && request.startingImagePath() == null) {
+            // A14B checkpoint here is the I2V expert pair - no text-only mode.
+            log.warn("Wan 2.2 I2V-A14B needs a starting image; using {} for this text-only request.",
+                    textToVideoWorkflow);
+            workflowName = textToVideoWorkflow;
+            a14b = false;
+        }
         boolean h3 = workflowName.toLowerCase(java.util.Locale.ROOT).startsWith("minimax-h3");
-        // H3 has its own size/duration caps (profile-driven); Wan keeps its own.
-        int width = request.width() > 0 ? request.width() : (h3 ? h3Width : defaultWidth);
-        int height = request.height() > 0 ? request.height() : (h3 ? h3Height : defaultHeight);
+        // H3 and A14B have their own size/fps/duration caps; TI2V-5B keeps its own.
+        int width = request.width() > 0 ? request.width() : (h3 ? h3Width : a14b ? a14bWidth : defaultWidth);
+        int height = request.height() > 0 ? request.height() : (h3 ? h3Height : a14b ? a14bHeight : defaultHeight);
+        int fps = a14b ? a14bFps : defaultFps;
 
-        double duration = Math.max(0.5, Math.min(h3 ? h3MaxDurationSeconds : maxDurationSeconds,
-                request.durationSeconds()));
+        double duration = Math.max(0.5, Math.min(h3 ? h3MaxDurationSeconds
+                : a14b ? a14bMaxDurationSeconds : maxDurationSeconds, request.durationSeconds()));
         // Wan's frame count needs to land on 4n+1 for its causal VAE - round to
         // the nearest valid length rather than passing an arbitrary frame count
         // the workflow might reject.
@@ -337,7 +400,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         // guarantees the raw Wan clip is always >= the requested duration, so
         // the later FFmpeg trim (which expects that) actually has something to
         // trim from instead of coming up short.
-        int rawFrames = (int) Math.round(duration * (workflowName.startsWith("minimax-h3") ? 24 : defaultFps));
+        int rawFrames = (int) Math.round(duration * (workflowName.startsWith("minimax-h3") ? 24 : fps));
         int length = workflowName.startsWith("minimax-h3")
                 ? Math.max(5, rawFrames + ((17 - (rawFrames - 5) % 17) % 17))
                 : Math.max(5, (((rawFrames - 1) + 3) / 4) * 4 + 1);
@@ -370,13 +433,16 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         String clientId = UUID.randomUUID().toString();
         String filenamePrefix = "ai-story-studio-wan-" + clientId;
 
-        if (h3 && h3FreeVramBeforeRun) {
+        if ((h3 && h3FreeVramBeforeRun) || a14b) {
             freeComfyMemory();
         }
         log.info("ComfyUI video submit: workflow={} profile={} {}x{} length={} steps={}",
                 workflowName, h3 ? h3Profile : "wan", width, height, length,
                 request.steps() > 0 ? request.steps() : (h3 ? h3Steps : defaultSteps));
-        String workflowJson = workflowName.startsWith("minimax-h3")
+        String workflowJson = a14b
+                ? fillWanA14bTemplate(request.prompt(), request.negativePrompt(), seed, width, height, length,
+                    startingImageFilename, filenamePrefix)
+                : workflowName.startsWith("minimax-h3")
                 ? fillMiniMaxH3Template(workflowName, request.prompt(), seed, width, height, length,
                     request.steps() > 0 ? request.steps() : h3Steps, startingImageFilename, request.voiceReferenceAudioPath())
                 : fillWanTemplate(workflowName, request.prompt(),
@@ -453,16 +519,53 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         return WorkflowTemplateFiller.fill(mapper, template, text, numeric);
     }
 
+    private static boolean isA14b(String workflowName) {
+        return workflowName != null && workflowName.toLowerCase(java.util.Locale.ROOT).startsWith("wan22-i2v-a14b");
+    }
+
+    /** Official ComfyUI Wan 2.2 14B I2V values: 20 steps split 10/10 between the
+     *  high-noise and low-noise experts, cfg 3.5, shift 5, euler/simple, 16 fps.
+     *  Lightning: lightx2v 4-step LoRAs, cfg 1, split 2/2. */
+    private String fillWanA14bTemplate(String positive, String negative, long seed, int width, int height,
+                                       int length, String startingImageFilename, String filenamePrefix) {
+        String template = a14bLightning ? "wan22-i2v-a14b-lightx2v" : "wan22-i2v-a14b";
+        int steps = a14bLightning ? 4 : Math.max(2, a14bSteps);
+        double cfg = a14bLightning ? 1.0 : a14bCfg;
+        Map<String, String> text = new LinkedHashMap<>();
+        text.put("{{POSITIVE_PROMPT}}", positive == null ? "" : positive);
+        text.put("{{NEGATIVE_PROMPT}}", negative == null || negative.isBlank() ? WAN_DEFAULT_NEGATIVE : negative);
+        text.put("{{CHECKPOINT}}", a14bHighModel);
+        text.put("{{CHECKPOINT_LOW}}", a14bLowModel);
+        text.put("{{CLIP_MODEL}}", clipModel);
+        text.put("{{VAE_MODEL}}", a14bVae);
+        text.put("{{LORA_HIGH}}", a14bLoraHigh);
+        text.put("{{LORA_LOW}}", a14bLoraLow);
+        text.put("{{STARTING_IMAGE}}", startingImageFilename);
+        text.put("{{FILENAME_PREFIX}}", filenamePrefix);
+        Map<String, Number> numeric = new LinkedHashMap<>();
+        numeric.put("{{SEED}}", seed);
+        numeric.put("{{WIDTH}}", width);
+        numeric.put("{{HEIGHT}}", height);
+        numeric.put("{{LENGTH}}", length);
+        numeric.put("{{FPS}}", a14bFps);
+        numeric.put("{{STEPS}}", steps);
+        numeric.put("{{SPLIT_STEP}}", steps / 2);
+        numeric.put("{{CFG}}", cfg);
+        numeric.put("{{SHIFT}}", a14bShift);
+        log.info("Wan 2.2 I2V-A14B: {}x{} length={} steps={} split={} cfg={} lightning={}",
+                width, height, length, steps, steps / 2, cfg, a14bLightning);
+        return WorkflowTemplateFiller.fill(mapper, template, text, numeric);
+    }
+
     private String fillWanTemplate(String workflowName, String positive, String negative,
                                    long seed, int width, int height, int length, int fps, int steps,
                                    String startingImageFilename, String filenamePrefix) {
         Map<String, String> text = new LinkedHashMap<>();
         text.put("{{POSITIVE_PROMPT}}", positive == null ? "" : positive);
-        text.put("{{NEGATIVE_PROMPT}}", negative == null ? "" : negative);
+        text.put("{{NEGATIVE_PROMPT}}", negative == null || negative.isBlank() ? WAN_DEFAULT_NEGATIVE : negative);
         text.put("{{CHECKPOINT}}", diffusionModel);
         text.put("{{CLIP_MODEL}}", clipModel);
         text.put("{{VAE_MODEL}}", vaeModel);
-        text.put("{{CLIP_VISION_MODEL}}", clipVisionModel);
         text.put("{{STARTING_IMAGE}}", startingImageFilename == null ? "" : startingImageFilename);
         text.put("{{FILENAME_PREFIX}}", "ai-story-studio-minimax-h3-" + UUID.randomUUID());
         text.put("{{SAMPLER}}", defaultSampler);

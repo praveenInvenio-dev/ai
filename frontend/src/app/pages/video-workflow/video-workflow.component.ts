@@ -32,7 +32,7 @@ import { FormsModule } from '@angular/forms';
       </div>
       <div class="notice" *ngIf="!isH3">
         <strong>Wan 2.2 preserved</strong>
-        <p>The existing Wan templates remain separate and are selected only when Video Generation is set to Wan 2.2.</p>
+        <p>TI2V-5B (720p@24fps, text or image to video) and I2V-A14B (best quality, image to video, 480p@16fps) are picked on the Video Generation page.</p>
       </div>
     </section>
   `,
@@ -43,15 +43,15 @@ import { FormsModule } from '@angular/forms';
 export class VideoWorkflowComponent implements OnInit {
   isH3 = false;
   workflowKey = 'WAN_2_2';
-  templateName = 'wan-image-to-video';
+  templateName = 'wan-ti2v-5b-image-to-video / wan22-i2v-a14b';
   mode = 'i2v';
-  width = 480;
-  height = 832;
-  steps = 16;
-  maxDuration = 6;
+  width = 704;
+  height = 1280;
+  steps = 30;
+  maxDuration = 5;
   constructor(private route: ActivatedRoute) {}
   ngOnInit(): void {
     this.isH3 = this.route.snapshot.data['workflow'] === 'MINIMAX_H3';
-    if (this.isH3) { this.workflowKey = 'MINIMAX_H3'; this.templateName = 'minimax-h3-reference-to-video'; this.width = 480; this.height = 832; this.steps = 8; this.maxDuration = 6; }
+    if (this.isH3) { this.workflowKey = 'MINIMAX_H3'; this.templateName = 'minimax-h3-image-to-video'; this.width = 480; this.height = 832; this.steps = 20; this.maxDuration = 5; }
   }
 }

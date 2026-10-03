@@ -101,55 +101,12 @@ for i in $(seq 1 20); do
 done
 docker compose exec -T ollama ollama pull "$OLLAMA_STARTUP_MODEL"
 
-# --- 5. ComfyUI model downloads (skips any file that already exists) -------
-download_model() {
-    local subdir="$1" filename="$2" url="$3"
-    if docker compose exec -T comfyui test -f "/root/ComfyUI/models/${subdir}/${filename}"; then
-        log "Already have ${filename}, skipping."
-        return
-    fi
-    log "Downloading ${filename} (${subdir})..."
-    docker compose exec -T comfyui aria2c -c -x4 -d "/root/ComfyUI/models/${subdir}" -o "$filename" "$url"
-}
-
-log "Downloading ComfyUI models (this is the slow part - ~15GB total)..."
-
-download_model checkpoints DreamShaperXL_Lightning.safetensors \
-  "https://huggingface.co/Lykon/dreamshaper-xl-lightning/resolve/main/DreamShaperXL_Lightning.safetensors"
-
-download_model diffusion_models Wan2_2-TI2V-5B_fp8_e4m3fn_scaled_KJ.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/TI2V/Wan2_2-TI2V-5B_fp8_e4m3fn_scaled_KJ.safetensors"
-
-download_model text_encoders umt5_xxl_fp8_e4m3fn_scaled.safetensors \
-  "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
-
-download_model vae wan2.2_vae.safetensors \
-  "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors"
-
-download_model clip_vision clip_vision_h.safetensors \
-  "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
-
-download_model ipadapter ip-adapter-plus_sdxl_vit-h.bin \
-  "https://huggingface.co/h94/IP-Adapter/resolve/main/sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors"
-
-# --- 6. Custom node packs (skips if already cloned) -------------------------
-install_node_pack() {
-    local dirname="$1" repo="$2"
-    if docker compose exec -T comfyui test -d "/root/ComfyUI/custom_nodes/${dirname}"; then
-        log "${dirname} already installed, skipping."
-        return
-    fi
-    log "Installing ${dirname}..."
-    docker compose exec -T comfyui bash -c "cd /root/ComfyUI/custom_nodes && git clone $repo"
-}
-
-install_node_pack ComfyUI-VideoHelperSuite https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite
-install_node_pack ComfyUI_IPAdapter_plus   https://github.com/cubiq/ComfyUI_IPAdapter_plus
+# --- 5+6. ComfyUI models + VideoHelperSuite (one script, see MODELS.md) ----
+log "Downloading ComfyUI models via download-models.sh (slow part, ~100 GB with 14B + H3)..."
+log "  Skip parts with SKIP_H3=1 SKIP_WAN14B=1 SKIP_LIGHTNING=1."
+./download-models.sh
 
 # --- 7. Restart ComfyUI to pick up the new node packs, final full 'up' -----
-log "Restarting ComfyUI to load new node packs..."
-docker compose restart comfyui
-sleep 5
 
 log "Bringing the full stack up (idempotent - already-running services are untouched)..."
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
@@ -163,9 +120,8 @@ echo -n "  ollama model list...... "; docker compose exec -T ollama ollama list 
 
 log "Done. Model file sizes (verify none are truncated):"
 docker compose exec -T comfyui ls -lh \
-  /root/ComfyUI/models/checkpoints /root/ComfyUI/models/diffusion_models \
-  /root/ComfyUI/models/text_encoders /root/ComfyUI/models/vae \
-  /root/ComfyUI/models/clip_vision /root/ComfyUI/models/ipadapter
+  /root/ComfyUI/models/diffusion_models /root/ComfyUI/models/text_encoders \
+  /root/ComfyUI/models/vae /root/ComfyUI/models/loras /root/ComfyUI/models/upscale_models
 
 cat <<EOF
 

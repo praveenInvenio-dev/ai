@@ -59,47 +59,21 @@ studio:
     timeoutSeconds: ${OLLAMA_TIMEOUT_SECONDS:120}
   comfyui:
     baseUrl: ${COMFYUI_BASE_URL:http://comfyui:8188}
-    workflow: ${COMFYUI_WORKFLOW:character-consistent-story}
-    # Must exactly match a filename in ComfyUI's models/checkpoints directory
-    # (`docker compose exec comfyui ls /root/ComfyUI/models/checkpoints`).
-    # Every downloaded checkpoint names the file differently, so this is
-    # deliberately NOT hard-coded in the workflow template - set it here
-    # instead of renaming whatever file you downloaded.
-    model: ${COMFYUI_MODEL:v1-5-pruned-emaonly-fp16.safetensors}
-    # Optional newer/high-quality workflow. Leave blank to preserve the existing
-    # workflow. QUALITY uses these only when both values are configured.
-    highQualityWorkflow: ${COMFYUI_HQ_WORKFLOW:qwen-image-2-1-16gb-t2i}
-    highQualityModel: ${COMFYUI_HQ_MODEL:qwen_image_2.1_int8_convrot.safetensors}
-    highQualitySteps: ${COMFYUI_HQ_STEPS:30}
-    highQualityWidth: ${COMFYUI_HQ_WIDTH:768}
-    highQualityHeight: ${COMFYUI_HQ_HEIGHT:1344}
-    highQualityCfg: ${COMFYUI_HQ_CFG:1.0}
+    # Single image engine: Qwen Image 2.1 (workflows qwen-image-2-1-16gb-t2i/-ref/-ref-dual).
+    # Locked character references are passed natively; no SDXL/IPAdapter path.
     qwen:
       diffusion-model: ${COMFYUI_QWEN_DIFFUSION_MODEL:qwen_image_2.1_int8_convrot.safetensors}
       text-encoder: ${COMFYUI_QWEN_TEXT_ENCODER:qwen3vl_8b_int8_convrot.safetensors}
       vae: ${COMFYUI_QWEN_VAE:qwen_image_2.1_vae_bf16.safetensors}
       upscale-model: ${COMFYUI_QWEN_UPSCALE_MODEL:RealESRGAN_x2.pth}
+      # Base generation size (~1 MP, 9:16), steps, reference resize budget.
+      width: ${COMFYUI_QWEN_WIDTH:768}
+      height: ${COMFYUI_QWEN_HEIGHT:1344}
+      steps: ${COMFYUI_QWEN_STEPS:30}
       resolution: ${COMFYUI_QWEN_RESOLUTION:1024}
+      # Final size after RealESRGAN x2 + resize.
       output-width: ${COMFYUI_QWEN_OUTPUT_WIDTH:1080}
       output-height: ${COMFYUI_QWEN_OUTPUT_HEIGHT:1920}
-      reference-workflow: ${COMFYUI_QWEN_REFERENCE_WORKFLOW:character-consistent-story-ipadapter-sdxl}
-      reference-model: ${COMFYUI_QWEN_REFERENCE_MODEL:DreamShaperXL_Lightning.safetensors}
-      # true = scenes with locked character references stay on Qwen Image 2.1 and
-      # pass the references natively (one model, one style for every scene).
-      # false = legacy: reroute reference scenes to reference-workflow/model above
-      # (also used automatically if ComfyUI lacks the Qwen 2.1 nodes).
-      use-references: ${COMFYUI_QWEN_USE_REFERENCES:true}
-    # Optional style-specific checkpoints. Leave blank to use COMFYUI_MODEL.
-    # These are intentionally opt-in so an installation with only one checkpoint
-    # never breaks when the user selects another style.
-    styleModels:
-      anime: ${COMFYUI_ANIME_MODEL:}
-      cartoon: ${COMFYUI_CARTOON_MODEL:}
-      3dAnimated: ${COMFYUI_3D_ANIMATED_MODEL:}
-      storybook: ${COMFYUI_STORYBOOK_MODEL:}
-      watercolor: ${COMFYUI_WATERCOLOR_MODEL:}
-      comicBook: ${COMFYUI_COMIC_BOOK_MODEL:}
-      fantasy: ${COMFYUI_FANTASY_MODEL:}
     # Wall-clock budget for ONE image. On expiry the prompt is interrupted and
     # removed from ComfyUI's queue, so it stops eating CPU the next scene needs.
     timeoutSeconds: ${COMFYUI_TIMEOUT_SECONDS:900}
@@ -108,21 +82,6 @@ studio:
     # rather than stacking prompts that will all time out together.
     queueWaitSeconds: ${COMFYUI_QUEUE_WAIT_SECONDS:3600}
     pollIntervalMs: ${COMFYUI_POLL_INTERVAL_MS:2000}
-    # ---- speed/quality knobs -------------------------------------------
-    # Generation cost scales with steps x pixels. These defaults are tuned for
-    # CPU-only ComfyUI; raise them once you're on a GPU.
-    #   CPU  : 512x512, 8 steps, dpmpp_2m/karras   (~1-3 min/image)
-    #   GPU  : 1024x576, 25-30 steps               (seconds/image)
-    steps: ${COMFYUI_STEPS:8}
-    width: ${COMFYUI_WIDTH:512}
-    height: ${COMFYUI_HEIGHT:512}
-    # 7.0 suits SD1.5/SDXL. Use 1.0-2.0 for LCM/Turbo/Lightning checkpoints -
-    # high CFG at low step counts produces burnt, over-saturated images.
-    cfg: ${COMFYUI_CFG:7.0}
-    # dpmpp_2m + karras converges well at low step counts. Use "lcm" +
-    # "sgm_uniform" with the character-consistent-story-lcm workflow.
-    sampler: ${COMFYUI_SAMPLER:dpmpp_2m}
-    scheduler: ${COMFYUI_SCHEDULER:karras}
     # When ComfyUI fails or times out, fall back to a placeholder image so the
     # rest of the pipeline (audio, video, packaging) still completes. Set false
     # to fail the job loudly instead of silently shipping placeholders.
@@ -232,26 +191,22 @@ studio:
       minimax-h3-video-vae: ${LOCAL_AI_ANIMATION_MINIMAX_H3_VIDEO_VAE:minimax_h3_video_vae_fp16.safetensors}
       minimax-h3-audio-vae: ${LOCAL_AI_ANIMATION_MINIMAX_H3_AUDIO_VAE:minimax_h3_audio_vae_fp32.safetensors}
       minimax-h3-steps: ${LOCAL_AI_ANIMATION_MINIMAX_H3_STEPS:0}
-      # Wan diffusion model (models/diffusion_models/), text encoder
-      # (models/text_encoders/), VAE (models/vae/) and CLIP vision model
-      # (models/clip_vision/ - the same file the IPAdapter image workflow
-      # uses, if already installed). See wan-image-to-video.json's own
-      # comments for exact expected filenames and where to get them.
+      # Wan 2.2 TI2V-5B diffusion model, umt5 text encoder and wan2.2_vae.
+      # See MODELS.md for exact filenames.
       diffusion-model: ${LOCAL_AI_ANIMATION_MODEL:}
       clip-model: ${LOCAL_AI_ANIMATION_CLIP_MODEL:}
       vae-model: ${LOCAL_AI_ANIMATION_VAE_MODEL:}
-      clip-vision-model: ${LOCAL_AI_ANIMATION_CLIP_VISION_MODEL:}
-      width: ${LOCAL_AI_ANIMATION_WIDTH:480}
-      height: ${LOCAL_AI_ANIMATION_HEIGHT:832}
-      fps: ${LOCAL_AI_ANIMATION_FPS:16}
-      steps: ${LOCAL_AI_ANIMATION_STEPS:16}
-      cfg: ${LOCAL_AI_ANIMATION_CFG:6.0}
+      width: ${LOCAL_AI_ANIMATION_WIDTH:704}
+      height: ${LOCAL_AI_ANIMATION_HEIGHT:1280}
+      fps: ${LOCAL_AI_ANIMATION_FPS:24}
+      steps: ${LOCAL_AI_ANIMATION_STEPS:30}
+      cfg: ${LOCAL_AI_ANIMATION_CFG:5.0}
       sampler: ${LOCAL_AI_ANIMATION_SAMPLER:uni_pc}
       scheduler: ${LOCAL_AI_ANIMATION_SCHEDULER:simple}
       # A single Wan call above this length starts costing minutes per scene
       # even on strong hardware - kept modest by default; raise it once
       # you've verified timing on your actual deployment GPU.
-      max-duration-seconds: ${LOCAL_AI_ANIMATION_MAX_DURATION_SECONDS:6.0}
+      max-duration-seconds: ${LOCAL_AI_ANIMATION_MAX_DURATION_SECONDS:5.0}
       timeout-seconds: ${LOCAL_AI_ANIMATION_TIMEOUT_SECONDS:1800}
       queue-wait-seconds: ${LOCAL_AI_ANIMATION_QUEUE_WAIT_SECONDS:3600}
       max-concurrent: ${LOCAL_AI_ANIMATION_MAX_CONCURRENT:1}
@@ -272,6 +227,24 @@ studio:
       minimax-h3-height: ${LOCAL_AI_ANIMATION_MINIMAX_H3_HEIGHT:0}
       minimax-h3-max-duration-seconds: ${LOCAL_AI_ANIMATION_MINIMAX_H3_MAX_DURATION_SECONDS:0}
       minimax-h3-free-vram-before-run: ${LOCAL_AI_ANIMATION_MINIMAX_H3_FREE_VRAM:true}
+      # Wan 2.2 I2V-A14B (two 14B fp8 experts, ComfyUI offloads one while the
+      # other samples). Image-to-video only. Select per job ("WAN_2_2_14B") or
+      # for the story pipeline with LOCAL_AI_ANIMATION_WORKFLOW=wan22-i2v-a14b.
+      a14b:
+        high-noise-model: ${WAN14B_HIGH_NOISE_MODEL:wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors}
+        low-noise-model: ${WAN14B_LOW_NOISE_MODEL:wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors}
+        vae: ${WAN14B_VAE:wan_2.1_vae.safetensors}
+        width: ${WAN14B_WIDTH:480}
+        height: ${WAN14B_HEIGHT:832}
+        fps: ${WAN14B_FPS:16}
+        steps: ${WAN14B_STEPS:20}
+        cfg: ${WAN14B_CFG:3.5}
+        shift: ${WAN14B_SHIFT:5.0}
+        max-duration-seconds: ${WAN14B_MAX_DURATION_SECONDS:5.0}
+        lightning: ${WAN14B_LIGHTNING:false}
+        lora-high: ${WAN14B_LORA_HIGH:wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors}
+        lora-low: ${WAN14B_LORA_LOW:wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors}
+        min-vram-mb: ${WAN14B_MIN_VRAM_MB:15000}
     cloud:
       # Empty by default = "no cloud provider configured". Never assumed
       # present; set both to opt in once a real provider is wired up.

@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 /**
  * Local image-to-video via ComfyUI's native Wan support (see
  * com.aistorystudio.provider.ComfyUIVideoProvider and
- * comfyui-workflows/wan-image-to-video.json for the actual implementation
+ * comfyui-workflows/wan-ti2v-5b-image-to-video.json / wan22-i2v-a14b.json for the actual implementation
  * and its requirements). Not viable on the 2GB-VRAM reference hardware this
  * project's 2.5D-first design targets - this is explicitly for deployment on
  * separate, higher-VRAM hardware, per the person's own instruction. This

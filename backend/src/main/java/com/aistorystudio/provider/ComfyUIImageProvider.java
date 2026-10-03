@@ -27,8 +27,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * Talks to a self-hosted ComfyUI instance through its HTTP API.
  *
- * Workflow JSON templates live in resources/comfyui-workflows and are filled in
- * with prompt/negative-prompt/seed/size/sampler before being POSTed to /prompt.
+ * Single image engine: Qwen Image 2.1 (qwen-image-2-1-16gb-t2i / -ref / -ref-dual).
+ * Locked character references go in natively as images.image_N.
  *
  * Behaviour that matters when ComfyUI is CPU-only (which is slow - minutes per
  * image, not seconds):
@@ -41,23 +41,23 @@ import java.util.concurrent.TimeUnit;
  *    until the full timeout expires.
  *  - On timeout the prompt is actually interrupted and removed from the queue,
  *    so an abandoned job stops burning CPU that the next scene needs.
- *  - Sizes are snapped to multiples of 8 and clamped, because a wrong latent
- *    size is the single biggest cause of "why is this taking 40 minutes".
+ *  - Sizes are snapped to multiples of 16 (Qwen latent) and clamped.
  */
 @Component
 public class ComfyUIImageProvider implements ImageGenerationProvider {
 
     private static final Logger log = LoggerFactory.getLogger(ComfyUIImageProvider.class);
 
-    /** Anything above this on CPU is effectively a hang; SD1.5 also degrades badly past ~768. */
     private static final int MAX_DIMENSION = 2048;
     private static final int MIN_DIMENSION = 256;
 
+    // Single image engine: Qwen Image 2.1. Three graphs, picked per request by how
+    // many character references actually uploaded: t2i / ref / ref-dual.
+    private static final String WF_T2I = "qwen-image-2-1-16gb-t2i";
+    private static final String WF_REF = "qwen-image-2-1-16gb-ref";
+    private static final String WF_REF_DUAL = "qwen-image-2-1-16gb-ref-dual";
+
     private final WebClient webClient;
-    private final String defaultWorkflow;
-    private final String defaultModel;
-    private final String defaultSampler;
-    private final String defaultScheduler;
     private final String qwenDiffusionModel;
     private final String qwenTextEncoder;
     private final String qwenVae;
@@ -65,16 +65,9 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
     private final int qwenResolution;
     private final int qwenOutputWidth;
     private final int qwenOutputHeight;
-    private final String qwenReferenceWorkflow;
-    private final String qwenReferenceModel;
-    /** True: scenes with locked character references stay on Qwen Image 2.1 and
-     *  pass the references natively (TextEncodeQwenImage21 images.image_N).
-     *  False: legacy behaviour, reroute reference scenes to SDXL + IPAdapter. */
-    private final boolean qwenUseReferences;
     private final int defaultSteps;
     private final int defaultWidth;
     private final int defaultHeight;
-    private final double defaultCfg;
     private final Duration timeout;
     private final Duration queueWait;
     private final long pollIntervalMs;
@@ -82,10 +75,7 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
 
     /**
      * ComfyUI runs one prompt at a time - shared with ComfyUIVideoProvider via
-     * ComfyUiAccessCoordinator, not a separate semaphore, because a separate
-     * one guarantees nothing about what ComfyUI itself does when both an
-     * image and a video prompt arrive close together (it interrupts the
-     * in-flight one - see that class's comment for what this fixed).
+     * ComfyUiAccessCoordinator so image and video prompts never interrupt each other.
      */
     private final Semaphore slot;
 
@@ -93,14 +83,6 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
             WebClient.Builder webClientBuilder,
             ComfyUiAccessCoordinator comfyUiAccessCoordinator,
             @Value("${studio.comfyui.baseUrl}") String baseUrl,
-            @Value("${studio.comfyui.workflow}") String defaultWorkflow,
-            @Value("${studio.comfyui.model}") String defaultModel,
-            @Value("${studio.comfyui.steps:8}") int defaultSteps,
-            @Value("${studio.comfyui.width:512}") int defaultWidth,
-            @Value("${studio.comfyui.height:512}") int defaultHeight,
-            @Value("${studio.comfyui.cfg:7.0}") double defaultCfg,
-            @Value("${studio.comfyui.sampler:dpmpp_2m}") String defaultSampler,
-            @Value("${studio.comfyui.scheduler:karras}") String defaultScheduler,
             @Value("${studio.comfyui.qwen.diffusion-model:qwen_image_2.1_int8_convrot.safetensors}") String qwenDiffusionModel,
             @Value("${studio.comfyui.qwen.text-encoder:qwen3vl_8b_int8_convrot.safetensors}") String qwenTextEncoder,
             @Value("${studio.comfyui.qwen.vae:qwen_image_2.1_vae_bf16.safetensors}") String qwenVae,
@@ -108,22 +90,14 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
             @Value("${studio.comfyui.qwen.resolution:1024}") int qwenResolution,
             @Value("${studio.comfyui.qwen.output-width:1080}") int qwenOutputWidth,
             @Value("${studio.comfyui.qwen.output-height:1920}") int qwenOutputHeight,
-            @Value("${studio.comfyui.qwen.reference-workflow:character-consistent-story-ipadapter-sdxl}") String qwenReferenceWorkflow,
-            @Value("${studio.comfyui.qwen.reference-model:DreamShaperXL_Lightning.safetensors}") String qwenReferenceModel,
-            @Value("${studio.comfyui.qwen.use-references:true}") boolean qwenUseReferences,
+            @Value("${studio.comfyui.qwen.steps:30}") int defaultSteps,
+            @Value("${studio.comfyui.qwen.width:768}") int defaultWidth,
+            @Value("${studio.comfyui.qwen.height:1344}") int defaultHeight,
             @Value("${studio.comfyui.timeoutSeconds:900}") long timeoutSeconds,
             @Value("${studio.comfyui.queueWaitSeconds:3600}") long queueWaitSeconds,
             @Value("${studio.comfyui.pollIntervalMs:2000}") long pollIntervalMs) {
         this.webClient = webClientBuilder.baseUrl(baseUrl).build();
-        this.defaultWorkflow = defaultWorkflow;
         this.slot = comfyUiAccessCoordinator.slot();
-        this.defaultModel = defaultModel;
-        this.defaultSteps = defaultSteps;
-        this.defaultWidth = defaultWidth;
-        this.defaultHeight = defaultHeight;
-        this.defaultCfg = defaultCfg;
-        this.defaultSampler = defaultSampler;
-        this.defaultScheduler = defaultScheduler;
         this.qwenDiffusionModel = qwenDiffusionModel;
         this.qwenTextEncoder = qwenTextEncoder;
         this.qwenVae = qwenVae;
@@ -131,9 +105,9 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         this.qwenResolution = qwenResolution;
         this.qwenOutputWidth = qwenOutputWidth;
         this.qwenOutputHeight = qwenOutputHeight;
-        this.qwenReferenceWorkflow = qwenReferenceWorkflow;
-        this.qwenReferenceModel = qwenReferenceModel;
-        this.qwenUseReferences = qwenUseReferences;
+        this.defaultSteps = defaultSteps;
+        this.defaultWidth = defaultWidth;
+        this.defaultHeight = defaultHeight;
         this.timeout = Duration.ofSeconds(timeoutSeconds);
         this.queueWait = Duration.ofSeconds(queueWaitSeconds);
         this.pollIntervalMs = Math.max(250, pollIntervalMs);
@@ -149,10 +123,8 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
             throw new IllegalStateException("Interrupted while waiting for a free ComfyUI slot", e);
         }
         if (!acquired) {
-            throw new IllegalStateException(
-                    "Timed out waiting for a free ComfyUI slot after " + queueWait.toSeconds() + "s - "
-                            + "generation is slower than the pipeline is submitting work "
-                            + "(lower COMFYUI_STEPS / COMFYUI_WIDTH / COMFYUI_HEIGHT, or move to GPU)");
+            throw new IllegalStateException("Timed out waiting for a free ComfyUI slot after "
+                    + queueWait.toSeconds() + "s");
         }
         try {
             return doGenerate(request);
@@ -163,183 +135,46 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
 
     private ImageGenerationResult doGenerate(ImageGenerationRequest request) {
         long seed = request.seed() != null ? request.seed() : ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
-        String workflowName = request.workflow() != null ? request.workflow() : defaultWorkflow;
-        String checkpointName = request.model() != null ? request.model() : defaultModel;
-        boolean qwenWorkflow = isQwenWorkflow(workflowName);
-        if (qwenWorkflow && request.referenceImagePath() != null && !qwenUseReferences) {
-            // Legacy path (COMFYUI_QWEN_USE_REFERENCES=false): reference scenes
-            // go to SDXL + IPAdapter. The request carries the Qwen-tier size/
-            // steps/cfg; SDXL-Lightning at 20 steps, cfg 1.0 and 576x1024 is
-            // what produced soft, background-less frames, so those are reset
-            // to the SDXL defaults (studio.comfyui.*) instead of inherited.
-            return doGenerate(sdxlFallbackRequest(request));
-        }
-        if (qwenWorkflow) {
-            checkpointName = qwenDiffusionModel;
-        }
-        // The bundled reference workflow is SD1.5-specific. Selecting it for an
-        // SDXL checkpoint produces either a node/model mismatch or weak identity
-        // conditioning. Automatically choose the matching SDXL IPAdapter template.
-        if ("character-consistent-story-ipadapter".equals(workflowName)
-                && checkpointName != null
-                && checkpointName.toLowerCase(java.util.Locale.ROOT).contains("xl")) {
-            // Two locked character references (ProductionPipelineService only
-            // sets referenceImagePath2 for an exactly-2-character scene where
-            // both have one) get the regional dual-IPAdapter workflow instead
-            // of forcing everyone in frame onto a single reference photo.
-            workflowName = request.referenceImagePath2() != null
-                    ? "character-consistent-story-ipadapter-sdxl-dual"
-                    : "character-consistent-story-ipadapter-sdxl";
+        int width = snap16(request.width() > 0 ? request.width() : defaultWidth);
+        int height = snap16(request.height() > 0 ? request.height() : defaultHeight);
+        int steps = request.steps() > 0 ? request.steps() : defaultSteps;
+
+        // References: a failed upload degrades to fewer references, never to a
+        // failed image. Both must upload for the dual graph.
+        String ref1 = tryUpload(request.referenceImagePath());
+        String ref2 = ref1 == null ? null : tryUpload(request.referenceImagePath2());
+        int refCount = ref1 == null ? 0 : (ref2 == null ? 1 : 2);
+        String workflowName = refCount == 2 ? WF_REF_DUAL : refCount == 1 ? WF_REF : WF_T2I;
+
+        // Final size: configured 1080x1920 for the usual 9:16 frame, otherwise the
+        // plain 2x upscale at the request's own aspect (e.g. square character refs).
+        int outW = qwenOutputWidth;
+        int outH = qwenOutputHeight;
+        if (Math.abs((double) width / height - (double) qwenOutputWidth / qwenOutputHeight) > 0.03) {
+            outW = width * 2;
+            outH = height * 2;
         }
 
-        int width = snap(request.width() > 0 ? request.width() : (qwenWorkflow ? 768 : defaultWidth));
-        int height = snap(request.height() > 0 ? request.height() : (qwenWorkflow ? 1344 : defaultHeight));
-        int steps = request.steps() > 0 ? request.steps() : (qwenWorkflow ? 30 : defaultSteps);
-        double cfg = request.cfg() > 0 ? request.cfg() : (qwenWorkflow ? 1.0 : defaultCfg);
-
-        // SDXL-Lightning is distilled for the Euler/SGM-Uniform schedule. The
-        // older dpmpp_2m/karras defaults are valid for ordinary SD1.5 but waste
-        // the Lightning checkpoint's speed/quality advantage.
-        String sampler = defaultSampler;
-        String scheduler = defaultScheduler;
-        String modelLower = checkpointName == null ? "" : checkpointName.toLowerCase(java.util.Locale.ROOT);
-        if (modelLower.contains("lightning")) {
-            if ("dpmpp_2m".equalsIgnoreCase(sampler)) sampler = "euler";
-            if ("karras".equalsIgnoreCase(scheduler)) scheduler = "sgm_uniform";
-        }
-
-        // Character-consistency reference image (never required - see
-        // WorkflowTemplateLoader's {{REFERENCE_IMAGE}} placeholder, which
-        // only the IPAdapter-capable workflow templates actually use). A
-        // failed upload degrades to no reference rather than failing the
-        // whole scene: a character looking slightly less consistent in one
-        // scene is a far smaller problem than the scene not existing.
-        String referenceImageFilename = null;
-        if (request.referenceImagePath() != null) {
-            try {
-                referenceImageFilename = uploadReferenceImage(Path.of(request.referenceImagePath()));
-            } catch (Exception e) {
-                log.warn("Could not upload character reference image to ComfyUI, generating without it: {}",
-                        e.getMessage());
-            }
-        }
-        // Second reference for the dual/regional workflow - both must upload
-        // successfully or the dual workflow is abandoned entirely (see the
-        // downgrade check below), since a dual graph with only one real
-        // reference would condition BOTH halves of frame on that one image,
-        // defeating the whole point of the regional split.
-        String referenceImageFilename2 = null;
-        if (request.referenceImagePath2() != null) {
-            try {
-                referenceImageFilename2 = uploadReferenceImage(Path.of(request.referenceImagePath2()));
-            } catch (Exception e) {
-                log.warn("Could not upload second character reference image to ComfyUI, "
-                        + "falling back to single-reference generation: {}", e.getMessage());
-            }
-        }
-        // The workflow must follow the resource that actually made it into ComfyUI,
-        // not merely the fact that the caller supplied a local path. If upload failed
-        // (or there was no reference at all), never submit an IPAdapter workflow with
-        // an empty LoadImage value - ComfyUI resolves that empty value to its input
-        // directory and LoadImage then throws IsADirectoryError.
-        if (referenceImageFilename == null && workflowName.toLowerCase(java.util.Locale.ROOT).contains("ipadapter")) {
-            log.info("No usable character reference uploaded; switching from {} to plain SDXL workflow.", workflowName);
-            workflowName = "character-consistent-story-sdxl";
-        }
-        // Dual workflow specifically needs BOTH references - one missing
-        // means downgrade to the single-reference SDXL IPAdapter workflow
-        // (still uses referenceImageFilename, which did succeed) rather than
-        // submitting a dual graph with an empty second LoadImage value.
-        if (workflowName.endsWith("-dual") && referenceImageFilename2 == null) {
-            log.info("Second character reference unavailable; downgrading from {} to single-reference workflow.",
-                    workflowName);
-            workflowName = "character-consistent-story-ipadapter-sdxl";
-        }
-
-        // Unique per call, not a shared constant: every image workflow's
-        // SaveImage node had a hardcoded filename_prefix ("ai-story-studio"
-        // etc.), the exact same collision class that broke video generation
-        // (see wan-ti2v-5b-image-to-video.json's history) - SaveImage's own
-        // auto-increment counter is no more reliable across restarts/
-        // concurrent runs than VHS_VideoCombine's was. A per-call unique
-        // prefix makes the collision structurally impossible instead of
-        // relying on ComfyUI to keep count correctly.
         String clientId = UUID.randomUUID().toString();
-        String filenamePrefix = "ai-story-studio-" + clientId;
-
-        if (qwenWorkflow) {
-            // One model for every scene: references (if any made it into
-            // ComfyUI) are passed straight into TextEncodeQwenImage21.
-            int refCount = referenceImageFilename == null ? 0 : (referenceImageFilename2 == null ? 1 : 2);
-            workflowName = refCount == 2 ? "qwen-image-2-1-16gb-ref-dual"
-                    : refCount == 1 ? "qwen-image-2-1-16gb-ref"
-                    : "qwen-image-2-1-16gb-t2i";
-            String qwenPrompt = qwenPromptWithReferences(request.prompt(), refCount);
-            // Final size: configured output (1080x1920) when the request is the
-            // usual 9:16 scene frame; otherwise (e.g. a square character
-            // reference sheet) just the 2x RealESRGAN result at its own aspect.
-            int outW = qwenOutputWidth;
-            int outH = qwenOutputHeight;
-            if (Math.abs((double) width / height - (double) qwenOutputWidth / qwenOutputHeight) > 0.03) {
-                outW = width * 2;
-                outH = height * 2;
-            }
-            Map<String, String> qwenText = new LinkedHashMap<>();
-            qwenText.put("{{POSITIVE_PROMPT}}", qwenPrompt);
-            qwenText.put("{{REFERENCE_IMAGE}}", referenceImageFilename == null ? "" : referenceImageFilename);
-            qwenText.put("{{REFERENCE_IMAGE_2}}", referenceImageFilename2 == null ? "" : referenceImageFilename2);
-            qwenText.put("{{NEGATIVE_PROMPT}}", request.negativePrompt() == null ? "" : request.negativePrompt());
-            qwenText.put("{{QWEN_DIFFUSION_MODEL}}", qwenDiffusionModel);
-            qwenText.put("{{QWEN_TEXT_ENCODER}}", qwenTextEncoder);
-            qwenText.put("{{QWEN_VAE}}", qwenVae);
-            qwenText.put("{{UPSCALE_MODEL}}", qwenUpscaleModel);
-            qwenText.put("{{FILENAME_PREFIX}}", filenamePrefix);
-            Map<String, Number> qwenNumeric = new LinkedHashMap<>();
-            qwenNumeric.put("{{SEED}}", seed);
-            qwenNumeric.put("{{WIDTH}}", width);
-            qwenNumeric.put("{{HEIGHT}}", height);
-            qwenNumeric.put("{{STEPS}}", steps);
-            qwenNumeric.put("{{QWEN_RESOLUTION}}", qwenResolution);
-            qwenNumeric.put("{{OUTPUT_WIDTH}}", outW);
-            qwenNumeric.put("{{OUTPUT_HEIGHT}}", outH);
-            String workflowJson = WorkflowTemplateFiller.fill(mapper, workflowName, qwenText, qwenNumeric);
-            Map<String, Object> qwenPayload = new LinkedHashMap<>();
-            try { qwenPayload.put("prompt", mapper.readTree(workflowJson)); }
-            catch (Exception e) { throw new IllegalStateException("Invalid ComfyUI workflow template '" + workflowName + "'", e); }
-            qwenPayload.put("client_id", clientId);
-            log.info("ComfyUI submit: workflow={} model={} {}x{} -> {}x{} steps={} refs={} seed={}",
-                    workflowName, qwenDiffusionModel, width, height, outW, outH, steps, refCount, seed);
-            JsonNode qwenQueue;
-            try {
-                qwenQueue = submitPrompt(qwenPayload);
-            } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
-                String body = e.getResponseBodyAsString();
-                if (body != null && body.contains("missing_node_type")) {
-                    // ComfyUI checkout predates Qwen Image 2.1 (no QwenImage21Cache /
-                    // TextEncodeQwenImage21). Render this scene on SDXL rather than
-                    // failing it; update ComfyUI to get Qwen quality back.
-                    log.warn("ComfyUI is missing Qwen Image 2.1 nodes - update ComfyUI. "
-                            + "Falling back to SDXL for this image. ComfyUI said: {}", body);
-                    return doGenerate(sdxlFallbackRequest(request));
-                }
-                throw e;
-            }
-            if (qwenQueue == null || qwenQueue.get("prompt_id") == null) {
-                throw new IllegalStateException("ComfyUI did not accept the Qwen image workflow: " + qwenQueue);
-            }
-            JsonNode qwenErrors = qwenQueue.path("node_errors");
-            if (qwenErrors.isObject() && qwenErrors.size() > 0) {
-                throw new IllegalStateException("ComfyUI reported Qwen node errors: " + qwenErrors);
-            }
-            byte[] qwenImage = pollForImage(qwenQueue.get("prompt_id").asText());
-            return new ImageGenerationResult(qwenImage, "png", seed, qwenDiffusionModel, workflowName);
-        }
-
-        String workflowJson = WorkflowTemplateLoader.loadAndFill(
-                mapper, workflowName, request.prompt(),
-                request.negativePrompt() == null ? "" : request.negativePrompt(),
-                seed, width, height, steps, cfg, checkpointName, defaultSampler, defaultScheduler,
-                referenceImageFilename, filenamePrefix, referenceImageFilename2, width / 2);
+        Map<String, String> text = new LinkedHashMap<>();
+        text.put("{{POSITIVE_PROMPT}}", qwenPromptWithReferences(request.prompt(), refCount));
+        text.put("{{NEGATIVE_PROMPT}}", request.negativePrompt() == null ? "" : request.negativePrompt());
+        text.put("{{REFERENCE_IMAGE}}", ref1 == null ? "" : ref1);
+        text.put("{{REFERENCE_IMAGE_2}}", ref2 == null ? "" : ref2);
+        text.put("{{QWEN_DIFFUSION_MODEL}}", qwenDiffusionModel);
+        text.put("{{QWEN_TEXT_ENCODER}}", qwenTextEncoder);
+        text.put("{{QWEN_VAE}}", qwenVae);
+        text.put("{{UPSCALE_MODEL}}", qwenUpscaleModel);
+        text.put("{{FILENAME_PREFIX}}", "ai-story-studio-" + clientId);
+        Map<String, Number> numeric = new LinkedHashMap<>();
+        numeric.put("{{SEED}}", seed);
+        numeric.put("{{WIDTH}}", width);
+        numeric.put("{{HEIGHT}}", height);
+        numeric.put("{{STEPS}}", steps);
+        numeric.put("{{QWEN_RESOLUTION}}", qwenResolution);
+        numeric.put("{{OUTPUT_WIDTH}}", outW);
+        numeric.put("{{OUTPUT_HEIGHT}}", outH);
+        String workflowJson = WorkflowTemplateFiller.fill(mapper, workflowName, text, numeric);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         try {
@@ -349,76 +184,52 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         }
         payload.put("client_id", clientId);
 
-        log.info("ComfyUI submit: workflow={} ckpt={} {}x{} steps={} cfg={} sampler={}/{} seed={}",
-                workflowName, checkpointName, width, height, steps, cfg, sampler, scheduler, seed);
+        log.info("ComfyUI submit: workflow={} model={} {}x{} -> {}x{} steps={} refs={} seed={}",
+                workflowName, qwenDiffusionModel, width, height, outW, outH, steps, refCount, seed);
 
-        JsonNode queueResponse;
+        JsonNode queue;
         try {
-            queueResponse = submitPrompt(payload);
+            queue = submitPrompt(payload);
         } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
             String body = e.getResponseBodyAsString();
-            // A missing IPAdapter custom node should not make every scene fail.
-            // Retry the same SDXL generation without reference conditioning so the
-            // episode can still render. Once ComfyUI_IPAdapter_plus is installed,
-            // the normal workflow is used again automatically.
-            if (isMissingIpAdapterNode(workflowName, body)) {
-                String fallbackWorkflow = "character-consistent-story-sdxl";
-                log.warn("ComfyUI IPAdapter node is unavailable; retrying scene with {} fallback. "
-                        + "Install ComfyUI_IPAdapter_plus to restore reference conditioning.", fallbackWorkflow);
-                String fallbackJson = WorkflowTemplateLoader.loadAndFill(
-                        mapper, fallbackWorkflow, request.prompt(),
-                        request.negativePrompt() == null ? "" : request.negativePrompt(),
-                        seed, width, height, steps, cfg, checkpointName, defaultSampler, defaultScheduler,
-                        null, filenamePrefix, null, width / 2);
-                Map<String, Object> fallbackPayload = new LinkedHashMap<>();
-                try {
-                    fallbackPayload.put("prompt", mapper.readTree(fallbackJson));
-                } catch (Exception parse) {
-                    throw new IllegalStateException("Invalid ComfyUI fallback workflow '" + fallbackWorkflow + "'", parse);
-                }
-                fallbackPayload.put("client_id", clientId);
-                queueResponse = submitPrompt(fallbackPayload);
-                workflowName = fallbackWorkflow;
-            } else {
-                throw new IllegalStateException(
-                        "ComfyUI rejected the workflow (" + e.getStatusCode() + "): " + body, e);
+            if (body != null && body.contains("missing_node_type")) {
+                throw new IllegalStateException("ComfyUI is missing Qwen Image 2.1 nodes "
+                        + "(QwenImage21Cache / TextEncodeQwenImage21). Update ComfyUI. Details: " + body, e);
             }
+            throw new IllegalStateException("ComfyUI rejected the workflow (" + e.getStatusCode() + "): " + body, e);
         }
-
-        if (queueResponse == null || queueResponse.get("prompt_id") == null) {
-            throw new IllegalStateException("ComfyUI did not accept the workflow: " + queueResponse);
+        if (queue == null || queue.get("prompt_id") == null) {
+            throw new IllegalStateException("ComfyUI did not accept the workflow: " + queue);
         }
-        JsonNode nodeErrors = queueResponse.path("node_errors");
+        JsonNode nodeErrors = queue.path("node_errors");
         if (nodeErrors.isObject() && nodeErrors.size() > 0) {
-            String nodeErrorText = nodeErrors.toString();
-            if (isMissingIpAdapterNode(workflowName, nodeErrorText)) {
-                String fallbackWorkflow = "character-consistent-story-sdxl";
-                log.warn("ComfyUI returned IPAdapter node errors; retrying with {} fallback.", fallbackWorkflow);
-                String fallbackJson = WorkflowTemplateLoader.loadAndFill(
-                        mapper, fallbackWorkflow, request.prompt(),
-                        request.negativePrompt() == null ? "" : request.negativePrompt(),
-                        seed, width, height, steps, cfg, checkpointName, defaultSampler, defaultScheduler,
-                        null, filenamePrefix, null, width / 2);
-                Map<String, Object> fallbackPayload = new LinkedHashMap<>();
-                try { fallbackPayload.put("prompt", mapper.readTree(fallbackJson)); }
-                catch (Exception parse) { throw new IllegalStateException("Invalid ComfyUI fallback workflow '" + fallbackWorkflow + "'", parse); }
-                fallbackPayload.put("client_id", clientId);
-                queueResponse = submitPrompt(fallbackPayload);
-                workflowName = fallbackWorkflow;
-                nodeErrors = queueResponse.path("node_errors");
-            }
-            if (nodeErrors.isObject() && nodeErrors.size() > 0) {
-                throw new IllegalStateException("ComfyUI reported node errors: " + nodeErrors);
-            }
+            throw new IllegalStateException("ComfyUI reported node errors: " + nodeErrors);
         }
-        String promptId = queueResponse.get("prompt_id").asText();
 
         long start = System.currentTimeMillis();
-        byte[] imageBytes = pollForImage(promptId);
-        log.info("ComfyUI image ready in {}s ({} bytes, promptId={})",
-                (System.currentTimeMillis() - start) / 1000, imageBytes.length, promptId);
-        return new ImageGenerationResult(imageBytes, "png", seed, checkpointName, workflowName);
+        byte[] imageBytes = pollForImage(queue.get("prompt_id").asText());
+        log.info("ComfyUI image ready in {}s ({} bytes)", (System.currentTimeMillis() - start) / 1000, imageBytes.length);
+        return new ImageGenerationResult(imageBytes, "png", seed, qwenDiffusionModel, workflowName);
     }
+
+    private String tryUpload(String path) {
+        if (path == null) {
+            return null;
+        }
+        try {
+            return uploadReferenceImage(Path.of(path));
+        } catch (Exception e) {
+            log.warn("Could not upload character reference {} to ComfyUI, generating without it: {}", path, e.getMessage());
+            return null;
+        }
+    }
+
+    /** Qwen 2.1 latents are 1/16 of pixel size. */
+    private static int snap16(int value) {
+        int clamped = Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, value));
+        return Math.round(clamped / 16f) * 16;
+    }
+
 
     private JsonNode submitPrompt(Map<String, Object> payload) {
         return webClient.post()
@@ -427,21 +238,6 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
                 .retrieve()
                 .bodyToMono(JsonNode.class)
                 .block(Duration.ofSeconds(30));
-    }
-
-    private static boolean isQwenWorkflow(String workflowName) {
-        return workflowName != null
-                && workflowName.toLowerCase(java.util.Locale.ROOT).startsWith("qwen-image-2-1-16gb");
-    }
-
-    /** Same request, re-targeted at the SDXL reference workflow with every
-     *  size/steps/cfg set to 0 so the SDXL defaults (studio.comfyui.*) apply
-     *  instead of the Qwen-tier values the caller sent. */
-    private ImageGenerationRequest sdxlFallbackRequest(ImageGenerationRequest r) {
-        String wf = r.referenceImagePath() != null ? qwenReferenceWorkflow : "character-consistent-story-sdxl";
-        String prompt = r.prompt() == null ? "" : r.prompt();
-        return new ImageGenerationRequest(prompt, r.negativePrompt(), 0, 0, 0, 0, r.seed(), wf,
-                qwenReferenceModel, r.referenceImagePath(), r.referenceImagePath2());
     }
 
     /**
@@ -467,15 +263,6 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
                 + "and a fully rendered, richly detailed environment. Do not copy the reference image's plain "
                 + "background, framing or pose, and do not draw the reference sheet itself.\n\n"
                 + p;
-    }
-
-    private boolean isMissingIpAdapterNode(String workflowName, String body) {
-        if (workflowName == null || !workflowName.toLowerCase(java.util.Locale.ROOT).contains("ipadapter")) {
-            return false;
-        }
-        String text = body == null ? "" : body.toLowerCase(java.util.Locale.ROOT);
-        return text.contains("missing_node_type")
-                && (text.contains("ipadaptermodellloader") || text.contains("ipadapteradvanced") || text.contains("ipadapter"));
     }
 
     /**
@@ -708,50 +495,4 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         return "comfyui";
     }
 
-    private static int snap(int value) {
-        int clamped = Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, value));
-        return Math.round(clamped / 8f) * 8; // latent size must be a multiple of 8
-    }
-
-    /**
-     * Builds the image-specific placeholder maps and delegates the actual
-     * parse/substitute mechanism to {@link WorkflowTemplateFiller}, which is
-     * shared with the video provider rather than duplicated here.
-     */
-    static final class WorkflowTemplateLoader {
-
-        static String loadAndFill(ObjectMapper mapper, String workflowName, String positive, String negative,
-                                   long seed, int width, int height, int steps, double cfg,
-                                   String checkpointName, String sampler, String scheduler,
-                                   String referenceImageFilename, String filenamePrefix,
-                                   String referenceImageFilename2, int halfWidth) {
-            Map<String, String> text = new LinkedHashMap<>();
-            text.put("{{POSITIVE_PROMPT}}", positive == null ? "" : positive);
-            text.put("{{NEGATIVE_PROMPT}}", negative == null ? "" : negative);
-            text.put("{{CHECKPOINT}}", checkpointName);
-            text.put("{{SAMPLER}}", sampler);
-            text.put("{{SCHEDULER}}", scheduler);
-            text.put("{{FILENAME_PREFIX}}", filenamePrefix);
-            text.put("{{REFERENCE_IMAGE_2}}", referenceImageFilename2 == null ? "" : referenceImageFilename2);
-            // Only substituted if the workflow actually has this placeholder
-            // (the IPAdapter-capable templates) - a plain txt2img template
-            // simply has no {{REFERENCE_IMAGE}} token anywhere to replace.
-            // Empty string rather than null: a workflow's LoadImage node
-            // still needs *some* string value even if unused.
-            text.put("{{REFERENCE_IMAGE}}", referenceImageFilename == null ? "" : referenceImageFilename);
-
-            Map<String, Number> numeric = new LinkedHashMap<>();
-            numeric.put("{{SEED}}", seed);
-            numeric.put("{{WIDTH}}", width);
-            numeric.put("{{HEIGHT}}", height);
-            numeric.put("{{STEPS}}", steps);
-            numeric.put("{{CFG}}", cfg);
-            // Only used by the dual-reference workflow's mask-building nodes -
-            // harmless no-op for every other workflow, which doesn't have a
-            // {{HALF_WIDTH}} placeholder to substitute into.
-            numeric.put("{{HALF_WIDTH}}", halfWidth);
-
-            return WorkflowTemplateFiller.fill(mapper, workflowName, text, numeric);
-        }
-    }
 }

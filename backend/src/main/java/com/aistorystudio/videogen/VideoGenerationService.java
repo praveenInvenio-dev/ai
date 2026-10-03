@@ -200,9 +200,11 @@ public class VideoGenerationService {
     }
 
     private String resolveWorkflow(String workflow, boolean hasStartingImage) {
-        if (workflow == null || workflow.isBlank()) return hasStartingImage ? "wan-image-to-video" : "wan-ti2v-5b-text-to-video";
+        if (workflow == null || workflow.isBlank()) return hasStartingImage ? "wan-ti2v-5b-image-to-video" : "wan-ti2v-5b-text-to-video";
         return switch (workflow.trim().toUpperCase(java.util.Locale.ROOT)) {
             case "WAN_2_2" -> hasStartingImage ? "wan-ti2v-5b-image-to-video" : "wan-ti2v-5b-text-to-video";
+            // A14B is image-to-video only; the provider falls back to TI2V-5B T2V without an image.
+            case "WAN_2_2_14B" -> hasStartingImage ? "wan22-i2v-a14b" : "wan-ti2v-5b-text-to-video";
             case "MINIMAX_H3" -> hasStartingImage ? "minimax-h3-image-to-video" : "minimax-h3-text-to-video";
             default -> throw new IllegalArgumentException("Unsupported video generation workflow: " + workflow);
         };
