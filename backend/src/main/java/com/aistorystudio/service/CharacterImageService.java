@@ -86,20 +86,36 @@ public class CharacterImageService {
                 visualStyleOverride != null && !visualStyleOverride.isBlank() ? visualStyleOverride : DEFAULT_STYLE,
                 null);
         String supplied = customPrompt == null ? "" : customPrompt.trim();
-        // Qwen uses this image directly as <image1> in every scene. A single, clean,
-        // full-body figure transfers far better than a multi-view collage (which
-        // invites duplicate characters in the scene).
-        String positivePrompt = (supplied.isBlank() ? canon : supplied) + ". " + style
+
+        // If the user uploaded an identity photo/reference, use it as an actual
+        // Qwen reference image rather than simply saving/returning that photo.
+        // Qwen's reference-conditioned graph generates a NEW canonical character
+        // image from the reference + prompt, preserving the face while applying
+        // the requested character design, clothing, proportions and style.
+        CharacterReference sourceReference = characterReferenceRepository.findByCharacterId(characterId).stream()
+                .filter(r -> "UPLOADED".equalsIgnoreCase(r.getSource()))
+                .sorted(java.util.Comparator.comparing(CharacterReference::getCreatedAt).reversed())
+                .findFirst()
+                .orElse(null);
+
+        String identityInstruction = sourceReference != null
+                ? "Use the supplied reference image as the PRIMARY IDENTITY SOURCE. Preserve the same person/character's facial identity: face shape, eyes, eyebrows, nose, mouth, jawline, skin tone, hairline, hairstyle, apparent age and distinctive facial features. Do NOT return or copy the uploaded photograph. Create a NEW clean character-design image that applies the written character prompt and requested visual style to that identity. The reference controls WHO the character is; the written prompt controls HOW the character is designed and presented."
+                : "Create a NEW canonical character-design image from the written character description; do not copy an unrelated source image.";
+
+        String positivePrompt = identityInstruction + "\n\n"
+                + (supplied.isBlank() ? canon : supplied) + ". " + style
                 + ". Official character design reference: ONE single character, full body, standing, "
                 + "front three-quarter view, friendly neutral expression, entire figure visible from head to shoes, "
                 + "centered, plain soft light-grey background, even studio lighting, crisp clean details, "
-                + "exact clothing, colors and signature accessories. No other characters, no text, no extra views.";
+                + "apply exact clothing, colors and signature accessories described in the prompt. "
+                + "No other characters, no text, no collage, no duplicate views, no photographic background.";
         positivePrompt = positivePrompt.trim();
         String negativePrompt = negativePromptBuilder.build(character.getNegativeConstraints(), stylePromptBuilder.negativeProfile(visualStyleOverride != null && !visualStyleOverride.isBlank() ? visualStyleOverride : DEFAULT_STYLE));
 
         // Square 1024x1024 -> 2048x2048 after the 2x upscale; refs get resized by the encoder.
+        String sourceImagePath = sourceReference != null ? sourceReference.getImagePath() : null;
         var request = new ImageGenerationProvider.ImageGenerationRequest(
-                positivePrompt, negativePrompt, 1024, 1024, qwenSteps, 0, null, null, null, null, null);
+                positivePrompt, negativePrompt, 1024, 1024, qwenSteps, 0, null, null, null, sourceImagePath, null);
         var result = providerGateway.generateImage(request);
 
         String relative = "characters/" + characterId + "/reference-" + System.currentTimeMillis() + "." + result.fileExtension();

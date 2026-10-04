@@ -137,7 +137,7 @@ import { Episode, SceneDto, VoiceSegment } from '../../models/models';
       <footer class="actions">
         <button class="btn btn-ghost" (click)="regenerate()" [disabled]="busy || imageJob">Regenerate story</button>
         <button class="btn btn-primary" *ngIf="!imagesReady && !imageJob" (click)="generateImages()" [disabled]="busy">✨ Approve story & generate images</button>
-        <button class="btn btn-primary" *ngIf="imagesReady" (click)="produceVideo()" [disabled]="busy || !voicesReady">{{ busy ? 'Generating video…' : '🎬 Generate final video' }}</button>
+        <button class="btn btn-primary" *ngIf="imagesReady" (click)="continueToVideoGeneration()" [disabled]="busy">🎬 Continue to Video Generation</button>
       </footer>
       <p class="error" *ngIf="error">{{ error }}</p>
     </div>
@@ -161,7 +161,7 @@ export class StoryApprovalComponent implements OnInit, OnDestroy {
   imgVersion: Record<string, number> = {};
   private sub?: Subscription;
   constructor(public api: ApiService, private route: ActivatedRoute, private router: Router) {}
-  ngOnInit(){ const id=this.route.snapshot.paramMap.get('id')!; this.api.listVoices().subscribe(v=>{this.voices=v.voices||[];this.customVoiceCount=this.voices.filter((x:any)=>String(x.id).startsWith('profile:')).length;this.initializeVoices();this.maybeAutoProduce();}); this.load(id); }
+  ngOnInit(){ const id=this.route.snapshot.paramMap.get('id')!; this.api.listVoices().subscribe(v=>{this.voices=v.voices||[];this.customVoiceCount=this.voices.filter((x:any)=>String(x.id).startsWith('profile:')).length;this.initializeVoices();}); this.load(id); }
   ngOnDestroy(){ this.sub?.unsubscribe(); }
   get stageLabel(){ return this.imagesReady ? 'Images ready — voice selection' : 'Draft — nothing rendered yet'; }
   get totalMinutes(){ return (this.scenes.reduce((sum,s)=>sum+(s.imageDurationSeconds||0),0)/60).toFixed(1); }
@@ -291,11 +291,10 @@ export class StoryApprovalComponent implements OnInit, OnDestroy {
     const v = this.imgVersion[s.id];
     return v ? `${base}?v=${v}` : base;
   }
-  private pollImageJob(jobId:string){ this.sub?.unsubscribe(); this.sub=timer(0,2000).subscribe(()=>this.api.getJobStatus(jobId).subscribe({next:j=>{this.imageProgress=j.progressPercent||0;this.imageStatus=j.status;if(j.status==='COMPLETED'){this.imagesReady=true;this.imageJob='';this.initializeVoices();this.sub?.unsubscribe();this.maybeAutoProduce();}else if(j.status==='FAILED'){this.error=j.errorMessage||'Image generation failed.';this.imageJob='';this.sub?.unsubscribe();}},error:e=>{this.error=e?.error?.message||'Could not read image generation status.';}})); }
-  private maybeAutoProduce(){
-    if(!this.imagesReady || this.autoProducing || this.busy || !this.episode || !this.voices.length) return;
-    this.initializeVoices();
-    if(this.speakers.length<=1 || this.voices.length===1){ this.autoProducing=true; this.produceVideo(); }
+  private pollImageJob(jobId:string){ this.sub?.unsubscribe(); this.sub=timer(0,2000).subscribe(()=>this.api.getJobStatus(jobId).subscribe({next:j=>{this.imageProgress=j.progressPercent||0;this.imageStatus=j.status;if(j.status==='COMPLETED'){this.imagesReady=true;this.imageJob='';this.initializeVoices();this.sub?.unsubscribe();}else if(j.status==='FAILED'){this.error=j.errorMessage||'Image generation failed.';this.imageJob='';this.sub?.unsubscribe();}},error:e=>{this.error=e?.error?.message||'Could not read image generation status.';}})); }
+  continueToVideoGeneration(){
+    if(!this.episode)return;
+    this.router.navigate(['/video-generation'], { queryParams: { projectId: this.episode.projectId || undefined, episodeId: this.episode.id } });
   }
   applyVoice(speaker:string){ const voice=this.voiceMap[speaker]; this.scenes.filter(s=>(s.voiceSegments||[]).some(x=>(x.character||'Narrator')===speaker)).forEach(s=>{(s.voiceSegments||[]).forEach(x=>{if((x.character||'Narrator')===speaker)x.voice=voice;});this.api.updateSceneVoices(this.episode!.id,s.id,s.voiceSegments||[]).subscribe();}); }
   produceVideo(){

@@ -2,6 +2,7 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, VideoGenerationStatus, VideoGenerationJob } from '../../services/api.service';
+import { ActivatedRoute } from '@angular/router';
 import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
 
 /**
@@ -108,15 +109,21 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
                step="0.5" [(ngModel)]="durationSeconds">
       </div>
 
-      <div class="field">
-        <label for="narration">Narration (optional)</label>
-        <textarea id="narration" rows="2" [(ngModel)]="narrationText"
-                  placeholder="Add a voiceover track to the generated video - leave blank for a silent clip"></textarea>
-        <p class="muted" *ngIf="narrationText">
-          Adds an audio track, not lip-sync - the character's mouth won't match the words.
-        </p>
+      <div class="field audio-panel" *ngIf="workflow === 'MINIMAX_H3'">
+        <label>Native H3 story audio</label>
+        <p class="muted">Loaded from the selected story scene. H3 generates narration, dialogue, ambience, SFX and music together with the video.</p>
+        <label for="narration">Narration / voiceover</label>
+        <textarea id="narration" rows="2" [(ngModel)]="narrationText" (ngModelChange)="rebuildH3Prompt()" placeholder="Scene narration"></textarea>
+        <label for="dialogue">Dialogue</label>
+        <textarea id="dialogue" rows="3" [(ngModel)]="dialogueText" (ngModelChange)="rebuildH3Prompt()" placeholder="Character: dialogue"></textarea>
+        <label for="audioDirection">Background ambience / SFX / music</label>
+        <textarea id="audioDirection" rows="4" [(ngModel)]="audioDirection" (ngModelChange)="rebuildH3Prompt()" placeholder="Ambience, sound effects and music direction"></textarea>
       </div>
-      <div class="field" *ngIf="narrationText">
+      <div class="field" *ngIf="workflow !== 'MINIMAX_H3'">
+        <label for="narration">Narration (optional)</label>
+        <textarea id="narration" rows="2" [(ngModel)]="narrationText" placeholder="Add a voiceover track to the generated video"></textarea>
+      </div>
+      <div class="field" *ngIf="narrationText && workflow !== 'MINIMAX_H3'">
         <label for="voice">Voice</label>
         <select id="voice" [(ngModel)]="voiceProfileId">
           <option value="">Default voice</option>
@@ -159,6 +166,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
     .pill.selected { border-color: var(--accent); color: var(--accent); }
     .picker-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
     .picker-row select { flex: 1; min-width: 120px; }
+    .audio-panel { padding: .9rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
     .preview { max-width: 100%; max-height: 220px; border-radius: 8px; margin-top: 0.6em;
                border: 1px solid var(--border); object-fit: contain; }
     video { max-width: 100%; border-radius: 8px; border: 1px solid var(--border); }
@@ -178,6 +186,8 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   negativePrompt = '';
   durationSeconds = 4;
   narrationText = '';
+  dialogueText = '';
+  audioDirection = '';
   voiceProfileId = '';
   voiceProfiles: VoiceProfile[] = [];
 
@@ -198,7 +208,7 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
 
   private pollHandle?: ReturnType<typeof setInterval>;
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, private route: ActivatedRoute) {}
 
   /** Longest clip the selected engine will render (H3 10 s, Wan 5 s). */
   maxSeconds(): number {
@@ -225,8 +235,18 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
         this.statusLoaded = true;
       }
     });
+    const query = this.route.snapshot.queryParamMap;
+    const requestedProjectId = query.get('projectId') || undefined;
+    const requestedEpisodeId = query.get('episodeId') || undefined;
+    const requestedSceneId = query.get('sceneId') || undefined;
     this.api.listProjects().subscribe({
-      next: projects => { this.projects = projects; },
+      next: projects => {
+        this.projects = projects;
+        if (requestedProjectId && projects.some(p => p.id === requestedProjectId)) {
+          this.selectedProjectId = requestedProjectId;
+          this.loadEpisodesForProject(requestedProjectId, requestedEpisodeId, requestedSceneId);
+        }
+      },
       error: () => { /* Picker just stays empty - not fatal to the page. */ }
     });
     this.api.listVoiceProfiles().subscribe({
@@ -256,8 +276,18 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     this.selectedEpisodeId = undefined;
     this.selectedSceneId = undefined;
     if (!this.selectedProjectId) { return; }
-    this.api.listEpisodes(this.selectedProjectId).subscribe({
-      next: episodes => { this.episodes = episodes; },
+    this.loadEpisodesForProject(this.selectedProjectId);
+  }
+
+  private loadEpisodesForProject(projectId: string, requestedEpisodeId?: string, requestedSceneId?: string): void {
+    this.api.listEpisodes(projectId).subscribe({
+      next: episodes => {
+        this.episodes = episodes;
+        if (requestedEpisodeId && episodes.some(e => e.id === requestedEpisodeId)) {
+          this.selectedEpisodeId = requestedEpisodeId;
+          this.loadScenesForEpisode(requestedEpisodeId, requestedSceneId);
+        }
+      },
       error: () => { this.error = 'Could not load episodes for that project.'; }
     });
   }
@@ -267,12 +297,20 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     this.scenesLoaded = false;
     this.selectedSceneId = undefined;
     if (!this.selectedEpisodeId) { return; }
-    this.api.getScenes(this.selectedEpisodeId).subscribe({
+    this.loadScenesForEpisode(this.selectedEpisodeId);
+  }
+
+  private loadScenesForEpisode(episodeId: string, requestedSceneId?: string): void {
+    this.api.getScenes(episodeId).subscribe({
       next: scenes => {
         // Only scenes with a generated image are useful here - an
         // un-generated scene has nothing for "Load" to actually fetch.
         this.scenes = scenes.filter(s => !!s.imagePrompt);
         this.scenesLoaded = true;
+        if (requestedSceneId && this.scenes.some(s => s.id === requestedSceneId)) {
+          this.selectedSceneId = requestedSceneId;
+          this.loadFromScene();
+        }
       },
       error: () => { this.error = 'Could not load scenes for that episode.'; this.scenesLoaded = true; }
     });
@@ -297,8 +335,24 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
         this.selectedFile = file;
         if (this.previewUrl) { URL.revokeObjectURL(this.previewUrl); }
         this.previewUrl = URL.createObjectURL(file);
-        if (scene.motionPrompt) { this.prompt = scene.motionPrompt; }
-        if (scene.motionNegativePrompt) { this.negativePrompt = scene.motionNegativePrompt; }
+        // Replace, rather than conditionally merge, every scene field. This prevents
+        // a previous scene's narration/audio from disappearing or leaking into the next one.
+        this.prompt = scene.motionPrompt || scene.action || '';
+        this.negativePrompt = scene.motionNegativePrompt || scene.negativePrompt || '';
+        this.narrationText = scene.narration || '';
+        this.dialogueText = this.parseDialogue(scene.voiceSegments, scene.narration || '');
+        this.audioDirection = this.parseAudioSpec(scene.audioSpecJson);
+        if (scene.imageDurationSeconds && scene.imageDurationSeconds > 0) {
+          this.durationSeconds = Math.min(scene.imageDurationSeconds, this.maxSeconds());
+        } else if (scene.narrationSeconds && scene.narrationSeconds > 0) {
+          this.durationSeconds = Math.min(Math.max(scene.narrationSeconds + 0.5, 1), this.maxSeconds());
+        }
+        // H3 is audiovisual: build the complete native audio direction into the
+        // generation prompt. The separate fields below remain editable so the user
+        // can correct narration/dialogue/SFX before pressing Generate.
+        this.workflow = 'MINIMAX_H3';
+        this.rebuildH3Prompt();
+        this.mode = 'i2v';
         this.loadingScene = false;
       },
       error: () => {
@@ -306,6 +360,51 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
         this.loadingScene = false;
       }
     });
+  }
+
+  private parseDialogue(segments?: any[], narration?: string): string {
+    if (!segments || !segments.length) return '';
+    const lines = segments
+      .filter((x: any) => x && x.text && String(x.text).trim())
+      .map((x: any) => `${x.character || 'Speaker'}: ${String(x.text).trim()}`);
+    const filtered = lines.filter((x: string) => !x.toLowerCase().startsWith('narrator:'));
+    return filtered.join('\n');
+  }
+
+  private rebuildH3Prompt(): void {
+    if (this.workflow !== 'MINIMAX_H3') return;
+    const visual = this.prompt.split(/\n\n\[NATIVE H3 AUDIO\]/i)[0].trim();
+    const sections: string[] = [];
+    if (this.narrationText.trim()) {
+      sections.push(`Narrator (off-screen): <d>[English] ${this.narrationText.trim()}</d>`);
+    }
+    if (this.dialogueText.trim()) {
+      sections.push(`Dialogue:\n${this.dialogueText.trim()}`);
+    }
+    if (this.audioDirection.trim()) {
+      sections.push(this.audioDirection.trim());
+    }
+    this.prompt = sections.length
+      ? `${visual}\n\n[NATIVE H3 AUDIO]\n${sections.join('\n')}\nThe audio should be synchronized with the visible action; narration is off-screen unless a dialogue speaker is explicitly on screen.`.trim()
+      : visual;
+  }
+
+  private parseAudioSpec(raw?: string): string {
+    if (!raw) return '';
+    try {
+      const a = JSON.parse(raw);
+      const lines: string[] = [];
+      if (Array.isArray(a.ambience) && a.ambience.length) lines.push(`Ambience: ${a.ambience.join(', ')}.`);
+      if (Array.isArray(a.sfx) && a.sfx.length) {
+        const sfx = a.sfx.map((x: any) => typeof x === 'string' ? x : `${x.event || 'sound effect'}${x.timing ? ` (${x.timing})` : ''}`).join('; ');
+        lines.push(`Sound effects: ${sfx}.`);
+      }
+      if (a.music) {
+        const m = typeof a.music === 'string' ? a.music : `${a.music.mood || 'cinematic'} music${a.music.intensity != null ? `, intensity ${a.music.intensity}` : ''}`;
+        lines.push(`Music: ${m}.`);
+      }
+      return lines.join('\n');
+    } catch { return ''; }
   }
 
   setMode(mode: 'i2v' | 't2v'): void {

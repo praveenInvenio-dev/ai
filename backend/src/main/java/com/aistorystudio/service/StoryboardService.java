@@ -438,25 +438,12 @@ public class StoryboardService {
             scene.setImageDurationSeconds(duration);
             scenes.save(scene);
 
+            // Storyboard assembly is intentionally NOT an AI-video entry point.
+            // It remains the lightweight image + narration/2.5D path. MiniMax H3
+            // is invoked only from the dedicated Video Generation page.
             Path aiVideoPath = null;
-            try {
-                if (gateway.isLocalAiVideoAvailable()) {
-                    aiVideoPath = generateH3StoryboardVideo(episode, scene, images.get(scene.getId()), duration);
-                }
-            } catch (Exception e) {
-                log.warn("H3 storyboard generation failed for scene {} - falling back to existing TTS/2.5D path: {}",
-                        scene.getSceneNumber(), e.getMessage());
-            }
-
-            Path audioPath;
-            if (aiVideoPath != null) {
-                // H3 already contains synchronized native stereo audio. Generating
-                // another TTS track would waste time and could replace the H3 audio.
-                audioPath = null;
-            } else {
-                allNativeH3 = false;
-                audioPath = narrate(episode, scene, voice);
-            }
+            allNativeH3 = false;
+            Path audioPath = narrate(episode, scene, voice);
 
             clips.add(new MediaProcessor.SceneClip(
                     Path.of(images.get(scene.getId()).getFilePath()),

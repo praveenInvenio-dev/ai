@@ -167,14 +167,15 @@ public class VideoGenerationService {
             // The VoiceProfile is resolved later by muxNarration(). Do not pass its
             // reference WAV into H3: standard TTS/voice cloning owns narration.
             String generationPrompt = prompt;
-            boolean nativeH3Audio = false;
-            // Do not inject narration into H3's native audio path. H3 is used as
-            // a video model here; the app's standard cloned/expressive voice is
-            // generated separately so voice selection behaves identically for
-            // Wan 2.2 and H3.
+            boolean nativeH3Audio = resolvedWorkflow.toLowerCase(Locale.ROOT).contains("minimax-h3");
+            // MiniMax H3 is an audiovisual model. For H3, narration is part of the
+            // generation prompt so the model creates synchronized native audio.
+            // Wan keeps the existing external TTS/mux path.
             if (nativeH3Audio && narrationText != null && !narrationText.isBlank()) {
                 generationPrompt = (prompt == null ? "" : prompt)
-                        + "\n\nDialogue / narration: Speaker 1 says naturally: \"" + narrationText.trim() + "\".";
+                        + "\n\n(S1), the narrator, speaks in a warm off-screen voiceover: "
+                        + "<d>[English] " + narrationText.trim() + "</d>. "
+                        + "The visible character's lips remain closed during narration.";
             }
             VideoGenerationProvider.VideoGenerationRequest request = new VideoGenerationProvider.VideoGenerationRequest(
                     job.getStartingImagePath(), generationPrompt, negativePrompt,
@@ -185,7 +186,7 @@ public class VideoGenerationService {
             String finalExtension = result.fileExtension();
             // Both Wan and H3 use the same standalone voice-generation path. The final
             // narration track is therefore deterministic and can use the selected cloned voice.
-            if (narrationText != null && !narrationText.isBlank()) {
+            if (!nativeH3Audio && narrationText != null && !narrationText.isBlank()) {
                 finalVideoBytes = muxNarration(jobId, finalVideoBytes, finalExtension, narrationText, voiceProfileId);
                 finalExtension = "mp4";
             }

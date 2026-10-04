@@ -101,3 +101,14 @@ See docs/history/.
 - Kept character-reference R2V on the stable 20-step graph because the official 4-step R2V path requires the newer sampler/conditioning template and should not be approximated by simply reducing steps.
 - H3 storyboard prompts now consume the story engine's `audioSpec`: ambience, physical SFX, music mood/intensity, narration and dialogue are all passed to H3 native audio generation.
 - Added H3 model pre-start downloads with curl resume/retry support.
+
+## v18.13 — Storyboard/video separation + identity-aware character generation
+
+- Story Approval/Storyboard no longer auto-starts video generation after scene-image generation.
+- Replaced the Story Approval final-video action with navigation to the standalone Video Generation page.
+- Video Generation accepts project/episode/scene query parameters and can open directly on a selected story scene.
+- Loading a story scene now imports its generated storyboard image, motion prompt, negative motion prompt, narration, duration and structured audio direction.
+- Selecting a story scene automatically switches the Video Generation page to MiniMax H3 image-to-video.
+- MiniMax H3 narration is now embedded as native audiovisual generation; the old external TTS mux path remains for Wan.
+- Character "Generate Reference" now uses the most recent uploaded identity image as a Qwen reference input when available.
+- Generated character references are new images combining the uploaded facial identity with the canonical/custom character prompt and selected visual style, rather than returning/copying the uploaded photo.
