@@ -556,7 +556,7 @@ public class FFmpegProcessor implements MediaProcessor {
         args.add(fmt(Math.max(0.1, scene.durationSeconds())));
 
         String baseGraph = buildBaseGraph(movement, dampenedMotion, parallax, isStatic, frames,
-                workWidth, workHeight, width, height, postChain);
+                workWidth, workHeight, width, height, postChain, scene.imagePath());
         if ("CHARACTER_MOTION".equals(scene.animationMode()) && !isStatic) {
             baseGraph = baseGraph + "," + characterMotionFilters(width, height, frames);
         }
@@ -890,7 +890,7 @@ public class FFmpegProcessor implements MediaProcessor {
         String dampenedMotion = motionExpressionDamped(movement, frames, 0.25);
         boolean parallax = dampenedMotion != null;
         String baseGraph = buildBaseGraph(movement, dampenedMotion, parallax, false, frames,
-                workWidth, workHeight, width, height, postChain);
+                workWidth, workHeight, width, height, postChain, scene.imagePath());
 
         List<String> args = new ArrayList<>();
         args.add(ffmpegBin);
@@ -1008,17 +1008,26 @@ public class FFmpegProcessor implements MediaProcessor {
      * -filter_complex, or uses it directly as a plain -vf chain otherwise.
      */
     private String buildBaseGraph(String movement, String dampenedMotion, boolean parallax, boolean isStatic,
-                                  int frames, int workWidth, int workHeight, int width, int height, String postChain) {
+                                  int frames, int workWidth, int workHeight, int width, int height, String postChain,
+                                  Path imagePath) {
+        // Image and frame shapes differ a lot (e.g. a 9:16 image in a 16:9 video, or old
+        // images after switching VIDEO_ORIENTATION): a center-crop would throw away most
+        // of the picture and look badly over-zoomed. Fit the whole image instead and fill
+        // the leftover bars with a blurred copy of itself.
+        boolean fit = needsBlurFit(imagePath, width, height);
         // Animation mode STATIC (spec section 5/46): no camera motion at all,
         // just the image held for the scene's duration. Uses the output size
         // directly rather than the enlarged working canvas, since there's no
         // pan/zoom headroom to fill.
         if (isStatic) {
-            return "scale=" + width + ":" + height + ":force_original_aspect_ratio=increase,"
-                    + "crop=" + width + ":" + height + ",fps=30," + postChain;
+            return (fit ? blurFitChain(width, height)
+                    : "scale=" + width + ":" + height + ":force_original_aspect_ratio=increase,"
+                      + "crop=" + width + ":" + height)
+                    + ",fps=30," + postChain;
         }
-        String scaleCrop = "scale=" + workWidth + ":" + workHeight + ":force_original_aspect_ratio=increase,"
-                + "crop=" + workWidth + ":" + workHeight;
+        String scaleCrop = fit ? blurFitChain(workWidth, workHeight)
+                : "scale=" + workWidth + ":" + workHeight + ":force_original_aspect_ratio=increase,"
+                  + "crop=" + workWidth + ":" + workHeight;
         if (!parallax) {
             String motion = motionExpression(movement, frames);
             return scaleCrop + ",zoompan=" + motion + ":d=" + frames + ":s=" + width + "x" + height
@@ -1036,6 +1045,33 @@ public class FFmpegProcessor implements MediaProcessor {
                 + "[bpre]zoompan=" + dampenedMotion + zoompanTail + "[bg];"
                 + "[fpre]zoompan=" + fullMotion + zoompanTail + "[fg];"
                 + "[bg][fg]blend=all_expr='" + blendExpr + "'," + postChain;
+    }
+
+    /** True when the image's aspect ratio differs from the frame's by more than 8%. */
+    static boolean needsBlurFit(Path imagePath, int width, int height) {
+        if (imagePath == null) {
+            return false;
+        }
+        try {
+            var img = javax.imageio.ImageIO.read(imagePath.toFile());
+            if (img == null || img.getHeight() == 0 || height == 0) {
+                return false;
+            }
+            double imageAspect = (double) img.getWidth() / img.getHeight();
+            double frameAspect = (double) width / height;
+            return Math.abs(imageAspect / frameAspect - 1.0) > 0.08;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Whole image fitted inside w x h, remaining area filled with a blurred, enlarged copy. */
+    static String blurFitChain(int w, int h) {
+        return "split=2[fitA][fitB];"
+                + "[fitA]scale=" + w + ":" + h + ":force_original_aspect_ratio=increase,crop=" + w + ":" + h
+                + ",boxblur=40:8[fitC];"
+                + "[fitB]scale=" + w + ":" + h + ":force_original_aspect_ratio=decrease[fitD];"
+                + "[fitC][fitD]overlay=(W-w)/2:(H-h)/2";
     }
 
     /** Chooses an environment particle effect from the scene's own text, or
@@ -1394,23 +1430,23 @@ public class FFmpegProcessor implements MediaProcessor {
         String n = Integer.toString(Math.max(1, frames - 1));
         return switch (movement) {
             case "zoom-out", "pull-back" ->
-                    "z='1.14-(0.13*on/" + n + ")':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'";
+                    "z='1.07-(0.07*on/" + n + ")':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'";
             case "pan-left", "track-left" ->
-                    "z='1.08':x='(iw-iw/zoom)*(1-on/" + n + ")':y='ih/2-(ih/zoom/2)'";
+                    "z='1.05':x='(iw-iw/zoom)*(1-on/" + n + ")':y='ih/2-(ih/zoom/2)'";
             case "pan-right", "track-right" ->
-                    "z='1.08':x='(iw-iw/zoom)*(on/" + n + ")':y='ih/2-(ih/zoom/2)'";
+                    "z='1.05':x='(iw-iw/zoom)*(on/" + n + ")':y='ih/2-(ih/zoom/2)'";
             case "tilt-up" ->
-                    "z='1.08':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(1-on/" + n + ")'";
+                    "z='1.05':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(1-on/" + n + ")'";
             case "tilt-down" ->
-                    "z='1.08':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(on/" + n + ")'";
+                    "z='1.05':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(on/" + n + ")'";
             case "diagonal" ->
-                    "z='1.03+(0.08*on/" + n + ")':x='(iw-iw/zoom)*(on/" + n + ")':y='(ih-ih/zoom)*(on/" + n + ")'";
+                    "z='1.02+(0.05*on/" + n + ")':x='(iw-iw/zoom)*(on/" + n + ")':y='(ih-ih/zoom)*(on/" + n + ")'";
             case "push-pulse" ->
-                    "z='1.02+0.10*(on/" + n + ")+0.018*sin(on*PI/8)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'";
+                    "z='1.01+0.06*(on/" + n + ")+0.01*sin(on*PI/8)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'";
             case "gentle-drift" ->
-                    "z='1.04+0.06*(on/" + n + ")':x='iw/2-(iw/zoom/2)+8*sin(on*PI/24)':y='ih/2-(ih/zoom/2)+5*cos(on*PI/29)'";
+                    "z='1.02+0.04*(on/" + n + ")':x='iw/2-(iw/zoom/2)+8*sin(on*PI/24)':y='ih/2-(ih/zoom/2)+5*cos(on*PI/29)'";
             default ->
-                    "z='1.02+0.11*(on/" + n + ")':x='iw/2-(iw/zoom/2)+4*sin(on*PI/32)':y='ih/2-(ih/zoom/2)+3*cos(on*PI/37)'";
+                    "z='1.01+0.06*(on/" + n + ")':x='iw/2-(iw/zoom/2)+4*sin(on*PI/32)':y='ih/2-(ih/zoom/2)+3*cos(on*PI/37)'";
         };
     }
 
@@ -1428,18 +1464,18 @@ public class FFmpegProcessor implements MediaProcessor {
         String n = Integer.toString(Math.max(1, frames - 1));
         return switch (movement) {
             case "pan-left", "track-left" ->
-                    "z='1.08':x='(iw-iw/zoom)*(1-" + fmt(dampening) + "*on/" + n + ")':y='ih/2-(ih/zoom/2)'";
+                    "z='1.05':x='(iw-iw/zoom)*(1-" + fmt(dampening) + "*on/" + n + ")':y='ih/2-(ih/zoom/2)'";
             case "pan-right", "track-right" ->
-                    "z='1.08':x='(iw-iw/zoom)*(" + fmt(dampening) + "*on/" + n + ")':y='ih/2-(ih/zoom/2)'";
+                    "z='1.05':x='(iw-iw/zoom)*(" + fmt(dampening) + "*on/" + n + ")':y='ih/2-(ih/zoom/2)'";
             case "tilt-up" ->
-                    "z='1.08':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(1-" + fmt(dampening) + "*on/" + n + ")'";
+                    "z='1.05':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(1-" + fmt(dampening) + "*on/" + n + ")'";
             case "tilt-down" ->
-                    "z='1.08':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(" + fmt(dampening) + "*on/" + n + ")'";
+                    "z='1.05':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(" + fmt(dampening) + "*on/" + n + ")'";
             case "diagonal" ->
-                    "z='1.03+(0.08*on/" + n + ")':x='(iw-iw/zoom)*(" + fmt(dampening) + "*on/" + n
+                    "z='1.02+(0.05*on/" + n + ")':x='(iw-iw/zoom)*(" + fmt(dampening) + "*on/" + n
                             + ")':y='(ih-ih/zoom)*(" + fmt(dampening) + "*on/" + n + ")'";
             case "gentle-drift" ->
-                    "z='1.04+0.06*(on/" + n + ")':x='iw/2-(iw/zoom/2)+" + fmt(8 * dampening) + "*sin(on*PI/24)'"
+                    "z='1.02+0.04*(on/" + n + ")':x='iw/2-(iw/zoom/2)+" + fmt(8 * dampening) + "*sin(on*PI/24)'"
                             + ":y='ih/2-(ih/zoom/2)+" + fmt(5 * dampening) + "*cos(on*PI/29)'";
             // zoom-out/pull-back, push-pulse and the default drift have no
             // strong lateral component to differentiate a second layer on -
@@ -1556,8 +1592,9 @@ public class FFmpegProcessor implements MediaProcessor {
             args.add("-t");
             args.add(String.valueOf(duration));
             args.add("-vf");
-            // crop/scale the 16:9 source into a 9:16 short, center-cropped
-            args.add("crop=ih*9/16:ih,scale=1080:1920");
+            // 9:16 short. Landscape source: center-crop to 9:16. Vertical source
+            // (default episode format): already 9:16, so no crop at all.
+            args.add("crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)',scale=1080:1920");
             args.add("-c:v");
             args.add("libx264");
             args.add("-c:a");

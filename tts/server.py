@@ -20,6 +20,7 @@ restarts and does not require rebuilding the image. Only the default voice is
 baked in, which keeps the image small.
 """
 import os
+import re
 import subprocess
 import tempfile
 import asyncio
@@ -461,6 +462,10 @@ def synthesize():
     speed = float(body.get("speed") or 1.0)
     pitch = float(body.get("pitch") or 1.0)
 
+    # Chatterbox-style paralinguistic tags ([sigh], [laugh], [gasp]...) are written
+    # into the narration for Chatterbox only. Piper/Edge would read them aloud as
+    # words, so drop them here.
+    text = re.sub(r"\s+", " ", re.sub(r"\[[^\]]{1,40}\]", " ", text)).strip()
     if not text.strip():
         text = " "  # piper needs non-empty input; caller sends a short pause
 

@@ -56,6 +56,18 @@ public class ProductionPipelineService {
 
     @Value("${studio.animation.local-ai.enabled-in-story-pipeline:false}")
     private boolean storyPipelineAiVideoEnabled;
+    /** vertical (default, 1080x1920, Shorts/Reels native) or horizontal (1920x1080). */
+    @Value("${studio.video.orientation:vertical}") private String videoOrientation;
+
+    private boolean horizontalVideo() {
+        return "horizontal".equalsIgnoreCase(videoOrientation) || "landscape".equalsIgnoreCase(videoOrientation);
+    }
+
+    /** Scene image base size for Qwen: 0 = provider default 768x1344 (9:16);
+     *  horizontal episodes get 1344x768 so images match the 16:9 video. */
+    private int sceneImageWidth() { return horizontalVideo() ? 1344 : 0; }
+    private int sceneImageHeight() { return horizontalVideo() ? 768 : 0; }
+
     /** Hint for ImagePromptAssembler's token budget: every image is Qwen Image 2.1. */
     private static final String QWEN_PROMPT_MODEL = "qwen_image_2.1";
     @Value("${studio.quality.imageValidation.enabled:true}") private boolean imageValidationEnabled;
@@ -275,7 +287,7 @@ public class ProductionPipelineService {
                     Long stableSeed = stableSceneSeed(episode, scene, sceneCharacters);
                     // Size/cfg 0 = provider defaults (768x1344 -> 1080x1920, cfg 1).
                     var request = new ImageGenerationProvider.ImageGenerationRequest(
-                            prompt, assembled.negativePrompt(), 0, 0, qualityImageSteps(episode), 0,
+                            prompt, assembled.negativePrompt(), sceneImageWidth(), sceneImageHeight(), qualityImageSteps(episode), 0,
                             stableSeed, null, null, referenceImagePath, referenceImagePath2);
                     result0 = providerGateway.generateImage(request);
                     var qa = validateGeneratedImage(result0, prompt, assembled.negativePrompt(), visualStyle, scene);
@@ -790,7 +802,11 @@ public class ProductionPipelineService {
         }
         Path outputPath = storageProvider.resolve(assetRelativePath(episode, "video/final.mp4"));
         Path musicPath = resolveMusicPath(episode, scenes);
-        Path video = mediaProcessor.assembleVideo(new MediaProcessor.VideoAssemblyRequest(clips, musicPath, outputPath, 1920, 1080));
+        // Final video matches the scene images: vertical 1080x1920 by default.
+        // (Was hard-coded 1920x1080 while images are 9:16, so every frame was
+        // cropped to its middle third - the "everything is too zoomed" bug.)
+        Path video = mediaProcessor.assembleVideo(new MediaProcessor.VideoAssemblyRequest(clips, musicPath, outputPath,
+                horizontalVideo() ? 1920 : 1080, horizontalVideo() ? 1080 : 1920));
         saveAsset(episode.getId(), null, AssetType.VIDEO, video, "ffmpeg", null, null);
         return video;
     }
@@ -1209,7 +1225,7 @@ public class ProductionPipelineService {
         sceneRepository.save(scene);
 
         var request = new ImageGenerationProvider.ImageGenerationRequest(
-                assembled.positivePrompt(), assembled.negativePrompt(), 0, 0, qualityImageSteps(episode), 0, null,
+                assembled.positivePrompt(), assembled.negativePrompt(), sceneImageWidth(), sceneImageHeight(), qualityImageSteps(episode), 0, null,
                 null, null, refs.ref1(), refs.ref2());
         var result = providerGateway.generateImage(request);
         String relative = assetRelativePath(episode, String.format("images/scene-%03d.%s", scene.getSceneNumber(), result.fileExtension()));

@@ -1,5 +1,40 @@
 # Changelog
 
+## v18.19 - audio fixes, cu130 ComfyUI, no-crop fit
+- ComfyUI: image `yanwk/comfyui-boot:cu130-slim-v2` (was cu128-slim in the GPU overlay),
+  `gpus: all`, `CLI_ARGS=--preview-method none`. COMFYUI_GPU_IMAGE in .env is the single
+  override; compose files carry the same default. `gpus` is `!override` in the overlay
+  (compose refuses to merge two `gpus` values). Volume layout `comfyui-gpu-root:/root`
+  moved into the base file; volume name unchanged, nothing recreated; legacy CPU volumes
+  stay declared. New scripts/validate-comfyui-config.sh (also run by setup script).
+  Default COMFYUI_EXTRA_CLI_ARGS is now empty (xformers/pinned-memory flags removed; the
+  known fallback is documented in .env).
+- NARRATION was silent because Chatterbox received the story language as free text
+  ("English"/"Hinglish") and used it as language_id -> every request failed -> silent
+  placeholder. Sidecar now maps names to ISO codes (Hinglish/Hindi -> hi), rejects
+  unsupported ones with a clear 400; backend retries on an Edge voice for the story language
+  (Hindi/Hinglish -> hi-IN-Swara, Tamil, Telugu, ...) then Piper before any silence.
+  Chatterbox request timeout 120 -> 300 s. [sigh]/[gasp] tags no longer read aloud by Piper/Edge.
+- MUSIC/AMBIENCE/SFX beds were -51...-61 dB (inaudible after the 0.16 mix) -> normalised to
+  -20 dB (music), -24 dB (ambience), -18 dB (sfx).
+- Voice Lab: a muted/hiss-only recording (loudest peak <= -40 dB) is now rejected at preview
+  and save; it used to save as a "voice" that cloned into silence. Verified the rest of the
+  record -> save -> playback chain (see below in chat): webm/mp4 -> 24 kHz mono WAV, same
+  duration and level, waveform correlation 0.999.
+- Over-zoom: scene images whose aspect differs >8% from the video frame are now fitted whole
+  over a blurred copy of themselves instead of center-cropped.
+
+## v18.18 - final video fixes
+- Final video now 1080x1920 vertical by default (VIDEO_ORIENTATION). It was hard-coded
+  1920x1080 while Qwen scene images are 9:16, so each frame showed only the middle third
+  of the image ("too zoomed"). VIDEO_ORIENTATION=horizontal renders 1920x1080 and makes
+  Qwen draw 16:9 images (1344x768 -> 1920x1080).
+- Shorts crop only when the source is landscape (no double crop on vertical).
+- Gentler Ken Burns: max zoom ~1.07 instead of ~1.14.
+- Narration: if Chatterbox/CosyVoice/Sarvam fails, retry on local Piper before falling
+  back to silence (bracket tags like [gasp] stripped for Piper).
+- docker-compose passes VIDEO_ORIENTATION, VIDEO_TRANSITIONS_ENABLED, AUTO_MUSIC_ENABLED.
+
 ## v18.17 - RTX 50-series + H3 checks
 - .env: COMFYUI_EXTRA_CLI_ARGS adds --use-pytorch-cross-attention --disable-xformers
   (xformers in the image has no Blackwell kernels -> every Qwen step crashed) and

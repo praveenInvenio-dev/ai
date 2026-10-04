@@ -129,6 +129,8 @@ studio:
       maxRetries: ${IMAGE_VALIDATION_RETRIES:1}
       characterReferenceRequiredForHero: ${CHARACTER_REFERENCE_REQUIRED_FOR_HERO:true}
   video:
+    # vertical = 1080x1920 (Shorts/Reels, matches 9:16 scene images); horizontal = 1920x1080.
+    orientation: ${VIDEO_ORIENTATION:vertical}
     transitions:
       # Disabled by default for correctness on low-memory machines. The renderer
       # can opt in and automatically falls back to full-length concat if a

@@ -75,6 +75,31 @@ MODEL_TYPE = os.environ.get("CHATTERBOX_MODEL_TYPE", "standard").strip().lower()
 DEFAULT_LANGUAGE = os.environ.get("CHATTERBOX_DEFAULT_LANGUAGE", "en").strip().lower()
 
 
+# The app stores the story language as free text ("English", "Hinglish", "Hindi"...),
+# but Chatterbox needs an ISO code and only knows these 23 languages. Passing
+# "english" straight through made every request fail inside generate().
+MTL_LANGUAGES = {"ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi", "it", "ja", "ko",
+                 "ms", "nl", "no", "pl", "pt", "ru", "sv", "sw", "tr", "zh"}
+LANGUAGE_ALIASES = {
+    "english": "en", "eng": "en", "en-us": "en", "en-gb": "en", "en-in": "en",
+    "hindi": "hi", "hinglish": "hi", "hi-in": "hi", "hindi (roman)": "hi",
+    "spanish": "es", "french": "fr", "german": "de", "italian": "it", "portuguese": "pt",
+    "russian": "ru", "japanese": "ja", "korean": "ko", "chinese": "zh", "mandarin": "zh",
+    "arabic": "ar", "dutch": "nl", "turkish": "tr", "polish": "pl", "swedish": "sv",
+    "danish": "da", "finnish": "fi", "greek": "el", "hebrew": "he", "malay": "ms",
+    "norwegian": "no", "swahili": "sw",
+}
+
+
+def normalize_language(value: str) -> str:
+    """'English' -> 'en', 'Hinglish' -> 'hi', 'pt-BR' -> 'pt'. Unknown text is returned
+    lower-cased so the caller can reject it with a clear message."""
+    v = (value or "").strip().lower().replace("_", "-")
+    if v in LANGUAGE_ALIASES:
+        return LANGUAGE_ALIASES[v]
+    return v.split("-")[0] if v.split("-")[0] in MTL_LANGUAGES else v
+
+
 def get_model(language: str = "en"):
     """Load the real current Chatterbox model once and cache it.
 
@@ -178,7 +203,10 @@ def synthesize():
         text = text[:1200]
 
     voice = body.get("voice") or DEFAULT_VOICE
-    language = str(body.get("language") or DEFAULT_LANGUAGE).lower()
+    language = normalize_language(str(body.get("language") or DEFAULT_LANGUAGE))
+    if language not in MTL_LANGUAGES:
+        return jsonify({"error": f"Chatterbox does not support language '{language}' "
+                                 f"(supported: {', '.join(sorted(MTL_LANGUAGES))})."}), 400
     speed = float(body.get("speed") or 1.0)
     pitch = float(body.get("pitch") or 1.0)
     emotion = str(body.get("emotion") or "neutral").strip().lower()

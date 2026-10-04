@@ -103,11 +103,23 @@ Qwen Image 2.1 (images), Wan 2.2 TI2V-5B / I2V-A14B and MiniMax H3 (video).
 Start the stack with the GPU overlay:
 `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d`.
 
-## 5. CPU mode
+## 5. ComfyUI GPU image (important)
 
-`docker-compose.yml` alone runs ComfyUI on CPU. That is only useful with
-`DEMO_MODE=true` (placeholder media) to try the flow; Qwen Image 2.1 and the
-video models are not practical on CPU.
+ComfyUI runs on `yanwk/comfyui-boot:cu130-slim-v2` (PyTorch 2.13+cu130, driver 580 /
+CUDA 13.0, RTX 5060 Ti) with `gpus: all`. There is no CPU mode any more; use
+`DEMO_MODE=true` to try the flow without GPU models.
+
+> ComfyUI GPU image configuration is defined in both `docker-compose.yml` and
+> `docker-compose.gpu.yml`. Any future change to the ComfyUI CUDA image MUST update both
+> configurations (or set `COMFYUI_GPU_IMAGE` in `.env`, the single override) so the GPU
+> override cannot silently downgrade the image. Check before every deploy:
+>
+> ```bash
+> scripts/validate-comfyui-config.sh   # fails on cu128/cu124/:cpu, --cpu, or no GPU
+> ```
+
+Model volume `ai-story-studio_comfyui-gpu-root` (all of ComfyUI's `/root`) is reused as-is;
+never run `docker volume prune`.
 
 ## 6. Docker installation
 

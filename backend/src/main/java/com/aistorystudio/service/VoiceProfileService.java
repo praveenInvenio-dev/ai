@@ -254,6 +254,15 @@ public class VoiceProfileService {
         }
 
         VolumeStats volume = probeVolume(wavFile);
+        if (volume != null && volume.maxVolume <= -40.0) {
+            // A muted/blocked microphone records digital silence (-91 dB) and plain room
+            // hiss peaks around -45 dB; real speech peaks far above -30 dB. Saving such a
+            // clip created a "voice" that cloned into silence/noise, so reject it here.
+            return new ValidationResult(false,
+                    "No voice detected in this recording (loudest peak " + String.format("%.0f", volume.maxVolume)
+                    + " dB) - the microphone is probably muted or the wrong input is selected. "
+                    + "Check your mic and record again.", List.of(), duration, sampleRate);
+        }
         if (volume != null) {
             if (volume.maxVolume >= -1.0) {
                 warnings.add("This clip may be clipping (peaks very close to 0dB) - "

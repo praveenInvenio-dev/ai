@@ -200,12 +200,60 @@ public class ProviderGateway {
         try {
             return selected.synthesize(request);
         } catch (Exception e) {
-            String warning = "Voice provider '" + selected.providerName() + "' failed (" + e.getMessage()
-                    + "); this line used a silent placeholder instead of the assigned voice.";
-            log.warn(warning);
-            var mock = mockTtsProvider.synthesize(request);
-            return new TextToSpeechProvider.TtsResult(mock.audioBytes(), mock.durationSeconds(), mock.format(), warning);
+            return fallbackNarration(selected, request, e);
         }
+    }
+
+    /**
+     * Narration must not silently become silence. When the chosen engine fails
+     * (e.g. Chatterbox down or no narrator.wav reference), retry once on the
+     * always-running local Piper/edge sidecar with its default voice; only if
+     * that fails too is a silent placeholder used. The warning is kept on the
+     * result so the job log shows exactly which lines fell back.
+     */
+    private TextToSpeechProvider.TtsResult fallbackNarration(TextToSpeechProvider failed,
+                                                             TextToSpeechProvider.TtsRequest request, Exception cause) {
+        if (failed != localTtsProvider) {
+            String plain = request.text() == null ? "" : request.text().replaceAll("\\[[^\\]]{1,40}\\]", " ")
+                    .replaceAll("\\s+", " ").trim();
+            // 1st try: an Edge neural voice matching the story language (Hindi/Hinglish ->
+            // Swara, Tamil -> Pallavi...). 2nd try: the sidecar's default Piper voice.
+            String edge = edgeVoiceForLanguage(request.language());
+            String[] voices = edge == null ? new String[]{null} : new String[]{edge, null};
+            for (String voice : voices) {
+                try {
+                    var local = localTtsProvider.synthesize(new TextToSpeechProvider.TtsRequest(
+                            plain, voice, request.language(), request.speed(), request.pitch(), null, null, null,
+                            java.util.List.of(), null, null, null, null));
+                    String warning = "Voice provider '" + failed.providerName() + "' failed (" + cause.getMessage()
+                            + "); this line used the local '" + (voice == null ? localTtsProvider.providerName() : voice)
+                            + "' voice instead.";
+                    log.warn(warning);
+                    return new TextToSpeechProvider.TtsResult(local.audioBytes(), local.durationSeconds(), local.format(), warning);
+                } catch (Exception localError) {
+                    log.warn("Local TTS fallback ({}) failed: {}", voice == null ? "default voice" : voice,
+                            localError.getMessage());
+                }
+            }
+        }
+        String warning = "Voice provider '" + failed.providerName() + "' failed (" + cause.getMessage()
+                + "); this line used a silent placeholder.";
+        log.warn(warning);
+        var mock = mockTtsProvider.synthesize(request);
+        return new TextToSpeechProvider.TtsResult(mock.audioBytes(), mock.durationSeconds(), mock.format(), warning);
+    }
+
+    /** Edge neural voice for the story language, or null when none fits (English etc. use the
+     *  sidecar's default voice). Story language is free text ("Hinglish", "Hindi", "Tamil"). */
+    static String edgeVoiceForLanguage(String language) {
+        String l = language == null ? "" : language.trim().toLowerCase(java.util.Locale.ROOT);
+        if (l.startsWith("hindi") || l.startsWith("hinglish") || l.equals("hi") || l.startsWith("hi-")) return "edge:hi-IN-SwaraNeural";
+        if (l.startsWith("tamil") || l.equals("ta")) return "edge:ta-IN-PallaviNeural";
+        if (l.startsWith("telugu") || l.equals("te")) return "edge:te-IN-ShrutiNeural";
+        if (l.startsWith("malayalam") || l.equals("ml")) return "edge:ml-IN-SobhanaNeural";
+        if (l.startsWith("marathi") || l.equals("mr")) return "edge:mr-IN-AarohiNeural";
+        if (l.startsWith("kannada") || l.equals("kn")) return "edge:kn-IN-SapnaNeural";
+        return null;
     }
 
     private TextToSpeechProvider selectTtsProvider(String provider) {
@@ -253,11 +301,7 @@ public class ProviderGateway {
         try {
             return ttsProvider.synthesize(request);
         } catch (Exception e) {
-            String warning = "TTS provider '" + ttsProvider.providerName() + "' failed (" + e.getMessage()
-                    + "); this line used a silent placeholder instead.";
-            log.warn(warning);
-            var mock = mockTtsProvider.synthesize(request);
-            return new TextToSpeechProvider.TtsResult(mock.audioBytes(), mock.durationSeconds(), mock.format(), warning);
+            return fallbackNarration(ttsProvider, request, e);
         }
     }
 

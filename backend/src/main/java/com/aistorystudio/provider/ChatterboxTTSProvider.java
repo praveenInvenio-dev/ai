@@ -76,7 +76,7 @@ public class ChatterboxTTSProvider implements TextToSpeechProvider {
                 // Loading the model on first request (350M params) can take a
                 // while on CPU - a longer timeout than LocalTTSProvider's 60s
                 // is deliberate for exactly that cold-start case.
-                .block(Duration.ofSeconds(120));
+                .block(Duration.ofSeconds(300));
 
         if (wav == null || wav.length == 0) {
             throw new IllegalStateException("ChatterBox TTS returned no audio for voice '" + voice + "'");

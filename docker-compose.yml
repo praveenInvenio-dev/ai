@@ -115,6 +115,9 @@ x-app-env: &app-env
   VIDEO_EDITOR_MAX_REQUEST_MB: ${VIDEO_EDITOR_MAX_REQUEST_MB:-2048}
   # TTS engine selection was reachable only through application.yml defaults
   # before this; without it TTS_PROVIDER=sarvam in .env had no effect.
+  VIDEO_ORIENTATION: ${VIDEO_ORIENTATION:-vertical}
+  VIDEO_TRANSITIONS_ENABLED: ${VIDEO_TRANSITIONS_ENABLED:-false}
+  AUTO_MUSIC_ENABLED: ${AUTO_MUSIC_ENABLED:-true}
   TTS_PROVIDER: ${TTS_PROVIDER:-piper}
   SARVAM_API_KEY: ${SARVAM_API_KEY:-}
   SARVAM_BASE_URL: ${SARVAM_BASE_URL:-https://api.sarvam.ai}
@@ -169,28 +172,35 @@ services:
     networks:
       - ai-story-studio-net
   comfyui:
-    image: yanwk/comfyui-boot:cu130-slim-v2
+    # RTX 5060 Ti (Blackwell) + NVIDIA driver 580 / CUDA 13.0.
+    # ComfyUI image built on PyTorch 2.13+cu130. Do not silently downgrade to
+    # cu128/cu124 (retired, and cu128 lacks the Blackwell-optimised kernels).
+    # ComfyUI GPU image configuration is defined in BOTH docker-compose.yml and
+    # docker-compose.gpu.yml. Any change to the CUDA image MUST update both (or
+    # set COMFYUI_GPU_IMAGE in .env) so the GPU override cannot silently
+    # downgrade it. scripts/validate-comfyui-config.sh enforces this.
+    image: ${COMFYUI_GPU_IMAGE:-yanwk/comfyui-boot:cu130-slim-v2}
     gpus: all
     environment:
-      CLI_ARGS: --preview-method none
-      # --cpu is hard-coded here on purpose and is NOT overridable from .env.
-      # The yanwk :cpu image supplies --cpu through its own default CLI_ARGS,
-      # and setting CLI_ARGS replaces that default rather than adding to it, so
-      # any .env value that omitted --cpu would crash-loop the container with:
-      #   AssertionError: Torch not compiled with CUDA enabled
-      # --preview-method none is the speed flag: live previews VAE-decode the
-      # latent on every single step, which on CPU can cost more than sampling.
-      # Put any additional flags in COMFYUI_EXTRA_CLI_ARGS; they are appended.
-      CLI_ARGS: --cpu --preview-method none ${COMFYUI_EXTRA_CLI_ARGS:-}
-      # PyTorch on CPU only parallelises well if it can see the cores. Docker
-      # Desktop hands containers a small CPU allocation by default - raise it in
-      # Settings > Resources, then set COMFYUI_THREADS to match your physical
-      # core count (not hyperthreads; oversubscribing makes diffusion slower).
-      OMP_NUM_THREADS: ${COMFYUI_THREADS:-4}
-      MKL_NUM_THREADS: ${COMFYUI_THREADS:-4}
+      # No --cpu: this stack is GPU-only. --preview-method none avoids a
+      # VAE-decode on every sampling step. Extra flags (empty by default) come
+      # from COMFYUI_EXTRA_CLI_ARGS - only add them for a proven runtime failure.
+      CLI_ARGS: --preview-method none ${COMFYUI_EXTRA_CLI_ARGS:-}
+      # An empty OMP_NUM_THREADS is invalid to libgomp; keep an explicit value.
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-4}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-4}
+      # pre-start.sh: download Qwen Image 2.1 files on first start.
+      DOWNLOAD_16GB_IMAGE_MODELS: ${DOWNLOAD_16GB_IMAGE_MODELS:-true}
+    # The -slim images do NOT ship ComfyUI: they git-clone it into /root on first
+    # start, which fails if /root/ComfyUI/models or /output are pre-created as
+    # separate volumes ("destination path 'ComfyUI' already exists"). So one volume
+    # holds all of /root (ComfyUI, models, custom_nodes, output, user data).
+    # Models are downloaded AFTER the first start: ./download-models.sh (MODELS.md).
     volumes:
-      - comfyui-data:/root/ComfyUI/models
-      - comfyui-output:/root/ComfyUI/output
+      - comfyui-gpu-root:/root
+      # Runs after the ComfyUI bundle is copied into /root and before the server
+      # starts: installs ComfyUI-VideoHelperSuite, optionally downloads Qwen files.
+      - ./comfyui-gpu/pre-start.sh:/root/user-scripts/pre-start.sh
     ports:
       - "8188:8188"
     healthcheck:
@@ -364,6 +374,10 @@ services:
       - ai-story-studio-net
 
 volumes:
+  # ComfyUI's persistent /root (ComfyUI checkout, models, custom nodes, output).
+  # Name is pinned so existing downloads are reused, never recreated.
+  comfyui-gpu-root:
+    name: ${COMFYUI_GPU_VOLUME:-ai-story-studio_comfyui-gpu-root}
   indicf5-cache:
   chatterbox-cache:
   cosyvoice-cache:
@@ -371,6 +385,8 @@ volumes:
   video-editor-data:
   postgres-data:
   ollama-data:
+  # Legacy volumes of the old CPU-image layout. No service mounts them any more;
+  # declared (not deleted) so nothing is orphaned and old data stays reachable.
   comfyui-data:
   comfyui-output:
   tts-data:

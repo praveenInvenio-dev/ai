@@ -73,6 +73,8 @@ log "Project ready. Working directory: $(pwd)"
 
 # --- 2. Start the base stack --------------------------------------------------
 log "Starting containers (this builds images on first run - a few minutes)..."
+log "Validating ComfyUI image/GPU config..."
+./scripts/validate-comfyui-config.sh
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 
 log "Waiting for backend to report healthy..."

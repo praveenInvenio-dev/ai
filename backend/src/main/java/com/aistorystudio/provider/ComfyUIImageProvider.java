@@ -150,7 +150,11 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
         // plain 2x upscale at the request's own aspect (e.g. square character refs).
         int outW = qwenOutputWidth;
         int outH = qwenOutputHeight;
-        if (Math.abs((double) width / height - (double) qwenOutputWidth / qwenOutputHeight) > 0.03) {
+        if (Math.abs((double) width / height - (double) qwenOutputHeight / qwenOutputWidth) <= 0.03) {
+            // Rotated frame (16:9 episode): same final pixels, swapped -> 1920x1080.
+            outW = qwenOutputHeight;
+            outH = qwenOutputWidth;
+        } else if (Math.abs((double) width / height - (double) qwenOutputWidth / qwenOutputHeight) > 0.03) {
             outW = width * 2;
             outH = height * 2;
         }
