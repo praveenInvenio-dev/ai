@@ -72,7 +72,7 @@ public class StoryEngineService {
         episode.setGenre(req.genre());
         episode.setTone(req.tone());
         episode.setVisualStyle(req.visualStyle());
-        episode.setLanguage(req.language() != null ? req.language() : "English");
+        episode.setLanguage(normalizeStoryLanguage(req.language(), req.prompt()));
         episode.setOllamaModel(req.ollamaModel());
         if (req.qualityProfile() != null && !req.qualityProfile().isBlank()) {
             String upper = req.qualityProfile().trim().toUpperCase(java.util.Locale.ROOT);
@@ -334,13 +334,75 @@ public class StoryEngineService {
         return "Prior episode memory (compact): " + memories.get(0).getSummaryJson();
     }
 
+    private String normalizeStoryLanguage(String requested, String prompt) {
+        if (requested == null || requested.isBlank()) return "English";
+        String value = requested.trim();
+        if (!value.equalsIgnoreCase("Auto-detect") && !value.equalsIgnoreCase("Auto")) return value;
+        if (prompt != null) {
+            for (int i = 0; i < prompt.length(); i++) {
+                Character.UnicodeScript script = Character.UnicodeScript.of(prompt.charAt(i));
+                switch (script) {
+                    case KANNADA -> { return "Kannada"; }
+                    case TELUGU -> { return "Telugu"; }
+                    case TAMIL -> { return "Tamil"; }
+                    case MALAYALAM -> { return "Malayalam"; }
+                    case BENGALI -> { return "Bengali"; }
+                    case GUJARATI -> { return "Gujarati"; }
+                    case ORIYA -> { return "Odia"; }
+                    case GURMUKHI -> { return "Punjabi"; }
+                    case ARABIC -> { return "Urdu"; }
+                    case DEVANAGARI -> { return "Hindi"; }
+                    default -> { }
+                }
+            }
+        }
+        return "English";
+    }
+
     private String buildSystemPrompt() {
         return """
-            You are the creative director of an AI Story & Content Production Studio.
-            You write original, age-appropriate children's/family content. Avoid starting
-            every story with "Once upon a time". Follow this structure loosely: Hook, Setup,
-            Problem, Discovery, Adventure, Complication, Climax, Solution, Emotional payoff,
-            Lesson/Ending. Respond with ONLY valid JSON (no markdown fences, no commentary)
+            You are the creative director, head writer and short-form content strategist of an AI Story & Content Production Studio.
+            You create original, age-appropriate children's/family stories designed to be genuinely
+            entertaining, memorable and highly shareable without unsafe, deceptive or manipulative
+            clickbait. The story must feel like a real story first, with viral-friendly pacing and
+            visual moments naturally emerging from the plot.
+
+            LANGUAGE IS A HARD REQUIREMENT. The requested story language is supplied in the user prompt.
+            Write the title, logline, fullNarration, every narration segment, every dialogue segment,
+            emotional wording and story-specific text in that requested language. Do NOT silently fall
+            back to English. If the language is Kannada, write natural Kannada; Hindi, natural Hindi;
+            Telugu, natural Telugu; Tamil, natural Tamil; Malayalam, natural Malayalam; Marathi, natural
+            Marathi; Bengali, natural Bengali; Gujarati, natural Gujarati; Odia, natural Odia; Punjabi,
+            natural Punjabi; Urdu, natural Urdu. For Hinglish, use natural conversational Hindi-English
+            code-switching rather than translating every English word. Preserve character names, proper
+            nouns and unavoidable technical/production terms where appropriate. Do not write Indian
+            language dialogue as awkward word-for-word translations. Use culturally natural expressions,
+            child-friendly idioms and spoken phrasing for the target language.
+            IMPORTANT: imagePrompt, negativePrompt, visualSpec, camera/lighting descriptions, audioSpec
+            event labels and other machine-facing production instructions should remain concise,
+            unambiguous production English so the image/video pipeline stays reliable.
+            If the requested language is Auto-detect, infer it from the user's idea and use that language
+            consistently for all story-facing text.
+
+            Make the content highly engaging and retention-aware. Build a strong hook in the opening
+            seconds: begin with an unusual event, intriguing question, funny surprise, emotional beat,
+            mystery or visually striking situation rather than generic setup. Create an open question or
+            curiosity gap early, then pay it off. Escalate the stakes through 2-4 meaningful surprises,
+            reversals, discoveries or comedic complications instead of repeating the same action. Include
+            at least one quotable/funny/emotional line and at least one visually spectacular or unexpected
+            moment that could naturally become a thumbnail, Reel/Short clip or trailer moment. Keep scenes
+            moving: alternate wide visual spectacle, character reaction, action, reveal and emotional payoff
+            where appropriate. End with a satisfying payoff, memorable final image or small twist that makes
+            the audience want another episode. Do not add artificial "like and subscribe" dialogue unless the
+            user explicitly asks for it.
+
+            Avoid filler, generic motivational speeches, repetitive moral lessons, predictable openings,
+            random characters introduced only for spectacle, and twists that contradict established character
+            behavior. Every surprise must grow from the story's characters, objects, location or setup.
+            For younger children, keep tension exciting but emotionally safe and resolve frightening moments
+            with reassurance. Follow this structure flexibly: Hook, Setup, Curiosity Gap, Escalation,
+            Discovery, Complication, Climax, Emotional Payoff, Memorable Ending.
+            Respond with ONLY valid JSON (no markdown fences, no commentary)
             matching this shape:
             {
               "title": string,
@@ -494,7 +556,9 @@ public class StoryEngineService {
         if (episode.getGenre() != null) sb.append("Genre: ").append(episode.getGenre()).append("\n");
         if (episode.getTone() != null) sb.append("Tone: ").append(episode.getTone()).append("\n");
         if (episode.getVisualStyle() != null) sb.append("Visual style: ").append(episode.getVisualStyle()).append("\n");
-        sb.append("Language: ").append(episode.getLanguage()).append("\n");
+        sb.append("Story language (HARD REQUIREMENT): ").append(episode.getLanguage()).append("\n");
+        sb.append("Language rule: all story-facing text (title, logline, narration and dialogue) must be written naturally in the requested language; keep machine-facing image/video production fields in English.\n");
+        sb.append("Content goal: maximize genuine viewer retention and shareability through a strong opening hook, curiosity gap, escalating surprises, emotional/comedic payoff, memorable lines and visually distinctive moments. Do not use deceptive clickbait.\n");
         if (!characters.isEmpty()) {
             sb.append("Existing canonical characters (do NOT change their appearance):\n");
             for (Character c : characters) {

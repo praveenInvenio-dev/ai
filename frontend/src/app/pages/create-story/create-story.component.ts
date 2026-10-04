@@ -113,8 +113,11 @@ import { Project, Universe, Character } from '../../models/models';
           </div>
         </div>
         <div>
-          <label>Language</label>
-          <input [(ngModel)]="language" placeholder="English" />
+          <label>Story language</label>
+          <select [(ngModel)]="language">
+            <option *ngFor="let l of languages" [value]="l.value">{{ l.label }}</option>
+          </select>
+          <span class="field-help">Narration, dialogue and story text are generated in this language. Image prompts stay in production-friendly English.</span>
         </div>
         <div>
           <label>Model</label>
@@ -157,6 +160,7 @@ import { Project, Universe, Character } from '../../models/models';
     .section-heading span { color: var(--muted); font-size: .78rem; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.2rem; }
     .grid select, .grid input { width: 100%; }
+    .field-help { display: block; color: var(--muted); font-size: .68rem; margin-top: .3rem; line-height: 1.35; }
     .full-width { grid-column: 1 / -1; }
     .style-field { margin-top: .2rem; padding: 1rem; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-raised); }
     .style-header { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; margin-bottom: .85rem; }
@@ -199,6 +203,23 @@ export class CreateStoryComponent implements OnInit {
   visualStyle = '3D Realistic';
   qualityProfile: 'FAST' | 'BALANCED' | 'QUALITY' = 'QUALITY';
   language = 'English';
+
+  languages = [
+    { value: 'English', label: 'English' },
+    { value: 'Kannada', label: 'ಕನ್ನಡ (Kannada)' },
+    { value: 'Hindi', label: 'हिन्दी (Hindi)' },
+    { value: 'Hinglish', label: 'Hinglish (Hindi + English)' },
+    { value: 'Telugu', label: 'తెలుగు (Telugu)' },
+    { value: 'Tamil', label: 'தமிழ் (Tamil)' },
+    { value: 'Malayalam', label: 'മലയാളം (Malayalam)' },
+    { value: 'Marathi', label: 'मराठी (Marathi)' },
+    { value: 'Bengali', label: 'বাংলা (Bengali)' },
+    { value: 'Gujarati', label: 'ગુજરાતી (Gujarati)' },
+    { value: 'Odia', label: 'ଓଡ଼ିଆ (Odia)' },
+    { value: 'Punjabi', label: 'ਪੰਜਾਬੀ (Punjabi)' },
+    { value: 'Urdu', label: 'اردو (Urdu)' },
+    { value: 'Auto-detect', label: 'Auto-detect from my idea' }
+  ];
 
   genres = ['Adventure', 'Comedy', 'Fantasy', 'Educational', 'Mystery', 'Bedtime', 'Friendship', 'Moral', 'Science', 'Animals'];
   tones = ['Funny', 'Cute', 'Emotional', 'Exciting', 'Calm', 'Magical', 'Mysterious'];

@@ -112,3 +112,14 @@ See docs/history/.
 - MiniMax H3 narration is now embedded as native audiovisual generation; the old external TTS mux path remains for Wan.
 - Character "Generate Reference" now uses the most recent uploaded identity image as a Qwen reference input when available.
 - Generated character references are new images combining the uploaded facial identity with the canonical/custom character prompt and selected visual style, rather than returning/copying the uploaded photo.
+
+## v18.16
+- Restored the classic Story Approval **Generate Final Video (Images + Audio)** action.
+- Kept the new dedicated **Video Generation (H3 / AI Video)** flow alongside it.
+- Classic production continues to use the approved scene-image + narration/audio/2.5D pipeline; it does not redirect to H3.
+
+## v18.17 — Multilingual Story Engine + Viral-Friendly Story Pacing
+- Create Story and custom Storyboard now offer Indian-language choices including Kannada, Hindi, Hinglish, Telugu, Tamil, Malayalam, Marathi, Bengali, Gujarati, Odia, Punjabi and Urdu.
+- Story Engine now treats the selected language as a hard requirement for title, logline, narration and dialogue, while keeping image/video production prompts in English for model reliability.
+- Added Auto-detect for Create Story using Unicode-script detection for common Indian scripts.
+- Story generation now explicitly optimizes for genuine retention and shareability: strong opening hooks, curiosity gaps, escalating surprises, memorable lines, visual set-pieces and satisfying endings without deceptive clickbait.

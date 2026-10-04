@@ -51,8 +51,10 @@ import { ApiService, StoryboardEpisode, StoryboardScene, Voice, VoiceSegment } f
           <input [(ngModel)]="newTitle" placeholder="Bobo and the golden footprints">
         </label>
         <label>
-          Language
-          <input [(ngModel)]="newLanguage" placeholder="English">
+          Story language
+          <select [(ngModel)]="newLanguage">
+            <option *ngFor="let l of languages" [value]="l.value">{{ l.label }}</option>
+          </select>
         </label>
         <button class="btn primary" [disabled]="!newTitle.trim() || busy" (click)="createStoryboard()">
           Create storyboard
@@ -302,6 +304,21 @@ export class StoryboardComponent implements OnInit {
 
   newTitle = '';
   newLanguage = 'English';
+  languages = [
+    { value: 'English', label: 'English' },
+    { value: 'Kannada', label: 'ಕನ್ನಡ (Kannada)' },
+    { value: 'Hindi', label: 'हिन्दी (Hindi)' },
+    { value: 'Hinglish', label: 'Hinglish' },
+    { value: 'Telugu', label: 'తెలుగు (Telugu)' },
+    { value: 'Tamil', label: 'தமிழ் (Tamil)' },
+    { value: 'Malayalam', label: 'മലയാളം (Malayalam)' },
+    { value: 'Marathi', label: 'मराठी (Marathi)' },
+    { value: 'Bengali', label: 'বাংলা (Bengali)' },
+    { value: 'Gujarati', label: 'ગુજરાતી (Gujarati)' },
+    { value: 'Odia', label: 'ଓଡ଼ିଆ (Odia)' },
+    { value: 'Punjabi', label: 'ਪੰਜਾਬੀ (Punjabi)' },
+    { value: 'Urdu', label: 'اردو (Urdu)' }
+  ];
   existingEpisodeId = '';
 
   busy = false;
