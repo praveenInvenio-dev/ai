@@ -38,7 +38,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
     <section class="panel" *ngIf="statusLoaded && status?.available">
       <div class="field workflow-field">
         <label for="workflow">Generation workflow</label>
-        <select id="workflow" [(ngModel)]="workflow">
+        <select id="workflow" [(ngModel)]="workflow" (ngModelChange)="clampDuration()">
           <option value="WAN_2_2">Wan 2.2 (ComfyUI)</option>
           <option value="WAN_2_2_14B">Wan 2.2 14B I2V - best quality, needs starting image (ComfyUI)</option>
           <option value="MINIMAX_H3">MiniMax H3 (ComfyUI)</option>
@@ -102,9 +102,9 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
       <div class="field">
         <label for="duration">
           Duration &mdash; {{ durationSeconds.toFixed(1) }}s
-          (max {{ status?.maxDurationSeconds?.toFixed(1) }}s)
+          (max {{ maxSeconds().toFixed(1) }}s for this engine)
         </label>
-        <input id="duration" type="range" min="1" [max]="status?.maxDurationSeconds || 6"
+        <input id="duration" type="range" min="1" [max]="maxSeconds()"
                step="0.5" [(ngModel)]="durationSeconds">
       </div>
 
@@ -199,6 +199,19 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   private pollHandle?: ReturnType<typeof setInterval>;
 
   constructor(private api: ApiService) {}
+
+  /** Longest clip the selected engine will render (H3 10 s, Wan 5 s). */
+  maxSeconds(): number {
+    const s = this.status;
+    const fallback = s?.maxDurationSeconds || 6;
+    if (this.workflow === 'MINIMAX_H3') { return s?.h3MaxSeconds && s.h3MaxSeconds > 0 ? s.h3MaxSeconds : fallback; }
+    if (this.workflow === 'WAN_2_2_14B') { return s?.wan14bMaxSeconds && s.wan14bMaxSeconds > 0 ? s.wan14bMaxSeconds : fallback; }
+    return s?.wanMaxSeconds && s.wanMaxSeconds > 0 ? s.wanMaxSeconds : fallback;
+  }
+
+  clampDuration(): void {
+    this.durationSeconds = Math.min(this.durationSeconds, this.maxSeconds());
+  }
 
   ngOnInit(): void {
     this.api.videoGenerationStatus().subscribe({

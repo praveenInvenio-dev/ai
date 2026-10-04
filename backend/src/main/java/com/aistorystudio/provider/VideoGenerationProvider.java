@@ -48,4 +48,10 @@ public interface VideoGenerationProvider {
 
     /** Short, specific reason generation is unavailable - null if it is. */
     String unavailableReason();
+
+    /** Longest clip (seconds) this provider will render for the given workflow template
+     *  name; clips are clamped to it. -1 = unknown. */
+    default double maxDurationSecondsFor(String workflow) {
+        return -1;
+    }
 }

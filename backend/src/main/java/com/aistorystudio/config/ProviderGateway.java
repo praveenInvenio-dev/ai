@@ -129,6 +129,10 @@ public class ProviderGateway {
         return videoGenerationProvider.generateVideo(request);
     }
 
+    public double maxVideoDurationSecondsFor(String workflow) {
+        return videoGenerationProvider.maxDurationSecondsFor(workflow);
+    }
+
     public boolean isLocalAiVideoAvailable() {
         return videoGenerationProvider.isAvailable();
     }

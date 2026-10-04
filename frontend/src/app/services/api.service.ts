@@ -386,6 +386,56 @@ export class ApiService {
     return this.http.get<VideoGenerationJob>(`${this.base}/video-generation/jobs/${jobId}`);
   }
 
+  // --- Scene sequence ------------------------------------------------
+
+  sequenceStatus(): Observable<SequenceStatusInfo> {
+    return this.http.get<SequenceStatusInfo>(`${this.base}/video-sequences/status`);
+  }
+  listSequences(): Observable<SequenceView[]> {
+    return this.http.get<SequenceView[]>(`${this.base}/video-sequences`);
+  }
+  createSequence(req: CreateSequenceRequest): Observable<SequenceView> {
+    return this.http.post<SequenceView>(`${this.base}/video-sequences`, req);
+  }
+  getSequence(id: string): Observable<SequenceView> {
+    return this.http.get<SequenceView>(`${this.base}/video-sequences/${id}`);
+  }
+  deleteSequence(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/video-sequences/${id}`);
+  }
+  startSequenceVideos(id: string): Observable<unknown> {
+    return this.http.post(`${this.base}/video-sequences/${id}/start-videos`, {});
+  }
+  mergeSequence(id: string): Observable<unknown> {
+    return this.http.post(`${this.base}/video-sequences/${id}/merge`, {});
+  }
+  cancelSequence(id: string): Observable<unknown> {
+    return this.http.post(`${this.base}/video-sequences/${id}/cancel`, {});
+  }
+  updateSequenceScene(id: string, index: number, visual: string, motion: string): Observable<void> {
+    return this.http.put<void>(`${this.base}/video-sequences/${id}/scenes/${index}`, { visual, motion });
+  }
+  regenerateSequenceKeyframe(id: string, index: number): Observable<unknown> {
+    return this.http.post(`${this.base}/video-sequences/${id}/scenes/${index}/regenerate-keyframe`, {});
+  }
+  regenerateSequenceVideo(id: string, index: number): Observable<unknown> {
+    return this.http.post(`${this.base}/video-sequences/${id}/scenes/${index}/regenerate-video`, {});
+  }
+  uploadSequenceKeyframe(id: string, index: number, image: File): Observable<void> {
+    const form = new FormData();
+    form.append('image', image, image.name);
+    return this.http.post<void>(`${this.base}/video-sequences/${id}/scenes/${index}/keyframe`, form);
+  }
+  sequenceKeyframeUrl(id: string, index: number, stamp: number): string {
+    return `${this.base}/video-sequences/${id}/scenes/${index}/keyframe?t=${stamp}`;
+  }
+  sequenceClipUrl(id: string, index: number, stamp: number): string {
+    return `${this.base}/video-sequences/${id}/scenes/${index}/video?t=${stamp}`;
+  }
+  sequenceMergedUrl(id: string, stamp: number): string {
+    return `${this.base}/video-sequences/${id}/video?t=${stamp}`;
+  }
+
   videoGenerationResultUrl(jobId: string): string {
     return `${this.base}/video-generation/jobs/${jobId}/video`;
   }
@@ -631,6 +681,77 @@ export interface VideoGenerationStatus {
   defaultWidth: number;
   defaultHeight: number;
   maxDurationSeconds: number;
+  /** Per-engine longest clip (seconds). Optional: older backends only send maxDurationSeconds. */
+  wanMaxSeconds?: number;
+  wan14bMaxSeconds?: number;
+  h3MaxSeconds?: number;
+}
+
+// --- Scene sequence (multi-scene, consistent characters, merged long video) ----
+
+export type SequenceStatus = 'KEYFRAMES_RUNNING' | 'AWAITING_APPROVAL' | 'VIDEOS_RUNNING' | 'MERGING'
+  | 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'CANCELLED';
+export type SceneStep = 'PENDING' | 'KEYFRAME_RUNNING' | 'KEYFRAME_READY' | 'VIDEO_RUNNING' | 'DONE' | 'FAILED';
+
+export interface SequenceStatusInfo {
+  available: boolean;
+  reason: string | null;
+  wanMaxSeconds: number;
+  wan14bMaxSeconds: number;
+  h3MaxSeconds: number;
+  maxScenes: number;
+}
+
+export interface SequenceSceneView {
+  index: number;
+  visual: string;
+  motion: string;
+  step: SceneStep;
+  error: string | null;
+  hasKeyframe: boolean;
+  hasClip: boolean;
+  uploadedKeyframe: boolean;
+  clipSeconds: number | null;
+  requestedSeconds: number | null;
+  videoMillis: number | null;
+  keyframeStamp: number;
+  clipStamp: number;
+}
+
+export interface SequenceView {
+  id: string;
+  title: string;
+  style: string;
+  characterIds: string[];
+  engine: string;
+  secondsPerScene: number;
+  orientation: string;
+  crossfadeSeconds: number;
+  continuity: string;
+  reviewKeyframes: boolean;
+  status: SequenceStatus;
+  error: string | null;
+  busy: boolean;
+  hasMerged: boolean;
+  mergedSeconds: number | null;
+  mergedStamp: number;
+  doneScenes: number;
+  totalScenes: number;
+  createdAt: string;
+  scenes: SequenceSceneView[];
+}
+
+export interface CreateSequenceRequest {
+  title: string;
+  style: string;
+  characterIds: string[];
+  engine: string;
+  secondsPerScene: number;
+  orientation: string;
+  crossfadeSeconds: number;
+  continuity: string;
+  reviewKeyframes: boolean;
+  scenes: { visual: string; motion: string }[];
 }
 
 export type VideoGenJobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';

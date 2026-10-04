@@ -316,6 +316,23 @@ far slower than real time. Sarvam works on any hardware and breaks the
 offline-only property. Both plug in behind `TextToSpeechProvider` the same way
 `LocalTTSProvider` does.
 
+### Scene sequence (long, consistent videos)
+
+Page **Scene sequence** (sidebar, PRODUCTION): give it several scenes and your locked characters and
+it makes every scene one by one with the same faces and style, then joins them into one long video.
+
+1. **Keyframes** (fast): each scene's first frame is drawn by Qwen Image 2.1 with the locked
+   character reference(s) passed natively (up to two per scene), same style text for every scene.
+2. **Review** (on by default): look at the faces, replace/redo any keyframe, edit scene text.
+3. **Videos** (slow, GPU): the chosen engine animates each keyframe in order - MiniMax H3 (up to 10 s,
+   with sound), Wan 2.2 14B or Wan 2.2 5B (5 s). A scene that runs out of GPU memory at 10 s is retried once at 5 s.
+4. **Merge**: clips are normalised (size, 24 fps, audio) and joined, with an optional crossfade.
+
+Continuity modes: **Keyframes** (default, most stable identity) or **Chain** (each scene starts from the last
+frame of the previous clip: smoother motion between scenes, but drift can build up over many scenes).
+Everything is saved under `video-sequences/<id>/` (kept `VIDEO_SEQUENCE_RETENTION_HOURS`, default 72);
+finished scenes are never redone, and "Retry / continue" only makes what is missing.
+
 ### Generation speed
 
 Watch the real numbers in `docker compose logs -f comfyui` (`s/it`). Levers:

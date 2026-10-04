@@ -1,5 +1,15 @@
 # Changelog
 
+## v18.20 - H3 10 s + Scene sequence
+- MiniMax H3 longest clip 5 s -> 10 s (243 frames; LOCAL_AI_ANIMATION_MINIMAX_H3_MAX_DURATION_SECONDS,
+  default 10). Video Generation page slider now follows the selected engine (H3 10 s, Wan 5 s).
+  LOCAL_AI_ANIMATION_TIMEOUT_SECONDS 3600 -> 5400 in .env. Not benchmarked on 16 GB: 10 s is heavy.
+- NEW "Scene sequence" page + /api/video-sequences: N scenes -> locked-character keyframes (Qwen) ->
+  optional review -> clips one by one (H3 / Wan 14B / Wan 5B) -> merged long video (ClipMerger:
+  normalise + concat or xfade). KEYFRAMES or CHAIN continuity, per-scene redo / edit / upload keyframe,
+  retry only missing scenes, cancel between steps, manifest on disk (survives restarts), own executor.
+- Out-of-memory at >5 s retries once at 5 s so a sequence still completes.
+
 ## v18.19 - audio fixes, cu130 ComfyUI, no-crop fit
 - ComfyUI: image `yanwk/comfyui-boot:cu130-slim-v2` (was cu128-slim in the GPU overlay),
   `gpus: all`, `CLI_ARGS=--preview-method none`. COMFYUI_GPU_IMAGE in .env is the single

@@ -110,6 +110,7 @@ x-app-env: &app-env
   # Standalone "Video generation" page - how long a job's result clip stays
   # downloadable before the hourly cleanup sweep deletes it (VideoGenJobStore).
   VIDEO_GENERATION_RETENTION_HOURS: ${VIDEO_GENERATION_RETENTION_HOURS:-24}
+  VIDEO_SEQUENCE_RETENTION_HOURS: ${VIDEO_SEQUENCE_RETENTION_HOURS:-72}
   # Must stay >= VIDEO_EDITOR_MAX_UPLOAD_MB or Spring rejects a legal upload
   # before the app's own size check can report the real limit.
   VIDEO_EDITOR_MAX_REQUEST_MB: ${VIDEO_EDITOR_MAX_REQUEST_MB:-2048}

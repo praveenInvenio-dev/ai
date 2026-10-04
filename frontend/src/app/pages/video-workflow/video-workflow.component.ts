@@ -52,6 +52,6 @@ export class VideoWorkflowComponent implements OnInit {
   constructor(private route: ActivatedRoute) {}
   ngOnInit(): void {
     this.isH3 = this.route.snapshot.data['workflow'] === 'MINIMAX_H3';
-    if (this.isH3) { this.workflowKey = 'MINIMAX_H3'; this.templateName = 'minimax-h3-image-to-video'; this.width = 480; this.height = 832; this.steps = 20; this.maxDuration = 5; }
+    if (this.isH3) { this.workflowKey = 'MINIMAX_H3'; this.templateName = 'minimax-h3-image-to-video'; this.width = 480; this.height = 832; this.steps = 20; this.maxDuration = 10; }
   }
 }

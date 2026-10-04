@@ -72,7 +72,10 @@ public class VideoGenerationService {
             String reason,
             int defaultWidth,
             int defaultHeight,
-            double maxDurationSeconds
+            double maxDurationSeconds,
+            double wanMaxSeconds,
+            double wan14bMaxSeconds,
+            double h3MaxSeconds
     ) {}
 
     /** Real availability, same as the per-scene pipeline sees - not a
@@ -82,7 +85,10 @@ public class VideoGenerationService {
         return new StatusView(
                 providerGateway.isLocalAiVideoAvailable(),
                 providerGateway.localAiVideoUnavailableReason(),
-                defaultWidth, defaultHeight, maxDurationSeconds);
+                defaultWidth, defaultHeight, maxDurationSeconds,
+                providerGateway.maxVideoDurationSecondsFor("wan-ti2v-5b-image-to-video"),
+                providerGateway.maxVideoDurationSecondsFor("wan22-i2v-a14b"),
+                providerGateway.maxVideoDurationSecondsFor("minimax-h3-image-to-video"));
     }
 
     public record JobView(

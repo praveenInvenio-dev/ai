@@ -183,7 +183,9 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         this.h3MinRamMb = h3MinRamMb >= 0 ? h3MinRamMb : (h3Small ? 48000 : 0);
         this.h3Width = h3Width > 0 ? h3Width : 480;
         this.h3Height = h3Height > 0 ? h3Height : 832;
-        this.h3MaxDurationSeconds = h3MaxDurationSeconds > 0 ? h3MaxDurationSeconds : (h3Small ? 5.0 : 6.0);
+        // 10 s = 243 frames (17k+5 grid at 24 fps). Heavier than 5 s on a 16 GB card; the
+        // sequence runner retries once at 5 s on an out-of-memory failure.
+        this.h3MaxDurationSeconds = h3MaxDurationSeconds > 0 ? h3MaxDurationSeconds : 10.0;
         this.h3FreeVramBeforeRun = h3FreeVramBeforeRun;
         this.a14bHighModel = a14bHighModel;
         this.a14bLowModel = a14bLowModel;
@@ -549,6 +551,17 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         } catch (Exception e) {
             return new int[]{w, h};
         }
+    }
+
+    @Override
+    public double maxDurationSecondsFor(String workflow) {
+        if (workflow != null && workflow.toLowerCase(java.util.Locale.ROOT).startsWith("minimax-h3")) {
+            return h3MaxDurationSeconds;
+        }
+        if (isA14b(workflow)) {
+            return a14bMaxDurationSeconds;
+        }
+        return maxDurationSeconds;
     }
 
     private static boolean isA14b(String workflowName) {

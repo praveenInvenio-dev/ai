@@ -18,6 +18,7 @@ export const routes: Routes = [
   { path: 'storyboard', redirectTo: 'build-story', pathMatch: 'full' },
   { path: 'video-editor', loadComponent: () => import('./pages/video-editor/video-editor.component').then(m => m.VideoEditorComponent) },
   { path: 'video-generation', loadComponent: () => import('./pages/video-generation/video-generation.component').then(m => m.VideoGenerationComponent) },
+  { path: 'video-sequence', loadComponent: () => import('./pages/video-sequence/video-sequence.component').then(m => m.VideoSequenceComponent) },
   { path: 'wan-workflow', data: { workflow: 'WAN_2_2' }, loadComponent: () => import('./pages/video-workflow/video-workflow.component').then(m => m.VideoWorkflowComponent) },
   { path: 'minimax-h3-workflow', data: { workflow: 'MINIMAX_H3' }, loadComponent: () => import('./pages/video-workflow/video-workflow.component').then(m => m.VideoWorkflowComponent) },
   { path: 'voice-lab', loadComponent: () => import('./pages/voice-lab/voice-lab.component').then(m => m.VoiceLabComponent) },

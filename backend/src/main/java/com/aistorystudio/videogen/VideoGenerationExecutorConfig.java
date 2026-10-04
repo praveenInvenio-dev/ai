@@ -24,6 +24,20 @@ import java.util.concurrent.Executor;
 @Configuration
 public class VideoGenerationExecutorConfig {
 
+    /** Scene sequences run for hours (N clips back to back). Own small pool so they never use up the
+     *  threads of the single-clip page; the GPU is still serialised inside the providers. */
+    @Bean("videoSequenceExecutor")
+    public Executor videoSequenceExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(16);
+        executor.setThreadNamePrefix("video-sequence-");
+        executor.setWaitForTasksToCompleteOnShutdown(false);
+        executor.initialize();
+        return executor;
+    }
+
     @Bean("videoGenerationExecutor")
     public Executor videoGenerationExecutor(
             @Value("${studio.animation.local-ai.max-concurrent:1}") int maxConcurrent) {

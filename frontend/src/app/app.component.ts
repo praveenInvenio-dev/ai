@@ -26,6 +26,7 @@ import { ApiService } from './services/api.service';
           <div class="nav-label">PRODUCTION</div>
           <a routerLink="/video-editor" routerLinkActive="active"><span>◫</span>AI video editor</a>
           <a routerLink="/video-generation" routerLinkActive="active"><span>▶</span>Video generation</a>
+          <a routerLink="/video-sequence" routerLinkActive="active"><span>▤</span>Scene sequence</a>
           <a routerLink="/wan-workflow" routerLinkActive="active"><span>◈</span>Wan 2.2 workflow</a>
           <a routerLink="/minimax-h3-workflow" routerLinkActive="active"><span>◇</span>MiniMax H3 workflow</a>
         </nav>
