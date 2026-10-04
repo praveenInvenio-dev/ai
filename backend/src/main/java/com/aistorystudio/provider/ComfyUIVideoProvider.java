@@ -382,6 +382,14 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         // H3 and A14B have their own size/fps/duration caps; TI2V-5B keeps its own.
         int width = request.width() > 0 ? request.width() : (h3 ? h3Width : a14b ? a14bWidth : defaultWidth);
         int height = request.height() > 0 ? request.height() : (h3 ? h3Height : a14b ? a14bHeight : defaultHeight);
+        if (h3 && request.width() <= 0 && request.height() <= 0 && request.startingImagePath() != null) {
+            // MiniMaxH3ImageToVideo stretches first_frame to the canvas without
+            // keeping aspect, so the canvas must follow the start image's
+            // orientation or a landscape keyframe gets squashed into 480x832.
+            int[] wh = h3CanvasFor(request.startingImagePath(), width, height);
+            width = wh[0];
+            height = wh[1];
+        }
         int fps = a14b ? a14bFps : defaultFps;
 
         double duration = Math.max(0.5, Math.min(h3 ? h3MaxDurationSeconds
@@ -517,6 +525,30 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         numeric.put("{{LENGTH}}", length);
         numeric.put("{{STEPS}}", steps);
         return WorkflowTemplateFiller.fill(mapper, template, text, numeric);
+    }
+
+    /** Same pixel budget as the configured H3 size, orientation taken from the
+     *  start image; both sides multiples of 32 (H3 node step). */
+    private static int[] h3CanvasFor(String imagePath, int w, int h) {
+        try {
+            var img = javax.imageio.ImageIO.read(Path.of(imagePath).toFile());
+            if (img == null) {
+                return new int[]{w, h};
+            }
+            double aspect = (double) img.getWidth() / img.getHeight();
+            int longSide = Math.max(w, h);
+            int shortSide = Math.min(w, h);
+            if (aspect > 1.15) {
+                return new int[]{longSide, shortSide};
+            }
+            if (aspect < 0.87) {
+                return new int[]{shortSide, longSide};
+            }
+            int side = (int) Math.round(Math.sqrt((double) w * h) / 32.0) * 32;
+            return new int[]{side, side};
+        } catch (Exception e) {
+            return new int[]{w, h};
+        }
     }
 
     private static boolean isA14b(String workflowName) {

@@ -1,5 +1,15 @@
 # Changelog
 
+## v18.17 - RTX 50-series + H3 checks
+- .env: COMFYUI_EXTRA_CLI_ARGS adds --use-pytorch-cross-attention --disable-xformers
+  (xformers in the image has no Blackwell kernels -> every Qwen step crashed) and
+  --disable-pinned-memory (50 GB hosts).
+- H3: canvas orientation follows the start image (MiniMaxH3ImageToVideo stretches
+  first_frame without keeping aspect). All 4 H3 graphs re-checked against ComfyUI 0.38
+  node source and official templates (inputs, Autogrow names ref_images.ref_image_N,
+  SaveVideo, length grid 17k+5, size step 32).
+- Frontend: no '@' in Angular templates (NG5002).
+
 ## v18.16 - single model stack cleanup
 - Images: Qwen Image 2.1 for EVERY scene and every quality profile (FAST = 20 steps,
   others 30). Removed SD1.5 / SDXL / DreamShaper Lightning / LCM / IPAdapter workflows,
