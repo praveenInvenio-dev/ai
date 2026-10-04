@@ -371,7 +371,7 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     return filtered.join('\n');
   }
 
-  private rebuildH3Prompt(): void {
+  rebuildH3Prompt(): void {
     if (this.workflow !== 'MINIMAX_H3') return;
     const visual = this.prompt.split(/\n\n\[NATIVE H3 AUDIO\]/i)[0].trim();
     const sections: string[] = [];
