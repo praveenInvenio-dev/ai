@@ -522,11 +522,6 @@ public class FFmpegProcessor implements MediaProcessor {
             audioInputIndex = nextInput++;
             args.add("-i");
             args.add(scene.audioPath().toAbsolutePath().toString());
-        } else if (hasAudioStream(aiVideoPath)) {
-            // MiniMax H3 produces native synchronized stereo audio in the AI
-            // video itself. Keep that track instead of generating a second TTS
-            // track. Other AI video providers may be silent, so probe first.
-            audioInputIndex = 0;
         }
         int particleInputIndex = -1;
         if (particleClip != null) {

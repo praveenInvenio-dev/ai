@@ -440,7 +440,7 @@ public class StoryboardService {
 
             Path aiVideoPath = null;
             try {
-                if (providerGateway.isLocalAiVideoAvailable()) {
+                if (gateway.isLocalAiVideoAvailable()) {
                     aiVideoPath = generateH3StoryboardVideo(episode, scene, images.get(scene.getId()), duration);
                 }
             } catch (Exception e) {
@@ -511,7 +511,7 @@ public class StoryboardService {
                 duration, 0, 0, characterReference != null ? "minimax-h3-reference-to-video" : "minimax-h3-image-to-video", null,
                 characterReference == null ? null : characterReference.toString(), null, steps);
         long started = System.currentTimeMillis();
-        VideoGenerationProvider.VideoGenerationResult result = providerGateway.generateVideo(request);
+        VideoGenerationProvider.VideoGenerationResult result = gateway.generateVideo(request);
         Path stored = storage.store(relativePath(episode, String.format("video/scene-%03d-h3.%s", scene.getSceneNumber(), result.fileExtension())), result.videoBytes());
         log.info("H3 storyboard scene {} generated in {}s, duration={}s, steps={}, bytes={}",
                 scene.getSceneNumber(), (System.currentTimeMillis() - started) / 1000, duration, steps, result.videoBytes().length);
