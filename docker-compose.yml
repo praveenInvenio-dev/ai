@@ -169,8 +169,10 @@ services:
     networks:
       - ai-story-studio-net
   comfyui:
-    image: yanwk/comfyui-boot:cpu
+    image: yanwk/comfyui-boot:cu130-slim-v2
+    gpus: all
     environment:
+      CLI_ARGS: --preview-method none
       # --cpu is hard-coded here on purpose and is NOT overridable from .env.
       # The yanwk :cpu image supplies --cpu through its own default CLI_ARGS,
       # and setting CLI_ARGS replaces that default rather than adding to it, so
