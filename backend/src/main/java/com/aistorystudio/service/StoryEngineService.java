@@ -373,7 +373,7 @@ public class StoryEngineService {
             back to English. If the language is Kannada, write natural Kannada; Hindi, natural Hindi;
             Telugu, natural Telugu; Tamil, natural Tamil; Malayalam, natural Malayalam; Marathi, natural
             Marathi; Bengali, natural Bengali; Gujarati, natural Gujarati; Odia, natural Odia; Punjabi,
-            natural Punjabi; Urdu, natural Urdu. For Hinglish, use natural conversational Hindi-English
+            natural Punjabi; Urdu, natural Urdu; Indian English, natural contemporary Indian English with authentic Indian phrasing and conversational rhythm (not British-English formality and not forced stereotypes). For Hinglish, use natural conversational Hindi-English
             code-switching rather than translating every English word. Preserve character names, proper
             nouns and unavoidable technical/production terms where appropriate. Do not write Indian
             language dialogue as awkward word-for-word translations. Use culturally natural expressions,

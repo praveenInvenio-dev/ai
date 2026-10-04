@@ -65,8 +65,8 @@ export class ApiService {
   generateCharacterMasterPrompt(characterId: string): Observable<{ prompt: string }> {
     return this.http.post<{ prompt: string }>(`${this.base}/characters/${characterId}/reference-prompt`, {});
   }
-  generateCharacterReference(characterId: string, visualStyle?: string, prompt?: string): Observable<CharacterReference> {
-    return this.http.post<CharacterReference>(`${this.base}/characters/${characterId}/generate-reference`, { visualStyle, prompt });
+  generateCharacterReference(characterId: string, visualStyle?: string, prompt?: string, referenceId?: string): Observable<CharacterReference> {
+    return this.http.post<CharacterReference>(`${this.base}/characters/${characterId}/generate-reference`, { visualStyle, prompt, referenceId });
   }
   uploadCharacterReference(characterId: string, file: File): Observable<CharacterReference> {
     const form = new FormData();

@@ -90,7 +90,8 @@ public class CharacterController {
     public CharacterReference generateReference(@PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
         String visualStyle = body != null ? body.get("visualStyle") : null;
         String prompt = body != null ? body.get("prompt") : null;
-        return characterImageService.generateReferenceImage(id, visualStyle, prompt);
+        String referenceId = body != null ? body.get("referenceId") : null;
+        return characterImageService.generateReferenceImage(id, visualStyle, prompt, referenceId == null || referenceId.isBlank() ? null : UUID.fromString(referenceId));
     }
 
     @PostMapping("/{id}/reference-prompt")

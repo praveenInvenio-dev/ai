@@ -302,12 +302,39 @@ public class TimelineRenderer {
         });
 
         if (!anyTransition || files.size() == 1) {
-            // All hard cuts: the concat demuxer copies streams without
-            // re-encoding, which is both faster and lossless.
+            // Hard cuts use the robust concat path.
             concatCopy(files, out, request);
             return;
         }
-        xfadeChain(files, rows, request, out);
+
+        // Transitions are an enhancement, never a reason to lose the render.
+        // xfade/acrossfade is sensitive to timestamps, duration rounding and
+        // stream metadata. If any transition graph fails, fall back to a full
+        // hard-cut concat so every rendered clip is still present in the final
+        // video. The user can then retry with transitions after fixing the
+        // problematic clip without losing the rest of the timeline.
+        Path transitionOut = out.getParent().resolve("transition-preview.mp4");
+        try {
+            xfadeChain(files, rows, request, transitionOut);
+            double rendered = probeDuration(transitionOut);
+            double expected = files.stream().mapToDouble(this::probeDuration).sum();
+            double minimum = Math.max(0.1, expected - 0.75 * (files.size() - 1));
+            if (rendered <= 0 || rendered + 0.50 < minimum) {
+                throw new IllegalStateException(String.format(
+                        "Transition output %.3fs is shorter than expected minimum %.3fs",
+                        rendered, minimum));
+            }
+            Files.move(transitionOut, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception transitionFailure) {
+            log.warn("Video-editor transition merge failed; falling back to full concat: {}",
+                    transitionFailure.getMessage());
+            try {
+                Files.deleteIfExists(transitionOut);
+            } catch (IOException ignored) {
+                // Best effort cleanup; concat uses a different output path.
+            }
+            concatCopy(files, out, request);
+        }
     }
 
     private void concatCopy(List<Path> files, Path out, RenderRequest request) {
@@ -320,8 +347,18 @@ public class TimelineRenderer {
                   .append("'\n");
             }
             Files.writeString(list, sb.toString(), StandardCharsets.UTF_8);
+            // Re-encode the final concat instead of stream-copying. The segment
+            // renderer normally normalises streams, but generated/user-uploaded
+            // clips can still carry different time bases, edit lists or codec
+            // metadata. Re-encoding here makes the editor tolerant of those
+            // differences and guarantees a single playable output stream.
             run(List.of(ffmpegBin, "-y", "-f", "concat", "-safe", "0",
-                    "-i", list.toString(), "-c", "copy", out.toString()), null);
+                    "-i", list.toString(),
+                    "-map", "0:v:0", "-map", "0:a:0?",
+                    "-c:v", "libx264", "-preset", request.x264Preset(),
+                    "-crf", String.valueOf(request.crf()), "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
+                    out.toString()), null);
         } catch (IOException e) {
             throw new IllegalStateException("Could not write the concat list", e);
         }

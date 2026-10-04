@@ -123,3 +123,24 @@ See docs/history/.
 - Story Engine now treats the selected language as a hard requirement for title, logline, narration and dialogue, while keeping image/video production prompts in English for model reliability.
 - Added Auto-detect for Create Story using Unicode-script detection for common Indian scripts.
 - Story generation now explicitly optimizes for genuine retention and shareability: strong opening hooks, curiosity gaps, escalating surprises, memorable lines, visual set-pieces and satisfying endings without deceptive clickbait.
+
+## v18.18 — Persistent Character Reference Library
+- Added a character identity-reference dropdown beside the upload control in Story Approval.
+- Lists all uploaded/generated references for each character and preserves the selected reference across regenerations.
+- Regeneration now accepts the selected reference ID and uses it as the primary identity source while the prompt can change attire, styling, accessories and presentation.
+- Newly generated variants are saved to the character reference library without silently replacing the selected identity reference.
+- Locked references remain the preferred canonical reference for future generation when no explicit selection is supplied.
+
+## v18.19 — H3 Dialogue Completeness & Human Delivery
+- Scene Load now estimates duration from the complete voice-segment script, including dialogue, narration and pauses, instead of relying only on the image duration.
+- H3 duration selection now uses the H3 10-second ceiling even before backend status metadata is loaded.
+- Added a clear warning when a scene's complete spoken script is longer than H3 can fit in one clip; users are told to shorten or split the scene rather than silently losing dialogue.
+- H3 prompt assembly now preserves delivery metadata (emotion/acting direction) for dialogue.
+- H3 native audio instructions now explicitly require complete lines, natural conversational pacing, breaths, pauses, hesitation where appropriate, varied intonation, natural emphasis, realistic turn-taking and no skipped/rephrased speech.
+- Removed the duplicate H3 narration injection when the prompt already contains the native H3 audio block.
+- Removed the hard-coded English audio tag from the generic Video Generation H3 path so multilingual scene text is not mislabeled.
+
+## v18.20
+- Added distinct Indian English story language alongside International English and Hinglish.
+- Indian English uses en-IN-NeerjaNeural when Edge TTS is selected/available.
+- Story generation explicitly preserves natural contemporary Indian-English phrasing and conversational rhythm.

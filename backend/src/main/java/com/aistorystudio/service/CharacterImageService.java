@@ -77,7 +77,7 @@ public class CharacterImageService {
         return characterReferenceRepository.save(ref);
     }
 
-    public CharacterReference generateReferenceImage(UUID characterId, String visualStyleOverride, String customPrompt) {
+    public CharacterReference generateReferenceImage(UUID characterId, String visualStyleOverride, String customPrompt, UUID selectedReferenceId) {
         Character character = characterRepository.findById(characterId)
                 .orElseThrow(() -> new IllegalArgumentException("Character not found: " + characterId));
 
@@ -92,14 +92,24 @@ public class CharacterImageService {
         // Qwen's reference-conditioned graph generates a NEW canonical character
         // image from the reference + prompt, preserving the face while applying
         // the requested character design, clothing, proportions and style.
-        CharacterReference sourceReference = characterReferenceRepository.findByCharacterId(characterId).stream()
-                .filter(r -> "UPLOADED".equalsIgnoreCase(r.getSource()))
-                .sorted(java.util.Comparator.comparing(CharacterReference::getCreatedAt).reversed())
-                .findFirst()
-                .orElse(null);
+        CharacterReference sourceReference = null;
+        if (selectedReferenceId != null) {
+            sourceReference = characterReferenceRepository.findById(selectedReferenceId)
+                    .filter(r -> characterId.equals(r.getCharacterId()))
+                    .orElseThrow(() -> new IllegalArgumentException("Selected character reference does not belong to this character."));
+        }
+        if (sourceReference == null) {
+            sourceReference = characterReferenceRepository.findByCharacterId(characterId).stream()
+                    .filter(CharacterReference::isLocked)
+                    .findFirst()
+                    .orElseGet(() -> characterReferenceRepository.findByCharacterId(characterId).stream()
+                            .filter(r -> "UPLOADED".equalsIgnoreCase(r.getSource()))
+                            .sorted(java.util.Comparator.comparing(CharacterReference::getCreatedAt).reversed())
+                            .findFirst().orElse(null));
+        }
 
         String identityInstruction = sourceReference != null
-                ? "Use the supplied reference image as the PRIMARY IDENTITY SOURCE. Preserve the same person/character's facial identity: face shape, eyes, eyebrows, nose, mouth, jawline, skin tone, hairline, hairstyle, apparent age and distinctive facial features. Do NOT return or copy the uploaded photograph. Create a NEW clean character-design image that applies the written character prompt and requested visual style to that identity. The reference controls WHO the character is; the written prompt controls HOW the character is designed and presented."
+                ? "Use the supplied reference image as the PRIMARY IDENTITY SOURCE. Preserve the same person/character's facial identity: face shape, eyes, eyebrows, nose, mouth, jawline, skin tone, hairline, hairstyle, apparent age and distinctive facial features. Do NOT return or copy the uploaded photograph. Create a NEW clean character-design image that applies the written character prompt and requested visual style to that identity. The selected reference controls WHO the character is and must remain the same identity source on every regeneration; the written prompt controls the new attire, styling, pose, accessories and presentation. Do not copy the selected reference clothing unless the written prompt asks for it."
                 : "Create a NEW canonical character-design image from the written character description; do not copy an unrelated source image.";
 
         String positivePrompt = identityInstruction + "\n\n"

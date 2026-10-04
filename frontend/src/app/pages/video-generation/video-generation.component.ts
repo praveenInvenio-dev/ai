@@ -105,6 +105,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
           Duration &mdash; {{ durationSeconds.toFixed(1) }}s
           (max {{ maxSeconds().toFixed(1) }}s for this engine)
         </label>
+        <p class="warning" *ngIf="audioDurationWarning">{{ audioDurationWarning }}</p>
         <input id="duration" type="range" min="1" [max]="maxSeconds()"
                step="0.5" [(ngModel)]="durationSeconds">
       </div>
@@ -189,6 +190,7 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   dialogueText = '';
   audioDirection = '';
   voiceProfileId = '';
+  audioDurationWarning = '';
   voiceProfiles: VoiceProfile[] = [];
 
   // "Use an image from a story" picker
@@ -214,7 +216,7 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   maxSeconds(): number {
     const s = this.status;
     const fallback = s?.maxDurationSeconds || 6;
-    if (this.workflow === 'MINIMAX_H3') { return s?.h3MaxSeconds && s.h3MaxSeconds > 0 ? s.h3MaxSeconds : fallback; }
+    if (this.workflow === 'MINIMAX_H3') { return s?.h3MaxSeconds && s.h3MaxSeconds > 0 ? s.h3MaxSeconds : 10; }
     if (this.workflow === 'WAN_2_2_14B') { return s?.wan14bMaxSeconds && s.wan14bMaxSeconds > 0 ? s.wan14bMaxSeconds : fallback; }
     return s?.wanMaxSeconds && s.wanMaxSeconds > 0 ? s.wanMaxSeconds : fallback;
   }
@@ -342,15 +344,23 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
         this.narrationText = scene.narration || '';
         this.dialogueText = this.parseDialogue(scene.voiceSegments, scene.narration || '');
         this.audioDirection = this.parseAudioSpec(scene.audioSpecJson);
-        if (scene.imageDurationSeconds && scene.imageDurationSeconds > 0) {
-          this.durationSeconds = Math.min(scene.imageDurationSeconds, this.maxSeconds());
-        } else if (scene.narrationSeconds && scene.narrationSeconds > 0) {
-          this.durationSeconds = Math.min(Math.max(scene.narrationSeconds + 0.5, 1), this.maxSeconds());
+        this.workflow = 'MINIMAX_H3';
+        const estimatedAudioSeconds = this.estimateSceneAudioSeconds(scene.voiceSegments, scene.narration || '');
+        const requestedSceneSeconds = Math.max(
+          scene.imageDurationSeconds && scene.imageDurationSeconds > 0 ? scene.imageDurationSeconds : 0,
+          scene.narrationSeconds && scene.narrationSeconds > 0 ? scene.narrationSeconds + 0.6 : 0,
+          estimatedAudioSeconds
+        );
+        this.audioDurationWarning = '';
+        if (requestedSceneSeconds > 0) {
+          this.durationSeconds = Math.min(Math.max(requestedSceneSeconds, 1), this.maxSeconds());
+          if (requestedSceneSeconds > this.maxSeconds()) {
+            this.audioDurationWarning = `This scene's narration/dialogue is estimated at ${requestedSceneSeconds.toFixed(1)}s, but H3 supports ${this.maxSeconds().toFixed(1)}s. Shorten the dialogue or split the scene to keep every line audible.`;
+          }
         }
         // H3 is audiovisual: build the complete native audio direction into the
         // generation prompt. The separate fields below remain editable so the user
         // can correct narration/dialogue/SFX before pressing Generate.
-        this.workflow = 'MINIMAX_H3';
         this.rebuildH3Prompt();
         this.mode = 'i2v';
         this.loadingScene = false;
@@ -366,9 +376,31 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     if (!segments || !segments.length) return '';
     const lines = segments
       .filter((x: any) => x && x.text && String(x.text).trim())
-      .map((x: any) => `${x.character || 'Speaker'}: ${String(x.text).trim()}`);
-    const filtered = lines.filter((x: string) => !x.toLowerCase().startsWith('narrator:'));
-    return filtered.join('\n');
+      .filter((x: any) => !/^(narrator|voiceover)$/i.test(String(x.character || '')))
+      .map((x: any) => {
+        const delivery = x.delivery || x.actingDirection || x.emotion || '';
+        const suffix = delivery ? ` [${String(delivery).trim()}]` : '';
+        return `${x.character || 'Speaker'}: ${String(x.text).trim()}${suffix}`;
+      });
+    return lines.join('\n');
+  }
+
+  private estimateSceneAudioSeconds(segments?: any[], narration?: string): number {
+    const source = Array.isArray(segments) && segments.length
+      ? segments
+      : (narration ? [{ text: narration, pauseBeforeMs: 0, pauseAfterMs: 0 }] : []);
+    if (!source.length) return 0;
+    let seconds = 0;
+    for (const x of source) {
+      const text = String(x?.text || '').trim();
+      if (!text) continue;
+      const words = text.split(/\s+/).filter(Boolean).length;
+      // Conversational H3 delivery is intentionally slower than raw TTS: ~2.35 words/s.
+      seconds += Math.max(0.7, words / 2.35);
+      seconds += Number(x?.pauseBeforeMs || 0) / 1000;
+      seconds += Number(x?.pauseAfterMs || 0) / 1000;
+    }
+    return seconds + 0.6;
   }
 
   rebuildH3Prompt(): void {
@@ -376,7 +408,7 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     const visual = this.prompt.split(/\n\n\[NATIVE H3 AUDIO\]/i)[0].trim();
     const sections: string[] = [];
     if (this.narrationText.trim()) {
-      sections.push(`Narrator (off-screen): <d>[English] ${this.narrationText.trim()}</d>`);
+      sections.push(`Narrator (off-screen): <d>${this.narrationText.trim()}</d>`);
     }
     if (this.dialogueText.trim()) {
       sections.push(`Dialogue:\n${this.dialogueText.trim()}`);
@@ -385,7 +417,7 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
       sections.push(this.audioDirection.trim());
     }
     this.prompt = sections.length
-      ? `${visual}\n\n[NATIVE H3 AUDIO]\n${sections.join('\n')}\nThe audio should be synchronized with the visible action; narration is off-screen unless a dialogue speaker is explicitly on screen.`.trim()
+      ? `${visual}\n\n[NATIVE H3 AUDIO]\n${sections.join('\n')}\nDELIVERY: Perform every spoken line completely. Use natural conversational pacing, realistic pauses, breaths, subtle hesitation where appropriate, expressive but restrained emotion, varied intonation, natural emphasis, and believable turn-taking between speakers. Do not rush, chant, read mechanically, or skip/rephrase any line. Keep narration off-screen unless explicitly stated; only the active dialogue speaker moves their lips. Synchronize speech, facial expression, mouth movement and visible action.`.trim()
       : visual;
   }
 

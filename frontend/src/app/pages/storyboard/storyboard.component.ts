@@ -305,7 +305,8 @@ export class StoryboardComponent implements OnInit {
   newTitle = '';
   newLanguage = 'English';
   languages = [
-    { value: 'English', label: 'English' },
+    { value: 'English', label: 'English (International)' },
+    { value: 'Indian English', label: 'Indian English (English - India)' },
     { value: 'Kannada', label: 'ಕನ್ನಡ (Kannada)' },
     { value: 'Hindi', label: 'हिन्दी (Hindi)' },
     { value: 'Hinglish', label: 'Hinglish' },

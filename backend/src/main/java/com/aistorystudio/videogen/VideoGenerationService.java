@@ -171,11 +171,11 @@ public class VideoGenerationService {
             // MiniMax H3 is an audiovisual model. For H3, narration is part of the
             // generation prompt so the model creates synchronized native audio.
             // Wan keeps the existing external TTS/mux path.
-            if (nativeH3Audio && narrationText != null && !narrationText.isBlank()) {
+            if (nativeH3Audio && narrationText != null && !narrationText.isBlank()
+                    && (prompt == null || !prompt.contains("[NATIVE H3 AUDIO]"))) {
                 generationPrompt = (prompt == null ? "" : prompt)
-                        + "\n\n(S1), the narrator, speaks in a warm off-screen voiceover: "
-                        + "<d>[English] " + narrationText.trim() + "</d>. "
-                        + "The visible character's lips remain closed during narration.";
+                        + "\n\n[NATIVE H3 AUDIO]\nNarrator (off-screen): <d>" + narrationText.trim() + "</d>\n"
+                        + "DELIVERY: Perform the complete narration with natural conversational pacing, realistic breaths and pauses, subtle emotional variation, human-like intonation and emphasis. Do not rush, chant, read mechanically, skip words, or paraphrase. Synchronize the voice with the visible action; keep the visible character's lips closed during off-screen narration.";
             }
             VideoGenerationProvider.VideoGenerationRequest request = new VideoGenerationProvider.VideoGenerationRequest(
                     job.getStartingImagePath(), generationPrompt, negativePrompt,

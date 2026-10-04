@@ -252,6 +252,8 @@ public class ProviderGateway {
     static String edgeVoiceForLanguage(String language) {
         String l = language == null ? "" : language.trim().toLowerCase(java.util.Locale.ROOT);
         if (l.startsWith("hindi") || l.startsWith("hinglish") || l.equals("hi") || l.startsWith("hi-")) return "edge:hi-IN-SwaraNeural";
+        if (l.startsWith("indian english") || l.equals("en-in") || l.startsWith("en-in-")) return "edge:en-IN-NeerjaNeural";
+        if (l.startsWith("indian english") || l.equals("en-in") || l.startsWith("en-in-")) return "edge:en-IN-NeerjaNeural";
         if (l.startsWith("tamil") || l.equals("ta")) return "edge:ta-IN-PallaviNeural";
         if (l.startsWith("telugu") || l.equals("te")) return "edge:te-IN-ShrutiNeural";
         if (l.startsWith("malayalam") || l.equals("ml")) return "edge:ml-IN-SobhanaNeural";
