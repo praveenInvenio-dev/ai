@@ -50,6 +50,33 @@ public class CharacterImageService {
         this.storageProvider = storageProvider;
     }
 
+    /** Stores a user-supplied character image as the identity reference for H3/R2V. */
+    @org.springframework.transaction.annotation.Transactional
+    public CharacterReference uploadReferenceImage(UUID characterId, org.springframework.web.multipart.MultipartFile file) {
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("Please choose a character reference image.");
+        String original = file.getOriginalFilename() == null ? "reference.png" : file.getOriginalFilename();
+        String ext = original.contains(".") ? original.substring(original.lastIndexOf('.') + 1).toLowerCase(java.util.Locale.ROOT) : "png";
+        if (!java.util.Set.of("png", "jpg", "jpeg", "webp").contains(ext)) {
+            throw new IllegalArgumentException("Character reference must be PNG, JPG, JPEG or WEBP.");
+        }
+        Character character = characterRepository.findById(characterId)
+                .orElseThrow(() -> new IllegalArgumentException("Character not found: " + characterId));
+        byte[] bytes;
+        try { bytes = file.getBytes(); } catch (java.io.IOException e) { throw new IllegalStateException("Could not read character reference image.", e); }
+        String relative = "characters/" + characterId + "/uploaded-reference-" + System.currentTimeMillis() + "." + ext;
+        Path path = storageProvider.store(relative, bytes);
+        boolean hasExisting = !characterReferenceRepository.findByCharacterId(characterId).isEmpty();
+        CharacterReference ref = new CharacterReference();
+        ref.setCharacterId(characterId);
+        ref.setImagePath(path.toString());
+        ref.setImageHash(Integer.toHexString(java.util.Arrays.hashCode(bytes)));
+        ref.setSource("UPLOADED");
+        ref.setPrimary(!hasExisting);
+        ref.setLocked(false);
+        ref.setPromptText("User-uploaded identity reference for " + character.getName() + ". Preserve facial identity, hair, skin tone, age, body proportions, clothing and defining features.");
+        return characterReferenceRepository.save(ref);
+    }
+
     public CharacterReference generateReferenceImage(UUID characterId, String visualStyleOverride, String customPrompt) {
         Character character = characterRepository.findById(characterId)
                 .orElseThrow(() -> new IllegalArgumentException("Character not found: " + characterId));

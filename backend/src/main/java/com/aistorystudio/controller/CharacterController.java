@@ -10,6 +10,7 @@ import com.aistorystudio.service.CharacterImageService;
 import com.aistorystudio.service.CharacterService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -80,6 +81,11 @@ public class CharacterController {
      * that doesn't require going through story creation/approval/production.
      * Useful specifically for verifying/debugging ComfyUI setup in isolation.
      */
+    @PostMapping(value = "/{id}/upload-reference", consumes = "multipart/form-data")
+    public CharacterReference uploadReference(@PathVariable UUID id, @RequestPart("file") MultipartFile file) {
+        return characterImageService.uploadReferenceImage(id, file);
+    }
+
     @PostMapping("/{id}/generate-reference")
     public CharacterReference generateReference(@PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
         String visualStyle = body != null ? body.get("visualStyle") : null;

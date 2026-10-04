@@ -59,9 +59,12 @@ import { Episode, SceneDto, VoiceSegment } from '../../models/models';
             <div class="character-actions">
               <button class="btn btn-ghost" type="button" (click)="refreshCharacterPrompt(c)" [disabled]="characterGenerating[c.id]">↻ Auto prompt</button>
               <button class="btn btn-primary" type="button" (click)="generateCharacterMaster(c)" [disabled]="characterGenerating[c.id] || !characterPrompts[c.id].trim()">{{ characterGenerating[c.id] ? 'Generating…' : (characterRef(c.id) ? 'Regenerate reference' : 'Generate reference') }}</button>
+              <label class="btn btn-ghost upload-btn">📷 Upload identity image
+                <input type="file" accept="image/png,image/jpeg,image/webp" hidden (change)="uploadCharacterReference(c, $event)" [disabled]="characterGenerating[c.id]">
+              </label>
               <button class="btn btn-ghost" type="button" *ngIf="characterRef(c.id)" (click)="toggleCharacterReferenceLock(c)" [disabled]="characterGenerating[c.id]">{{ characterRef(c.id)?.locked ? '🔓 Unlock reference' : '🔒 Lock reference' }}</button>
             </div>
-            <p class="hint">Reference is optional. If you do not generate or lock one, scene generation continues normally with text-to-image.</p>
+            <p class="hint">Upload a real character photo/reference when exact identity matters. H3 uses it as a dedicated identity reference while the storyboard image controls scene composition. Lock it to make it the preferred reference.</p>
           </article>
         </div>
       </section>
@@ -189,6 +192,17 @@ export class StoryApprovalComponent implements OnInit, OnDestroy {
   }
   refreshCharacterPrompt(c: Character){
     this.api.generateCharacterMasterPrompt(c.id).subscribe({next:r=>this.characterPrompts[c.id]=r.prompt,error:()=>this.characterPrompts[c.id]=this.fallbackCharacterPrompt(c)});
+  }
+  uploadCharacterReference(c: Character, event: Event){
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if(!file)return;
+    if(file.size > 10 * 1024 * 1024){ this.characterErrors[c.id] = 'Please use an image smaller than 10 MB.'; input.value=''; return; }
+    this.characterGenerating[c.id]=true; delete this.characterErrors[c.id];
+    this.api.uploadCharacterReference(c.id, file).subscribe({
+      next:ref=>{this.characterGenerating[c.id]=false;this.characterReferences[c.id]=ref; input.value='';},
+      error:e=>{this.characterGenerating[c.id]=false;this.characterErrors[c.id]=e?.error?.message||'Could not upload the character reference.'; input.value='';}
+    });
   }
   generateCharacterMaster(c: Character){
     const prompt=(this.characterPrompts[c.id]||'').trim(); if(!prompt)return;

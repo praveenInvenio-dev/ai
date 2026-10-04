@@ -68,6 +68,11 @@ export class ApiService {
   generateCharacterReference(characterId: string, visualStyle?: string, prompt?: string): Observable<CharacterReference> {
     return this.http.post<CharacterReference>(`${this.base}/characters/${characterId}/generate-reference`, { visualStyle, prompt });
   }
+  uploadCharacterReference(characterId: string, file: File): Observable<CharacterReference> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<CharacterReference>(`${this.base}/characters/${characterId}/upload-reference`, form);
+  }
   lockCharacterReference(characterId: string, referenceId: string, locked: boolean): Observable<CharacterReference> {
     return this.http.post<CharacterReference>(`${this.base}/characters/${characterId}/references/${referenceId}/lock`, {}, { params: { locked } });
   }

@@ -522,6 +522,11 @@ public class FFmpegProcessor implements MediaProcessor {
             audioInputIndex = nextInput++;
             args.add("-i");
             args.add(scene.audioPath().toAbsolutePath().toString());
+        } else if (hasAudioStream(aiVideoPath)) {
+            // MiniMax H3 produces native synchronized stereo audio in the AI
+            // video itself. Keep that track instead of generating a second TTS
+            // track. Other AI video providers may be silent, so probe first.
+            audioInputIndex = 0;
         }
         int particleInputIndex = -1;
         if (particleClip != null) {
@@ -1661,6 +1666,22 @@ public class FFmpegProcessor implements MediaProcessor {
         } catch (Exception e) {
             log.warn("Voice post-processing failed, using unprocessed narration: {}", e.getMessage());
             return wavBytes;
+        }
+    }
+
+    private boolean hasAudioStream(Path mediaFile) {
+        try {
+            List<String> args = List.of(
+                    "ffprobe", "-v", "error", "-select_streams", "a:0",
+                    "-show_entries", "stream=index", "-of", "csv=p=0",
+                    mediaFile.toAbsolutePath().toString());
+            Process process = new ProcessBuilder(args).redirectErrorStream(true).start();
+            String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+            process.waitFor(10, TimeUnit.SECONDS);
+            return !out.isBlank();
+        } catch (Exception e) {
+            log.debug("Could not probe audio stream for {}: {}", mediaFile, e.getMessage());
+            return false;
         }
     }
 

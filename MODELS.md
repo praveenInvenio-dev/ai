@@ -16,6 +16,9 @@ and the legacy Wan 2.1-style graph were removed from code, config and workflows.
 | | wan_2.1_vae | vae |
 | | (optional) wan2.2_i2v_lightx2v_4steps_lora_v1_{high,low}_noise | loras |
 | Video + native audio (optional) | minimax_h3_fl2va_pruned_w6a8 | diffusion_models |
+| H3 character/voice R2V | minimax_h3_ref2va_pruned_w6a8 | diffusion_models |
+| H3 I2V Turbo | minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16 | loras |
+| H3 R2V Turbo | minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16 | loras |
 | | qwen3vl_32b_minimax_h3_nvfp4_awq | text_encoders |
 | | minimax_h3_video_vae_fp16, minimax_h3_audio_vae_fp32 | vae |
 

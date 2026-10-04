@@ -1,3 +1,12 @@
+# v18.9 — MiniMax H3 Storyboard Pipeline
+
+- Added image-first MiniMax H3 storyboard video generation with native synchronized audio.
+- Added dedicated storyboard Video direction input and narration/dialogue prompt construction.
+- Added automatic 3–10 second shot duration based on narration text and pauses.
+- Added faster 10-step H3 storyboard rendering, with 20-step QUALITY mode.
+- Preserved native H3 audio through final FFmpeg assembly and retained per-scene fallback to TTS + 2.5D.
+- Enabled H3-all-scenes story mode in the packaged deployment configuration.
+
 # Changelog
 
 ## v18.20 - H3 10 s + Scene sequence
@@ -73,3 +82,22 @@
 ## v18.15 Wan 2.2 I2V-A14B   ## v18.14 Wan 720p fix   ## v18.13 H3 16 GB profile
 ## v18.12 FFmpeg audio-pad + chatterbox profile   ## v18.11 Qwen image quality
 See docs/history/.
+
+## v18.12 — H3 Character Identity Upload
+
+- Added **Upload identity image** to Story Approval's character builder.
+- Uploaded images are stored as reusable `CharacterReference` assets and can be locked/selected as the character's preferred reference.
+- Existing Qwen Image 2.1 scene-image generation continues to use locked/primary character references.
+- MiniMax H3 now switches to native **Reference-to-Video (R2V)** when a character identity image is available.
+- H3 receives the storyboard frame as `<Picture 1>` and the character identity image as `<Picture 2>`.
+- Added a dedicated H3 character-reference workflow so existing voice-reference generation is unchanged.
+- Character identity prompt explicitly protects facial structure, eyes, nose, mouth, hair, skin tone, age, proportions, clothing and defining features.
+
+## v18.12 - H3 download fix + native audio/Turbo wiring
+- Fixed H3 model download script: the previous package did not actually download the Turbo assets.
+- Added the missing `minimax_h3_ref2va_pruned_w6a8.safetensors` required by character/voice R2V on the 16GB profile.
+- Added official H3 I2V 8-step Turbo LoRA and official H3 R2V 4-step Turbo LoRA download entries.
+- Switched H3 I2V fast storyboard renders to the official 8-step Turbo workflow when no character/voice reference is present; Quality remains 20 steps.
+- Kept character-reference R2V on the stable 20-step graph because the official 4-step R2V path requires the newer sampler/conditioning template and should not be approximated by simply reducing steps.
+- H3 storyboard prompts now consume the story engine's `audioSpec`: ambience, physical SFX, music mood/intensity, narration and dialogue are all passed to H3 native audio generation.
+- Added H3 model pre-start downloads with curl resume/retry support.

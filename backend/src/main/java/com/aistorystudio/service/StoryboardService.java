@@ -3,7 +3,10 @@ package com.aistorystudio.service;
 import com.aistorystudio.config.ProviderGateway;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.aistorystudio.domain.Asset;
+import com.aistorystudio.domain.Character;
+import com.aistorystudio.domain.CharacterReference;
 import com.aistorystudio.domain.Episode;
 import com.aistorystudio.domain.Scene;
 import com.aistorystudio.domain.enums.AssetType;
@@ -11,6 +14,7 @@ import com.aistorystudio.domain.enums.EpisodeStatus;
 import com.aistorystudio.provider.MediaProcessor;
 import com.aistorystudio.provider.StorageProvider;
 import com.aistorystudio.provider.TextToSpeechProvider;
+import com.aistorystudio.provider.VideoGenerationProvider;
 import com.aistorystudio.domain.Project;
 import com.aistorystudio.repository.AssetRepository;
 import com.aistorystudio.repository.EpisodeRepository;
@@ -85,8 +89,11 @@ public class StoryboardService {
     private final ProviderGateway gateway;
     private final SubtitleService subtitleService;
     private final com.aistorystudio.repository.VoiceProfileRepository voiceProfileRepository;
+    private final com.aistorystudio.repository.CharacterRepository characterRepository;
+    private final com.aistorystudio.repository.CharacterReferenceRepository characterReferenceRepository;
     private final String defaultVoice;
     private final ObjectMapper objectMapper;
+    private final H3StoryboardPromptBuilder h3PromptBuilder;
 
     public StoryboardService(EpisodeRepository episodes,
                              ProjectRepository projects,
@@ -98,6 +105,8 @@ public class StoryboardService {
                              SubtitleService subtitleService,
                              ObjectMapper objectMapper,
                              com.aistorystudio.repository.VoiceProfileRepository voiceProfileRepository,
+                             com.aistorystudio.repository.CharacterRepository characterRepository,
+                             com.aistorystudio.repository.CharacterReferenceRepository characterReferenceRepository,
                              @Value("${studio.tts.voice:edge:en-IN-NeerjaNeural}") String defaultVoice) {
         this.episodes = episodes;
         this.projects = projects;
@@ -108,7 +117,10 @@ public class StoryboardService {
         this.gateway = gateway;
         this.subtitleService = subtitleService;
         this.objectMapper = objectMapper;
+        this.h3PromptBuilder = new H3StoryboardPromptBuilder(objectMapper);
         this.voiceProfileRepository = voiceProfileRepository;
+        this.characterRepository = characterRepository;
+        this.characterReferenceRepository = characterReferenceRepository;
         this.defaultVoice = defaultVoice;
     }
 
@@ -136,6 +148,9 @@ public class StoryboardService {
             episode.setLanguage(request.language());
         }
         episode.setDurationTargetSec(request.durationTargetSec());
+        // Storyboards are image-first/H3-first. FAST selects the 10-step H3
+        // profile while QUALITY can still be requested by an API client later.
+        episode.setQualityProfile("FAST");
         // No LLM ran, so there is nothing to approve - the user is the author.
         // Marking it APPROVED keeps it out of the story-approval queue, which
         // would otherwise ask them to review their own writing.
@@ -222,8 +237,13 @@ public class StoryboardService {
                 throw new IllegalArgumentException("Could not save the scene voice settings.", e);
             }
         }
+        // Storyboard scenes are narration-driven: unless an explicit duration is
+        // supplied by an API client, keep the shot duration synchronized with the
+        // current narration. The UI intentionally has no manual duration field.
         if (input.durationSeconds() != null && input.durationSeconds() > 0) {
-            scene.setImageDurationSeconds(input.durationSeconds());
+            scene.setImageDurationSeconds(clampSceneDuration(input.durationSeconds()));
+        } else {
+            scene.setImageDurationSeconds(estimateStoryboardDuration(input.narration(), input.voiceSegments()));
         }
     }
 
@@ -406,15 +426,38 @@ public class StoryboardService {
                 .map(s -> "scene " + s.getSceneNumber())
                 .toList();
         if (!missing.isEmpty()) {
-            // Named explicitly: "some images are missing" leaves the user
-            // hunting through a long storyboard for the gap.
             throw new IllegalStateException("No image uploaded for " + String.join(", ", missing) + ".");
         }
 
         List<MediaProcessor.SceneClip> clips = new ArrayList<>(ordered.size());
+        boolean allNativeH3 = true;
         for (Scene scene : ordered) {
-            Path audioPath = narrate(episode, scene, voice);
-            double duration = sceneDuration(scene);
+            // The storyboard UI is narration-driven. Recompute on every render so
+            // editing the text immediately changes the H3 shot length.
+            double duration = estimateStoryboardDuration(scene.getNarration(), readVoiceSegments(scene));
+            scene.setImageDurationSeconds(duration);
+            scenes.save(scene);
+
+            Path aiVideoPath = null;
+            try {
+                if (providerGateway.isLocalAiVideoAvailable()) {
+                    aiVideoPath = generateH3StoryboardVideo(episode, scene, images.get(scene.getId()), duration);
+                }
+            } catch (Exception e) {
+                log.warn("H3 storyboard generation failed for scene {} - falling back to existing TTS/2.5D path: {}",
+                        scene.getSceneNumber(), e.getMessage());
+            }
+
+            Path audioPath;
+            if (aiVideoPath != null) {
+                // H3 already contains synchronized native stereo audio. Generating
+                // another TTS track would waste time and could replace the H3 audio.
+                audioPath = null;
+            } else {
+                allNativeH3 = false;
+                audioPath = narrate(episode, scene, voice);
+            }
+
             clips.add(new MediaProcessor.SceneClip(
                     Path.of(images.get(scene.getId()).getFilePath()),
                     audioPath,
@@ -427,16 +470,16 @@ public class StoryboardService {
                     scene.getLocation(),
                     scene.getImportance(),
                     scene.getAnimationMode(),
-                    null)); // AI video generation is wired through ProductionPipelineService's
-                             // pipeline (which has the character-reference/animation-decision
-                             // context this simpler storyboard flow doesn't) - always 2.5D here.
+                    aiVideoPath));
         }
 
         Path output = storage.resolve(relativePath(episode, "video/final.mp4"));
-        Path musicPath = resolveMusicPath(episode);
+        // H3 supplies its own ambience/SFX/music. Only add the legacy music bed
+        // when the episode contains at least one fallback scene.
+        Path musicPath = allNativeH3 ? null : resolveMusicPath(episode);
         Path video = mediaProcessor.assembleVideo(
-                new MediaProcessor.VideoAssemblyRequest(clips, musicPath, output, 1920, 1080));
-        saveAsset(episode, null, AssetType.VIDEO, video, "ffmpeg");
+                new MediaProcessor.VideoAssemblyRequest(clips, musicPath, output, 1080, 1920));
+        saveAsset(episode, null, AssetType.VIDEO, video, allNativeH3 ? "minimax-h3-native-audio" : "ffmpeg");
 
         String srt = subtitleService.buildSrt(ordered);
         Path srtPath = storage.store(relativePath(episode, "subtitles/subtitles.srt"),
@@ -445,8 +488,65 @@ public class StoryboardService {
 
         episode.setStatus(EpisodeStatus.PRODUCTION_COMPLETE);
         episodes.save(episode);
-        log.info("Storyboard episode {} assembled from {} user-supplied images", episodeId, ordered.size());
+        log.info("Storyboard episode {} assembled from {} images using H3 native audio={}.",
+                episodeId, ordered.size(), allNativeH3);
         return video;
+    }
+
+    private Path generateH3StoryboardVideo(Episode episode, Scene scene, Asset image, double duration) {
+        if (image == null || image.getFilePath() == null) return null;
+        Path characterReference = resolveCharacterReference(episode, scene);
+        List<String> characterNames = sceneCharacterNames(scene);
+        String prompt = h3PromptBuilder.build(
+                scene.getAction(), scene.getLocation(), scene.getEmotion(), scene.getNarration(),
+                scene.getVoiceSegmentsJson(), scene.getAudioSpecJson(), episode.getLanguage(), episode.getVisualStyle(), duration,
+                characterNames, characterReference != null);
+
+        // FAST storyboard mode deliberately uses 10 steps on the existing W6A8
+        // graph. It needs no extra LoRA/model file, unlike the newer distilled
+        // FastH3 workflow, and is therefore safe for this deployed stack.
+        int steps = characterReference != null ? 20 : ("QUALITY".equalsIgnoreCase(episode.getQualityProfile()) ? 20 : 8);
+        var request = new VideoGenerationProvider.VideoGenerationRequest(
+                image.getFilePath(), prompt, "static frame, blurry, distorted, extra limbs, identity drift, duplicate subject",
+                duration, 0, 0, characterReference != null ? "minimax-h3-reference-to-video" : "minimax-h3-image-to-video", null,
+                characterReference == null ? null : characterReference.toString(), null, steps);
+        long started = System.currentTimeMillis();
+        VideoGenerationProvider.VideoGenerationResult result = providerGateway.generateVideo(request);
+        Path stored = storage.store(relativePath(episode, String.format("video/scene-%03d-h3.%s", scene.getSceneNumber(), result.fileExtension())), result.videoBytes());
+        log.info("H3 storyboard scene {} generated in {}s, duration={}s, steps={}, bytes={}",
+                scene.getSceneNumber(), (System.currentTimeMillis() - started) / 1000, duration, steps, result.videoBytes().length);
+        return stored;
+    }
+
+
+    private List<String> sceneCharacterNames(Scene scene) {
+        List<String> names = new ArrayList<>();
+        try {
+            if (scene.getCharactersJson() != null && !scene.getCharactersJson().isBlank()) {
+                JsonNode arr = objectMapper.readTree(scene.getCharactersJson());
+                if (arr.isArray()) for (JsonNode n : arr) {
+                    String name = n.isTextual() ? n.asText() : n.path("name").asText("");
+                    if (!name.isBlank()) names.add(name.trim());
+                }
+            }
+        } catch (Exception ignored) {}
+        return names;
+    }
+
+    private Path resolveCharacterReference(Episode episode, Scene scene) {
+        List<String> names = sceneCharacterNames(scene);
+        if (names.isEmpty()) return null;
+        List<Character> chars = characterRepository.findByEpisodeId(episode.getId());
+        if (chars.isEmpty() && episode.getUniverseId() != null) chars = characterRepository.findByUniverseId(episode.getUniverseId());
+        for (String name : names) {
+            Character c = chars.stream().filter(x -> x.getName() != null && x.getName().equalsIgnoreCase(name)).findFirst().orElse(null);
+            if (c == null) continue;
+            List<CharacterReference> refs = characterReferenceRepository.findByCharacterId(c.getId());
+            CharacterReference ref = refs.stream().filter(CharacterReference::isLocked).findFirst()
+                    .orElseGet(() -> refs.stream().filter(CharacterReference::isPrimary).findFirst().orElse(null));
+            if (ref != null && ref.getImagePath() != null && java.nio.file.Files.isRegularFile(Path.of(ref.getImagePath()))) return Path.of(ref.getImagePath());
+        }
+        return null;
     }
 
     /** Same resolution order as ProductionPipelineService's: an uploaded
@@ -747,6 +847,37 @@ public class StoryboardService {
         } catch (Exception e) {
             return -1;
         }
+    }
+
+    private double estimateStoryboardDuration(String narration, List<VoiceSegmentInput> segments) {
+        int words = 0;
+        if (segments != null) {
+            for (VoiceSegmentInput s : segments) {
+                if (s != null && s.text() != null && !s.text().isBlank()) words += wordCount(s.text());
+            }
+        }
+        if (words == 0) words = wordCount(narration);
+        if (words == 0) return 3.0;
+        double pauses = 0.0;
+        if (segments != null) {
+            for (VoiceSegmentInput s : segments) {
+                if (s == null) continue;
+                pauses += Math.max(0, s.pauseBeforeMs() == null ? 0 : s.pauseBeforeMs()) / 1000.0;
+                pauses += Math.max(0, s.pauseAfterMs() == null ? 0 : s.pauseAfterMs()) / 1000.0;
+            }
+        }
+        // ~150 WPM is a natural story narration baseline. Add a small visual tail
+        // but cap at the 10-second H3 profile limit used by this 16GB deployment.
+        return clampSceneDuration((words / 2.5) + pauses + NARRATION_TAIL_SECONDS);
+    }
+
+    private int wordCount(String text) {
+        if (text == null || text.isBlank()) return 0;
+        return text.trim().split("\\s+").length;
+    }
+
+    private double clampSceneDuration(double seconds) {
+        return Math.max(3.0, Math.min(10.0, Math.round(seconds * 10.0) / 10.0));
     }
 
     private double sceneDuration(Scene scene) {

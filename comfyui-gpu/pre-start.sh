@@ -69,3 +69,19 @@ if [ -f /root/ComfyUI/comfy_extras/nodes_qwen.py ] && grep -q "class TextEncodeQ
 else
   echo "[AI Story Studio] WARNING: this ComfyUI checkout does not expose QwenImage21 nodes. Update ComfyUI before using the 16GB cinematic image workflow."
 fi
+
+# -----------------------------------------------------------------------------
+# MiniMax H3 16GB + official Turbo assets
+# -----------------------------------------------------------------------------
+H3_DIR=/root/ComfyUI/models
+if [ "${DOWNLOAD_H3_MODELS:-true}" = "true" ]; then
+  mkdir -p "$H3_DIR/diffusion_models" "$H3_DIR/text_encoders" "$H3_DIR/vae" "$H3_DIR/loras"
+  h3get() { local dst="$1" url="$2"; if [ ! -s "$dst" ]; then echo "[AI Story Studio] Downloading H3 $(basename "$dst")..."; curl -fL --retry 5 --retry-delay 3 --continue-at - "$url" -o "$dst"; fi; }
+  h3get "$H3_DIR/diffusion_models/minimax_h3_fl2va_pruned_w6a8.safetensors" "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_w6a8.safetensors?download=true"
+  h3get "$H3_DIR/diffusion_models/minimax_h3_ref2va_pruned_w6a8.safetensors" "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_w6a8.safetensors?download=true"
+  h3get "$H3_DIR/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors" "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors?download=true"
+  h3get "$H3_DIR/vae/minimax_h3_video_vae_fp16.safetensors" "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors?download=true"
+  h3get "$H3_DIR/vae/minimax_h3_audio_vae_fp32.safetensors" "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors?download=true"
+  h3get "$H3_DIR/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors" "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors?download=true"
+  h3get "$H3_DIR/loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors" "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors?download=true"
+fi

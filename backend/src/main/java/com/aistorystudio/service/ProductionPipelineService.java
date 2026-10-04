@@ -3,6 +3,7 @@ package com.aistorystudio.service;
 import com.aistorystudio.config.ProviderGateway;
 import com.aistorystudio.domain.*;
 import com.aistorystudio.domain.Character;
+import com.aistorystudio.domain.CharacterReference;
 import com.aistorystudio.domain.enums.AssetType;
 import com.aistorystudio.domain.enums.EpisodeStatus;
 import com.aistorystudio.domain.enums.JobStatus;
@@ -15,6 +16,7 @@ import com.aistorystudio.provider.VideoGenerationProvider;
 import com.aistorystudio.provider.VisionProvider;
 import com.aistorystudio.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -53,11 +55,44 @@ public class ProductionPipelineService {
     private final com.aistorystudio.animation.AnimationDecisionService animationDecisionService;
     private final ImagePromptAssembler imagePromptAssembler = new ImagePromptAssembler();
     private final ObjectMapper mapper = new ObjectMapper();
+    private final H3StoryboardPromptBuilder h3PromptBuilder = new H3StoryboardPromptBuilder(mapper);
 
     @Value("${studio.animation.local-ai.enabled-in-story-pipeline:false}")
     private boolean storyPipelineAiVideoEnabled;
+    @Value("${studio.animation.local-ai.h3-for-all-scenes:false}")
+    private boolean h3ForAllScenes;
     /** vertical (default, 1080x1920, Shorts/Reels native) or horizontal (1920x1080). */
     @Value("${studio.video.orientation:vertical}") private String videoOrientation;
+
+    private List<String> sceneCharacterNames(Scene scene) {
+        List<String> names = new ArrayList<>();
+        try {
+            if (scene.getCharactersJson() != null && !scene.getCharactersJson().isBlank()) {
+                JsonNode arr = mapper.readTree(scene.getCharactersJson());
+                if (arr.isArray()) for (JsonNode n : arr) {
+                    String name = n.isTextual() ? n.asText() : n.path("name").asText("");
+                    if (!name.isBlank()) names.add(name.trim());
+                }
+            }
+        } catch (Exception ignored) {}
+        return names;
+    }
+
+    private Path resolveCharacterReference(Episode episode, Scene scene) {
+        List<String> names = sceneCharacterNames(scene);
+        if (names.isEmpty()) return null;
+        List<Character> chars = characterRepository.findByEpisodeId(episode.getId());
+        if (chars.isEmpty() && episode.getUniverseId() != null) chars = characterRepository.findByUniverseId(episode.getUniverseId());
+        for (String name : names) {
+            Character c = chars.stream().filter(x -> x.getName() != null && x.getName().equalsIgnoreCase(name)).findFirst().orElse(null);
+            if (c == null) continue;
+            List<CharacterReference> refs = characterReferenceRepository.findByCharacterId(c.getId());
+            CharacterReference ref = refs.stream().filter(CharacterReference::isLocked).findFirst()
+                    .orElseGet(() -> refs.stream().filter(CharacterReference::isPrimary).findFirst().orElse(null));
+            if (ref != null && ref.getImagePath() != null && java.nio.file.Files.isRegularFile(Path.of(ref.getImagePath()))) return Path.of(ref.getImagePath());
+        }
+        return null;
+    }
 
     private boolean horizontalVideo() {
         return "horizontal".equalsIgnoreCase(videoOrientation) || "landscape".equalsIgnoreCase(videoOrientation);
@@ -769,7 +804,7 @@ public class ProductionPipelineService {
         for (Scene scene : scenes) {
             var decision = animationDecisionService.decide(scene);
             double duration = scene.getImageDurationSeconds() != null ? scene.getImageDurationSeconds() : 5.0;
-            Path aiVideoPath = null;
+            AiVideoResult aiVideo = null;
             // Both AI tiers still correctly report unavailable unless
             // genuinely configured (see LocalAIAnimationProvider /
             // CloudAIAnimationProvider) - this only ever fires on hardware
@@ -785,23 +820,25 @@ public class ProductionPipelineService {
             // directly, one clip at a time, where a single failure only
             // costs that one clip.
             if (storyPipelineAiVideoEnabled && "local-ai".equals(decision.providerId()) && providerGateway.isLocalAiVideoAvailable()) {
-                aiVideoPath = tryGenerateAiVideo(episode, scene, images.get(scene.getId()), duration);
+                aiVideo = tryGenerateAiVideo(episode, scene, images.get(scene.getId()), duration);
             }
-            clips.add(new MediaProcessor.SceneClip(images.get(scene.getId()), audio.get(scene.getId()), duration,
+            Path clipAudio = aiVideo != null && aiVideo.nativeAudio() ? null : audio.get(scene.getId());
+            clips.add(new MediaProcessor.SceneClip(images.get(scene.getId()), clipAudio, duration,
                     scene.getCameraMovement(), scene.getTransitionIn(), scene.getEmotion(),
                     scene.getLighting(), scene.getAction(), scene.getLocation(), scene.getImportance(),
-                    scene.getAnimationMode(), aiVideoPath));
+                    scene.getAnimationMode(), aiVideo == null ? null : aiVideo.path()));
             MediaProcessor.SceneClip built = clips.get(clips.size() - 1);
             // Spec section 12/55: log the full motion profile alongside the
             // tier decision, not just the tier - "why this animation" should
             // be inspectable down to the actual camera/parallax/character/
             // environment values, not just "which provider".
             log.info("Scene {} motion profile: {}", scene.getSceneNumber(),
-                    aiVideoPath != null ? "{\"note\":\"AI video - 2.5D motion profile not applicable\"}"
+                    aiVideo != null ? "{\"note\":\"AI video - 2.5D motion profile not applicable\",\"nativeAudio\":" + aiVideo.nativeAudio() + "}"
                             : mediaProcessor.buildMotionProfileJson(built));
         }
         Path outputPath = storageProvider.resolve(assetRelativePath(episode, "video/final.mp4"));
-        Path musicPath = resolveMusicPath(episode, scenes);
+        boolean allNativeH3 = !clips.isEmpty() && clips.stream().allMatch(c -> c.audioPath() == null && c.aiVideoPath() != null);
+        Path musicPath = allNativeH3 ? null : resolveMusicPath(episode, scenes);
         // Final video matches the scene images: vertical 1080x1920 by default.
         // (Was hard-coded 1920x1080 while images are 9:16, so every frame was
         // cropped to its middle third - the "everything is too zoomed" bug.)
@@ -823,36 +860,50 @@ public class ProductionPipelineService {
      * working 2.5D fallback, and a slow/broken video model should degrade
      * the scene's look, not break the whole episode's generation.
      */
-    private Path tryGenerateAiVideo(Episode episode, Scene scene, Path sceneImage, double duration) {
+    private record AiVideoResult(Path path, boolean nativeAudio) {}
+
+    private AiVideoResult tryGenerateAiVideo(Episode episode, Scene scene, Path sceneImage, double duration) {
         if (sceneImage == null) {
             return null;
         }
         try {
-            // Prefer the motion prompt already built during story generation
-            // (MotionPromptBuilder, or SceneVisualSpec-derived - see that
-            // class) over rebuilding a cruder one here from scratch. Only
-            // falls back to the inline version for an episode generated
-            // before scene.motionPrompt existed.
-            String prompt = scene.getMotionPrompt();
-            if (prompt == null || prompt.isBlank()) {
-                prompt = (scene.getAction() == null ? "" : scene.getAction() + ". ")
-                        + (scene.getCameraMovement() == null ? "" : "Camera: " + scene.getCameraMovement() + ". ")
-                        + (scene.getEmotion() == null ? "" : "Mood: " + scene.getEmotion());
+            boolean h3 = h3ForAllScenes;
+            String prompt;
+            if (h3) {
+                Path characterReference = resolveCharacterReference(episode, scene);
+                List<String> characterNames = sceneCharacterNames(scene);
+                prompt = h3PromptBuilder.build(
+                        scene.getAction(), scene.getLocation(), scene.getEmotion(), scene.getNarration(),
+                        scene.getVoiceSegmentsJson(), scene.getAudioSpecJson(), episode.getLanguage(), episode.getVisualStyle(), duration,
+                        characterNames, characterReference != null);
+            } else {
+                prompt = scene.getMotionPrompt();
+                if (prompt == null || prompt.isBlank()) {
+                    prompt = (scene.getAction() == null ? "" : scene.getAction() + ". ")
+                            + (scene.getCameraMovement() == null ? "" : "Camera: " + scene.getCameraMovement() + ". ")
+                            + (scene.getEmotion() == null ? "" : "Mood: " + scene.getEmotion());
+                }
             }
             String negativePrompt = scene.getMotionNegativePrompt() != null && !scene.getMotionNegativePrompt().isBlank()
                     ? scene.getMotionNegativePrompt()
-                    : "static, blurry, distorted, extra limbs";
+                    : "static, blurry, distorted, extra limbs, identity drift, duplicate subject";
+            double requestedDuration = Math.max(3.0, Math.min(10.0, duration));
+            Path characterReference = h3 ? resolveCharacterReference(episode, scene) : null;
             var request = new VideoGenerationProvider.VideoGenerationRequest(
                     sceneImage.toString(), prompt, negativePrompt,
-                    duration, 0, 0, null, null, null, qualityVideoSteps(episode));
+                    requestedDuration, 0, 0, h3 ? (characterReference != null ? "minimax-h3-reference-to-video" : "minimax-h3-image-to-video") : null, null,
+                    characterReference == null ? null : characterReference.toString(), null,
+                    h3 ? (characterReference != null ? 20 : ("QUALITY".equalsIgnoreCase(episode.getQualityProfile()) ? 20 : 8)) : 10);
             long start = System.currentTimeMillis();
             var result = providerGateway.generateVideo(request);
             Path path = storageProvider.store(
                     assetRelativePath(episode, String.format("video/scene-%03d-ai.%s", scene.getSceneNumber(), result.fileExtension())),
                     result.videoBytes());
-            log.info("AI video generated for scene {} in {}s ({} bytes)",
-                    scene.getSceneNumber(), (System.currentTimeMillis() - start) / 1000, result.videoBytes().length);
-            return path;
+            boolean nativeAudio = result.workflowUsed() != null
+                    && result.workflowUsed().toLowerCase(Locale.ROOT).startsWith("minimax-h3");
+            log.info("AI video generated for scene {} in {}s ({} bytes, nativeAudio={}, workflow={})",
+                    scene.getSceneNumber(), (System.currentTimeMillis() - start) / 1000, result.videoBytes().length, nativeAudio, result.workflowUsed());
+            return new AiVideoResult(path, nativeAudio);
         } catch (Exception e) {
             log.warn("AI video generation failed for scene {}, falling back to 2.5D: {}",
                     scene.getSceneNumber(), e.getMessage());

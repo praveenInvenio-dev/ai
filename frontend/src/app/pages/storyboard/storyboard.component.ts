@@ -99,9 +99,21 @@ import { ApiService, StoryboardEpisode, StoryboardScene, Voice, VoiceSegment } f
               </div>
             </div>
 
-            <textarea rows="2" [(ngModel)]="scene.narration"
-                      (blur)="saveScene(scene)"
-                      placeholder="Scene narration / text"></textarea>
+            <label class="h3-direction">
+              🎬 Video direction
+              <textarea rows="3" [(ngModel)]="scene.action"
+                        (blur)="saveScene(scene)"
+                        placeholder="Describe exactly what should happen in this image: camera move, character movement, expression, environment motion, and the cinematic action."></textarea>
+            </label>
+
+            <label class="h3-direction">
+              🎙 Narration / dialogue
+              <textarea rows="2" [(ngModel)]="scene.narration"
+                        (blur)="saveScene(scene)"
+                        placeholder="What should be spoken during this shot?"></textarea>
+            </label>
+
+            <div class="h3-meta">H3 native audio · automatic shot duration: ~{{ autoDuration(scene) | number:'1.1-1' }}s</div>
 
             <div class="voice-box">
               <div class="voice-title">🎙 Character voice tracks</div>
@@ -246,6 +258,9 @@ import { ApiService, StoryboardEpisode, StoryboardScene, Voice, VoiceSegment } f
     .icon:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
     .icon:disabled { opacity: .3; cursor: not-allowed; }
     .icon.danger:hover { border-color: var(--danger); color: var(--danger); }
+    .h3-direction { display: block; margin: .45rem 0; color: var(--text); }
+    .h3-direction textarea { margin-top: .3rem; }
+    .h3-meta { font-size: .76rem; color: var(--teal); margin: .35rem 0 .55rem; }
     .scene-foot { display: flex; align-items: center; gap: .8rem; margin-top: .5rem; }
     .file {
       cursor: pointer; font-size: .82rem; color: var(--text);
@@ -511,6 +526,16 @@ export class StoryboardComponent implements OnInit {
       },
       error: () => this.previewing = null
     });
+  }
+
+  autoDuration(scene: StoryboardScene): number {
+    const lines = (scene.voiceSegments || []).map(s => s.text || '').filter(Boolean);
+    const text = (lines.length ? lines.join(' ') : (scene.narration || '')).trim();
+    if (!text) return 3;
+    const words = text.split(/\s+/).length;
+    const pauses = (scene.voiceSegments || []).reduce((n, s) =>
+      n + (s.pauseBeforeMs || 0) / 1000 + (s.pauseAfterMs || 0) / 1000, 0);
+    return Math.max(3, Math.min(10, Math.round((words / 2.5 + pauses + 0.6) * 10) / 10));
   }
 
   videoUrl(): string {

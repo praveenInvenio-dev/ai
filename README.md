@@ -499,3 +499,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d   # GPU mod
 4. Automated tests: mock-provider pipeline tests, FFmpeg argument tests,
    repository tests.
 5. Drag-and-drop scene reordering in the storyboard.
+
+### Character identity image references
+
+In Story Approval → Character Building, use **Upload identity image** to attach a real character photo/reference. Lock the reference if it should be preferred for future scenes. Qwen Image 2.1 uses the reference while generating scene images, and MiniMax H3 uses the same image as a dedicated `<Picture 2>` identity reference during H3 Reference-to-Video generation; the selected storyboard image remains `<Picture 1>` and controls the scene composition/action.

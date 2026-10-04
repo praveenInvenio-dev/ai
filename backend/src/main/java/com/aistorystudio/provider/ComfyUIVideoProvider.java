@@ -429,6 +429,9 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         String startingImageFilename = hasStartingImage
                 ? uploadStartingImage(Path.of(request.startingImagePath()))
                 : null;
+        String characterReferenceImageFilename = request.characterReferenceImagePath() != null
+                ? uploadReferenceImage(Path.of(request.characterReferenceImagePath()))
+                : null;
 
         // Unique per job, not a shared incrementing counter: VHS_VideoCombine's
         // own auto-numbering is scanned from disk per-run, and any leftover
@@ -449,12 +452,17 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         log.info("ComfyUI video submit: workflow={} profile={} {}x{} length={} steps={}",
                 workflowName, h3 ? h3Profile : "wan", width, height, length,
                 request.steps() > 0 ? request.steps() : (h3 ? h3Steps : defaultSteps));
+        String effectiveH3Workflow = workflowName;
+        if (h3 && request.steps() > 0 && request.steps() <= 8 && startingImageFilename != null
+                && characterReferenceImageFilename == null && voiceReferenceAudioPathBlank(request.voiceReferenceAudioPath())) {
+            effectiveH3Workflow = "minimax-h3-image-to-video-turbo";
+        }
         String workflowJson = a14b
                 ? fillWanA14bTemplate(request.prompt(), request.negativePrompt(), seed, width, height, length,
                     startingImageFilename, filenamePrefix)
                 : workflowName.startsWith("minimax-h3")
-                ? fillMiniMaxH3Template(workflowName, request.prompt(), seed, width, height, length,
-                    request.steps() > 0 ? request.steps() : h3Steps, startingImageFilename, request.voiceReferenceAudioPath())
+                ? fillMiniMaxH3Template(effectiveH3Workflow, request.prompt(), seed, width, height, length,
+                    request.steps() > 0 ? request.steps() : h3Steps, startingImageFilename, request.voiceReferenceAudioPath(), characterReferenceImageFilename)
                 : fillWanTemplate(workflowName, request.prompt(),
                     request.negativePrompt() == null ? "" : request.negativePrompt(),
                     seed, width, height, length, defaultFps,
@@ -470,7 +478,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         payload.put("client_id", clientId);
 
         log.info("ComfyUI video submit: workflow={} model={} {}x{} length={} frames (~{}s) fps={} seed={}",
-                workflowName, diffusionModel, width, height, length, duration, defaultFps, seed);
+                effectiveH3Workflow, diffusionModel, width, height, length, duration, defaultFps, seed);
 
         JsonNode queueResponse;
         try {
@@ -498,25 +506,36 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         byte[] videoBytes = pollForVideo(promptId);
         log.info("ComfyUI video ready in {}s ({} bytes, promptId={})",
                 (System.currentTimeMillis() - start) / 1000, videoBytes.length, promptId);
-        return new VideoGenerationResult(videoBytes, "mp4", seed, workflowName);
+        return new VideoGenerationResult(videoBytes, "mp4", seed, effectiveH3Workflow);
     }
 
     /** Builds the video-specific placeholder maps and delegates the actual
      *  parse/substitute mechanism to {@link WorkflowTemplateFiller} - the
      *  same shared, typed-substitution mechanism ComfyUIImageProvider uses,
      *  not a separate ad hoc implementation. */
-    private String fillMiniMaxH3Template(String workflowName, String positive, long seed, int width, int height, int length, int steps, String startingImageFilename, String voiceReferenceAudioPath) {
+    private boolean voiceReferenceAudioPathBlank(String path) {
+        return path == null || path.isBlank();
+    }
+
+    private String fillMiniMaxH3Template(String workflowName, String positive, long seed, int width, int height, int length, int steps, String startingImageFilename, String voiceReferenceAudioPath, String characterReferenceImageFilename) {
         boolean useVoiceReference = voiceReferenceAudioPath != null && !voiceReferenceAudioPath.isBlank();
-        String template = useVoiceReference
-                ? (startingImageFilename != null ? "minimax-h3-reference-to-video" : "minimax-h3-voice-to-video")
-                : (startingImageFilename != null ? "minimax-h3-image-to-video" : "minimax-h3-text-to-video");
+        boolean useCharacterReference = characterReferenceImageFilename != null && !characterReferenceImageFilename.isBlank();
+        boolean useReferenceWorkflow = useCharacterReference || useVoiceReference;
+        String template = useCharacterReference
+                ? "minimax-h3-reference-character-to-video"
+                : useVoiceReference
+                    ? (startingImageFilename != null ? "minimax-h3-reference-to-video" : "minimax-h3-voice-to-video")
+                    : ("minimax-h3-image-to-video-turbo".equals(workflowName) ? "minimax-h3-image-to-video-turbo"
+                        : "minimax-h3-text-to-video-turbo".equals(workflowName) ? "minimax-h3-text-to-video-turbo"
+                        : (startingImageFilename != null ? "minimax-h3-image-to-video" : "minimax-h3-text-to-video"));
         String uploadedVoiceFilename = useVoiceReference ? uploadMedia(Path.of(voiceReferenceAudioPath)) : null;
         Map<String, String> text = new LinkedHashMap<>();
         text.put("{{POSITIVE_PROMPT}}", positive == null ? "" : positive);
         text.put("{{STARTING_IMAGE}}", startingImageFilename == null ? "" : startingImageFilename);
         text.put("{{VOICE_REFERENCE_AUDIO}}", uploadedVoiceFilename == null ? "" : uploadedVoiceFilename);
+        text.put("{{CHARACTER_REFERENCE_IMAGE}}", characterReferenceImageFilename == null ? "" : characterReferenceImageFilename);
         text.put("{{FILENAME_PREFIX}}", "ai-story-studio-minimax-h3-" + UUID.randomUUID());
-        text.put("{{H3_DIFFUSION_MODEL}}", useVoiceReference ? h3Ref2vaDiffusionModel : h3DiffusionModel);
+        text.put("{{H3_DIFFUSION_MODEL}}", useReferenceWorkflow ? h3Ref2vaDiffusionModel : h3DiffusionModel);
         text.put("{{H3_TEXT_ENCODER}}", h3TextEncoder);
         text.put("{{H3_VIDEO_VAE}}", h3VideoVae);
         text.put("{{H3_AUDIO_VAE}}", h3AudioVae);
@@ -636,8 +655,17 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         return uploadMedia(imagePath);
     }
 
+    /** Uploads a dedicated character identity image to ComfyUI's input folder. */
+    private String uploadReferenceImage(Path imagePath) {
+        return uploadMediaWithPrefix(imagePath, "h3-character-");
+    }
+
     /** Uploads an image or audio reference through ComfyUI's generic media upload endpoint. */
     private String uploadMedia(Path mediaPath) {
+        return uploadMediaWithPrefix(mediaPath, null);
+    }
+
+    private String uploadMediaWithPrefix(Path mediaPath, String requestedPrefix) {
         if (mediaPath == null || !Files.isRegularFile(mediaPath)) {
             throw new IllegalStateException("Reference media not found on disk: " + mediaPath);
         }
@@ -650,7 +678,8 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         String ext = mediaPath.getFileName().toString();
         int dot = ext.lastIndexOf('.');
         ext = dot >= 0 ? ext.substring(dot).toLowerCase(java.util.Locale.ROOT) : ".bin";
-        String prefix = ext.equals(".wav") || ext.equals(".mp3") || ext.equals(".flac") || ext.equals(".m4a") ? "h3-voice-" : "wan-start-";
+        String prefix = requestedPrefix != null ? requestedPrefix
+                : (ext.equals(".wav") || ext.equals(".mp3") || ext.equals(".flac") || ext.equals(".m4a") ? "h3-voice-" : "wan-start-");
         String filename = prefix + UUID.randomUUID() + ext;
 
         MultipartBodyBuilder body = new MultipartBodyBuilder();

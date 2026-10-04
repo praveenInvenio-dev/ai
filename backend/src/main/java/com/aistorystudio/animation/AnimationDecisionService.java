@@ -35,15 +35,18 @@ public class AnimationDecisionService {
     private final LocalAIAnimationProvider localAi;
     private final CloudAIAnimationProvider cloudAi;
     private final double maxAiSceneSeconds;
+    private final boolean h3ForAllScenes;
 
     public AnimationDecisionService(TwoPointFiveDAnimationProvider twoPointFiveD,
                                     LocalAIAnimationProvider localAi,
                                     CloudAIAnimationProvider cloudAi,
-                                    @Value("${studio.animation.max-ai-scene-seconds:12}") double maxAiSceneSeconds) {
+                                    @Value("${studio.animation.max-ai-scene-seconds:12}") double maxAiSceneSeconds,
+                                    @Value("${studio.animation.local-ai.h3-for-all-scenes:false}") boolean h3ForAllScenes) {
         this.twoPointFiveD = twoPointFiveD;
         this.localAi = localAi;
         this.cloudAi = cloudAi;
         this.maxAiSceneSeconds = maxAiSceneSeconds;
+        this.h3ForAllScenes = h3ForAllScenes;
     }
 
     public AnimationDecision decide(Scene scene) {
@@ -60,6 +63,11 @@ public class AnimationDecisionService {
         if (duration > maxAiSceneSeconds && !"NORMAL".equals(importance)) {
             return fallback("Scene is " + fmt(duration) + "s, over the "
                     + fmt(maxAiSceneSeconds) + "s AI-animation budget - using 2.5D regardless of importance.");
+        }
+
+        if (h3ForAllScenes && localAi.isAvailable()) {
+            return new AnimationDecision(localAi.id(), localAi.displayName(),
+                    "H3-all-scenes mode is enabled; using the selected storyboard image as the visual anchor.");
         }
 
         if ("HERO".equals(importance)) {

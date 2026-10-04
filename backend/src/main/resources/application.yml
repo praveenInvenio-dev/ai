@@ -181,13 +181,15 @@ studio:
       # tier honestly "unavailable" (see ComfyUIVideoProvider.unavailableReason)
       # rather than half-configuring a workflow that would fail at render time.
       enabled: ${LOCAL_AI_ANIMATION_ENABLED:false}
-      # Story pipeline vs standalone Video Generation page are gated
-      # SEPARATELY. This only controls the story pipeline; the standalone
-      # page always calls the video model directly regardless. Default
-      # false: per-scene AI video across a whole episode risks one scene's
-      # duration-mismatch/timeout taking down the entire production.
+      # Story pipeline vs standalone Video Generation page are gated separately.
+      # H3 is designed to be the image-first story renderer on the dedicated
+      # 16GB deployment; individual scene failures still fall back to 2.5D.
       enabled-in-story-pipeline: ${LOCAL_AI_ANIMATION_ENABLED_IN_STORY_PIPELINE:false}
-      workflow: ${LOCAL_AI_ANIMATION_WORKFLOW:wan-ti2v-5b-image-to-video}
+      # When true, every eligible story scene uses MiniMax H3 I2V instead of
+      # only IMPORTANT/HERO scenes. This is the recommended mode for the
+      # image-first storyboard workflow on the 16GB H3 server.
+      h3-for-all-scenes: ${LOCAL_AI_ANIMATION_H3_FOR_ALL_SCENES:false}
+      workflow: ${LOCAL_AI_ANIMATION_WORKFLOW:minimax-h3-image-to-video}
       # Separate native ComfyUI MiniMax H3 workflow. Set this to an API-format workflow exported from ComfyUI.
       minimax-h3-workflow: ${LOCAL_AI_ANIMATION_MINIMAX_H3_WORKFLOW:minimax-h3-reference-to-video}
       minimax-h3-diffusion-model: ${LOCAL_AI_ANIMATION_MINIMAX_H3_MODEL:}
@@ -223,7 +225,8 @@ studio:
       min-vram-mb: ${LOCAL_AI_ANIMATION_MIN_VRAM_MB:14000}
       minimax-h3-min-vram-mb: ${LOCAL_AI_ANIMATION_MINIMAX_H3_MIN_VRAM_MB:0}
       # H3 hardware profile. 16gb = pruned w6a8 DiT + ComfyUI weight offload,
-      # 480x832, <=5s, 20 steps, VRAM floor 15000MB, host RAM floor 48000MB.
+      # 480x832, <=10s, 20 steps for QUALITY / 10 steps for FAST story renders,
+      # VRAM floor 15000MB, host RAM floor 48000MB.
       # 24gb = pruned INT8 DiT, VRAM floor 24000MB (old behaviour).
       # Blank/0 values above and below = "use the profile default".
       minimax-h3-profile: ${LOCAL_AI_ANIMATION_MINIMAX_H3_PROFILE:16gb}
