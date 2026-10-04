@@ -340,7 +340,7 @@ public class StoryEngineService {
         if (!value.equalsIgnoreCase("Auto-detect") && !value.equalsIgnoreCase("Auto")) return value;
         if (prompt != null) {
             for (int i = 0; i < prompt.length(); i++) {
-                Character.UnicodeScript script = Character.UnicodeScript.of(prompt.charAt(i));
+                java.lang.Character.UnicodeScript script = java.lang.Character.UnicodeScript.of(prompt.charAt(i));
                 switch (script) {
                     case KANNADA -> { return "Kannada"; }
                     case TELUGU -> { return "Telugu"; }
