@@ -3,12 +3,21 @@ package com.aistorystudio.sequence;
 import com.aistorystudio.config.ProviderGateway;
 import com.aistorystudio.domain.Character;
 import com.aistorystudio.domain.CharacterReference;
+import com.aistorystudio.domain.Asset;
+import com.aistorystudio.domain.Episode;
+import com.aistorystudio.domain.Scene;
+import com.aistorystudio.domain.VideoSequenceRecord;
+import com.aistorystudio.domain.enums.AssetType;
 import com.aistorystudio.pipeline.promptbuilder.NegativePromptBuilder;
 import com.aistorystudio.provider.ImageGenerationProvider;
 import com.aistorystudio.provider.StorageProvider;
 import com.aistorystudio.provider.VideoGenerationProvider;
 import com.aistorystudio.repository.CharacterReferenceRepository;
 import com.aistorystudio.repository.CharacterRepository;
+import com.aistorystudio.repository.AssetRepository;
+import com.aistorystudio.repository.EpisodeRepository;
+import com.aistorystudio.repository.SceneRepository;
+import com.aistorystudio.repository.VideoSequenceRecordRepository;
 import com.aistorystudio.sequence.SequenceModels.SceneStep;
 import com.aistorystudio.sequence.SequenceModels.SequenceScene;
 import com.aistorystudio.sequence.SequenceModels.SequenceStatus;
@@ -63,6 +72,10 @@ public class VideoSequenceService {
     private final StorageProvider storage;
     private final CharacterRepository characterRepository;
     private final CharacterReferenceRepository characterReferenceRepository;
+    private final AssetRepository assetRepository;
+    private final EpisodeRepository episodeRepository;
+    private final SceneRepository sceneRepository;
+    private final VideoSequenceRecordRepository sequenceRecordRepository;
     private final ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
     private final NegativePromptBuilder negativePromptBuilder = new NegativePromptBuilder();
     private final Map<UUID, VideoSequence> sequences = new ConcurrentHashMap<>();
@@ -72,22 +85,28 @@ public class VideoSequenceService {
     public VideoSequenceService(ProviderGateway providerGateway, StorageProvider storage,
                                 CharacterRepository characterRepository,
                                 CharacterReferenceRepository characterReferenceRepository,
-                                @Value("${studio.video-sequence.retention-hours:72}") long retentionHours) {
+                                AssetRepository assetRepository, EpisodeRepository episodeRepository,
+                                SceneRepository sceneRepository, VideoSequenceRecordRepository sequenceRecordRepository,
+                                @Value("${studio.video-sequence.retention-hours:24}") long retentionHours) {
         this.providerGateway = providerGateway;
         this.storage = storage;
         this.characterRepository = characterRepository;
         this.characterReferenceRepository = characterReferenceRepository;
+        this.assetRepository = assetRepository;
+        this.episodeRepository = episodeRepository;
+        this.sceneRepository = sceneRepository;
+        this.sequenceRecordRepository = sequenceRecordRepository;
         this.retention = Duration.ofHours(retentionHours);
     }
 
     // ------------------------------------------------------------------ views
 
-    public record SceneView(int index, String visual, String motion, SceneStep step, String error,
+    public record SceneView(int index, UUID sceneId, String visual, String motion, String narration, String dialogue, String audioSpecJson, String musicPreset, String language, SceneStep step, String error,
                             boolean hasKeyframe, boolean hasClip, boolean uploadedKeyframe,
                             Double clipSeconds, Double requestedSeconds, Long videoMillis,
                             long keyframeStamp, long clipStamp) {}
 
-    public record SequenceView(UUID id, String title, String style, List<UUID> characterIds, String engine,
+    public record SequenceView(UUID id, UUID projectId, UUID episodeId, String title, String style, List<UUID> characterIds, String engine,
                                double secondsPerScene, String orientation, double crossfadeSeconds,
                                String continuity, boolean reviewKeyframes, SequenceStatus status, String error,
                                boolean busy, boolean hasMerged, Double mergedSeconds, long mergedStamp,
@@ -130,13 +149,14 @@ public class VideoSequenceService {
             if (hasClip) {
                 done++;
             }
-            scenes.add(new SceneView(sc.index, sc.visual, sc.motion, sc.step, sc.error, hasKf, hasClip,
+            scenes.add(new SceneView(sc.index, sc.sceneId, sc.visual, sc.motion, sc.narration, sc.dialogue,
+                    sc.audioSpecJson, sc.musicPreset, sc.language, sc.step, sc.error, hasKf, hasClip,
                     sc.uploadedKeyframe, sc.clipSeconds, sc.requestedSeconds, sc.videoMillis,
                     stamp(kf), stamp(clip)));
         }
         Path merged = file(s, s.mergedFile);
         boolean hasMerged = merged != null && Files.isRegularFile(merged);
-        return new SequenceView(s.id, s.title, s.style, s.characterIds, s.engine, s.secondsPerScene, s.orientation,
+        return new SequenceView(s.id, s.projectId, s.episodeId, s.title, s.style, s.characterIds, s.engine, s.secondsPerScene, s.orientation,
                 s.crossfadeSeconds, s.continuity, s.reviewKeyframes, s.status, s.error, running.contains(s.id),
                 hasMerged, s.mergedSeconds, stamp(merged), done, s.scenes.size(), Instant.ofEpochMilli(s.createdAtMs), scenes);
     }
@@ -191,6 +211,72 @@ public class VideoSequenceService {
         sequences.put(s.id, s);
         save(s);
         return s;
+    }
+
+    // ---------------------------------------------------------- story loading
+
+    public VideoSequence createFromEpisode(UUID episodeId, String engine, Double secondsPerScene, String orientation,
+                                           Double crossfadeSeconds, String continuity, Boolean reviewKeyframes) {
+        Episode ep = episodeRepository.findById(episodeId)
+                .orElseThrow(() -> new IllegalArgumentException("Story not found: " + episodeId));
+        List<Scene> dbScenes = sceneRepository.findByEpisodeIdOrderByOrderIndexAsc(episodeId);
+        if (dbScenes.isEmpty()) throw new IllegalArgumentException("This story has no scenes yet.");
+        String normalizedEngine = engine == null ? "MINIMAX_H3" : engine.trim().toUpperCase(Locale.ROOT);
+        if (!ENGINES.contains(normalizedEngine)) throw new IllegalArgumentException("Unsupported video engine: " + engine);
+        double wanted = secondsPerScene == null ? 5.0 : secondsPerScene;
+        double max = providerGateway.maxVideoDurationSecondsFor(workflowFor(normalizedEngine));
+
+        VideoSequence s = new VideoSequence();
+        s.id = UUID.randomUUID(); s.projectId = ep.getProjectId(); s.episodeId = ep.getId();
+        s.title = blankTo(ep.getTitle(), "Story sequence"); s.style = blankTo(ep.getVisualStyle(), ""); s.engine = normalizedEngine;
+        s.secondsPerScene = Math.max(2.0, max > 0 ? Math.min(wanted, max) : wanted);
+        s.orientation = "horizontal".equalsIgnoreCase(orientation) ? "horizontal" : "vertical";
+        s.crossfadeSeconds = Math.max(0, Math.min(1.5, crossfadeSeconds == null ? 0.4 : crossfadeSeconds));
+        s.continuity = "CHAIN".equalsIgnoreCase(continuity) ? "CHAIN" : "KEYFRAMES";
+        s.reviewKeyframes = false; s.status = SequenceStatus.AWAITING_APPROVAL;
+
+        List<Character> chars = new ArrayList<>();
+        if (ep.getUniverseId() != null) chars.addAll(characterRepository.findByUniverseId(ep.getUniverseId()));
+        else chars.addAll(characterRepository.findByEpisodeId(ep.getId()));
+        s.characterIds.addAll(chars.stream().map(Character::getId).toList());
+
+        int i = 0;
+        for (Scene sc : dbScenes) {
+            SequenceScene out = new SequenceScene();
+            out.index = i++; out.sceneId = sc.getId();
+            out.visual = sc.getImagePrompt() != null && !sc.getImagePrompt().isBlank() ? sc.getImagePrompt() : blankTo(sc.getAction(), "Scene " + i);
+            out.motion = blankTo(sc.getMotionPrompt(), "Natural cinematic movement");
+            out.narration = blankTo(sc.getNarration(), "");
+            out.dialogue = dialogueFrom(sc); out.audioSpecJson = sc.getAudioSpecJson();
+            out.musicPreset = ep.getMusicPreset(); out.language = ep.getLanguage();
+            snapshotAsset(s, sc, AssetType.IMAGE, String.format(Locale.ROOT, "source-image-%02d.png", out.index + 1), true, out);
+            snapshotAsset(s, sc, AssetType.AUDIO_NARRATION, String.format(Locale.ROOT, "source-audio-%02d.wav", out.index + 1), false, out);
+            s.scenes.add(out);
+        }
+        sequences.put(s.id, s); save(s); return s;
+    }
+
+    private String dialogueFrom(Scene sc) {
+        try {
+            if (sc.getVoiceSegmentsJson() == null) return "";
+            var arr = mapper.readTree(sc.getVoiceSegmentsJson()); List<String> lines = new ArrayList<>();
+            if (arr.isArray()) for (var n : arr) {
+                String speaker = n.path("character").asText("Speaker"); String text = n.path("text").asText("");
+                if (!text.isBlank() && !"Narrator".equalsIgnoreCase(speaker)) lines.add(speaker + ": " + text);
+            }
+            return String.join("\n", lines);
+        } catch (Exception e) { return ""; }
+    }
+
+    private void snapshotAsset(VideoSequence s, Scene sc, AssetType type, String name, boolean image, SequenceScene out) {
+        Asset a = assetRepository.findFirstBySceneIdAndAssetTypeAndActiveTrueOrderByVersionDesc(sc.getId(), type).orElse(null);
+        if (a == null) return; Path source = Path.of(a.getFilePath());
+        if (!Files.isRegularFile(source)) return;
+        try {
+            storage.store(rel(s, name), Files.readAllBytes(source));
+            if (image) { out.keyframeFile = name; out.sourceImageFile = name; out.uploadedKeyframe = true; out.step = SceneStep.KEYFRAME_READY; }
+            else out.sourceAudioFile = name;
+        } catch (IOException e) { log.warn("Could not snapshot {} for scene {}: {}", type, sc.getId(), e.getMessage()); }
     }
 
     // ---------------------------------------------------------- async actions
@@ -386,6 +472,7 @@ public class VideoSequenceService {
         }
         sequences.remove(id);
         deleteDir(dir(s));
+        try { sequenceRecordRepository.deleteById(id); } catch (Exception ignored) { }
     }
 
     public void clearCancel(UUID id) {
@@ -457,20 +544,20 @@ public class VideoSequenceService {
         }
         boolean all = allClips(s);
         boolean any = s.scenes.stream().anyMatch(sc -> clipExists(s, sc));
-        if (any) {
+        if (all) {
             try {
                 s.status = SequenceStatus.MERGING;
                 save(s);
                 merge(s);
             } catch (Exception e) {
-                s.error = "Merge failed: " + message(e) + " (the clips are fine - press Merge to retry)";
+                s.error = "Merge failed: " + message(e) + " (all scene clips are preserved - retry merge)";
                 log.warn("Sequence {} merge failed", s.id, e);
             }
         }
         s.status = all ? (s.error == null ? SequenceStatus.COMPLETED : SequenceStatus.PARTIAL)
                 : (any ? SequenceStatus.PARTIAL : SequenceStatus.FAILED);
         if (!all && s.error == null) {
-            s.error = "Some scenes failed - see the red scenes, then press Retry.";
+            s.error = "Generation is incomplete. Finish all scenes before creating the final production video.";
         }
         save(s);
     }
@@ -575,6 +662,7 @@ public class VideoSequenceService {
     }
 
     private void merge(VideoSequence s) {
+        if (!allClips(s)) throw new IllegalStateException("Final merge requires every scene video to be completed.");
         List<Path> clips = new ArrayList<>();
         for (SequenceScene sc : s.scenes) {
             if (clipExists(s, sc)) {
@@ -623,8 +711,16 @@ public class VideoSequenceService {
         if (s.chain() && sc.index > 0) {
             motion = sc.visual.trim() + ". " + motion;
         }
-        return motion + " Keep the characters' faces, outfits, colors and proportions exactly as in the first frame; "
-                + "the background and lighting stay consistent.";
+        StringBuilder p = new StringBuilder(motion)
+                .append(" Keep the characters' faces, outfits, colors and proportions exactly as in the first frame; the background and lighting stay consistent.");
+        if (s.engine.equals("MINIMAX_H3")) {
+            if (sc.language != null && !sc.language.isBlank()) p.append("\nLANGUAGE: ").append(sc.language).append(". ");
+            if (sc.narration != null && !sc.narration.isBlank()) p.append("\nNarration (complete, off-screen): <d>").append(sc.narration.trim()).append("</d>");
+            if (sc.dialogue != null && !sc.dialogue.isBlank()) p.append("\nDialogue (complete, in order):\n").append(sc.dialogue.trim());
+            if (sc.audioSpecJson != null && !sc.audioSpecJson.isBlank()) p.append("\nAmbience / SFX / music direction: ").append(sc.audioSpecJson);
+            p.append("\nAUDIO DELIVERY: natural human conversational performance, realistic breaths and pauses, emotion matched to the scene, complete every spoken line before the scene ends. Do not cut words, sentences, questions, answers or reactions. Leave a short natural tail. This scene must begin with a fresh complete thought and must not continue unfinished speech from the previous scene.");
+        }
+        return p.toString();
     }
 
     // ------------------------------------------------------------ small helpers
@@ -802,7 +898,13 @@ public class VideoSequenceService {
         try {
             Path dir = dir(s);
             Files.createDirectories(dir);
-            Files.writeString(dir.resolve("sequence.json"), mapper.writeValueAsString(s));
+            String json = mapper.writeValueAsString(s);
+            Files.writeString(dir.resolve("sequence.json"), json);
+            VideoSequenceRecord r = sequenceRecordRepository.findById(s.id).orElseGet(VideoSequenceRecord::new);
+            r.setId(s.id); r.setProjectId(s.projectId); r.setEpisodeId(s.episodeId);
+            r.setCreatedAt(Instant.ofEpochMilli(s.createdAtMs)); r.setUpdatedAt(Instant.now());
+            r.setExpiresAt(Instant.ofEpochMilli(s.createdAtMs).plus(retention)); r.setStatus(s.status.name()); r.setManifestJson(json);
+            sequenceRecordRepository.save(r);
         } catch (Exception e) {
             log.warn("Could not save sequence manifest {}: {}", s.id, e.getMessage());
         }
@@ -811,39 +913,19 @@ public class VideoSequenceService {
     /** Reload sequences after a backend restart. A step that was running is shown as interrupted. */
     @PostConstruct
     void loadExisting() {
-        Path root = storage.resolve(ROOT);
-        if (!Files.isDirectory(root)) {
-            return;
-        }
-        try (var dirs = Files.list(root)) {
-            dirs.filter(Files::isDirectory).forEach(d -> {
-                Path manifest = d.resolve("sequence.json");
-                if (!Files.isRegularFile(manifest)) {
-                    return;
-                }
+        try {
+            for (VideoSequenceRecord r : sequenceRecordRepository.findAllByOrderByCreatedAtDesc()) {
                 try {
-                    VideoSequence s = mapper.readValue(manifest.toFile(), VideoSequence.class);
-                    if (s.status == SequenceStatus.KEYFRAMES_RUNNING || s.status == SequenceStatus.VIDEOS_RUNNING
-                            || s.status == SequenceStatus.MERGING) {
-                        s.status = s.scenes.stream().anyMatch(sc -> clipExists(s, sc))
-                                ? SequenceStatus.PARTIAL : SequenceStatus.AWAITING_APPROVAL;
-                        s.error = "Interrupted by a restart - press Retry / Start videos to continue; "
-                                + "finished scenes are kept.";
-                        for (SequenceScene sc : s.scenes) {
-                            if (sc.step == SceneStep.KEYFRAME_RUNNING || sc.step == SceneStep.VIDEO_RUNNING) {
-                                sc.step = keyframeExists(s, sc) ? SceneStep.KEYFRAME_READY : SceneStep.PENDING;
-                            }
-                        }
+                    VideoSequence s = mapper.readValue(r.getManifestJson(), VideoSequence.class);
+                    if (s.status == SequenceStatus.KEYFRAMES_RUNNING || s.status == SequenceStatus.VIDEOS_RUNNING || s.status == SequenceStatus.MERGING) {
+                        s.status = s.scenes.stream().anyMatch(sc -> clipExists(s, sc)) ? SequenceStatus.PARTIAL : SequenceStatus.AWAITING_APPROVAL;
+                        s.error = "Interrupted by a restart/disconnect - press Retry / Start videos to continue; finished scenes are kept.";
+                        for (SequenceScene sc : s.scenes) if (sc.step == SceneStep.KEYFRAME_RUNNING || sc.step == SceneStep.VIDEO_RUNNING) sc.step = keyframeExists(s, sc) ? SceneStep.KEYFRAME_READY : SceneStep.PENDING;
                     }
-                    s.cancelRequested = false;
-                    sequences.put(s.id, s);
-                } catch (Exception e) {
-                    log.warn("Skipping unreadable sequence manifest {}: {}", manifest, e.getMessage());
-                }
-            });
-        } catch (IOException e) {
-            log.warn("Could not scan {}: {}", root, e.getMessage());
-        }
+                    s.cancelRequested = false; sequences.put(s.id, s);
+                } catch (Exception e) { log.warn("Skipping DB sequence {}: {}", r.getId(), e.getMessage()); }
+            }
+        } catch (Exception e) { log.warn("Could not restore video sequences from DB: {}", e.getMessage()); }
     }
 
     @Scheduled(fixedRate = 60 * 60 * 1000L)
@@ -853,6 +935,7 @@ public class VideoSequenceService {
             boolean expired = Instant.ofEpochMilli(s.createdAtMs).isBefore(cutoff) && !running.contains(s.id);
             if (expired) {
                 deleteDir(dir(s));
+                try { sequenceRecordRepository.deleteById(s.id); } catch (Exception ignored) { }
             }
             return expired;
         });

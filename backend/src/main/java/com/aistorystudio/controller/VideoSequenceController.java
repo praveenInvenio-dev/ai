@@ -38,6 +38,18 @@ public class VideoSequenceController {
         return service.list();
     }
 
+    @PostMapping("/from-episode/{episodeId}")
+    public ResponseEntity<VideoSequenceService.SequenceView> createFromEpisode(@PathVariable UUID episodeId,
+            @RequestParam(defaultValue = "MINIMAX_H3") String engine,
+            @RequestParam(required = false) Double secondsPerScene,
+            @RequestParam(defaultValue = "vertical") String orientation,
+            @RequestParam(required = false) Double crossfadeSeconds,
+            @RequestParam(defaultValue = "KEYFRAMES") String continuity,
+            @RequestParam(defaultValue = "false") Boolean reviewKeyframes) {
+        VideoSequence s = service.createFromEpisode(episodeId, engine, secondsPerScene, orientation, crossfadeSeconds, continuity, reviewKeyframes);
+        return ResponseEntity.accepted().body(service.view(s.id));
+    }
+
     @PostMapping
     public ResponseEntity<VideoSequenceService.SequenceView> create(@RequestBody VideoSequenceService.CreateRequest req) {
         VideoSequence s = service.create(req);

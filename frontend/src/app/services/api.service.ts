@@ -399,6 +399,11 @@ export class ApiService {
   listSequences(): Observable<SequenceView[]> {
     return this.http.get<SequenceView[]>(`${this.base}/video-sequences`);
   }
+  createSequenceFromEpisode(episodeId: string, options: { engine?: string; secondsPerScene?: number; orientation?: string; crossfadeSeconds?: number; continuity?: string; reviewKeyframes?: boolean } = {}): Observable<SequenceView> {
+    let params: any = {};
+    Object.entries(options).forEach(([k, v]) => { if (v !== undefined && v !== null) params[k] = String(v); });
+    return this.http.post<SequenceView>(`${this.base}/video-sequences/from-episode/${episodeId}`, {}, { params });
+  }
   createSequence(req: CreateSequenceRequest): Observable<SequenceView> {
     return this.http.post<SequenceView>(`${this.base}/video-sequences`, req);
   }
@@ -709,6 +714,12 @@ export interface SequenceStatusInfo {
 
 export interface SequenceSceneView {
   index: number;
+  sceneId?: string;
+  narration?: string;
+  dialogue?: string;
+  audioSpecJson?: string;
+  musicPreset?: string;
+  language?: string;
   visual: string;
   motion: string;
   step: SceneStep;
@@ -725,6 +736,8 @@ export interface SequenceSceneView {
 
 export interface SequenceView {
   id: string;
+  projectId?: string;
+  episodeId?: string;
   title: string;
   style: string;
   characterIds: string[];

@@ -21,7 +21,7 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
   imports: [CommonModule, FormsModule],
   template: `
     <header class="page-head">
-      <h1>Scene sequence</h1>
+      <h1>Story Video Production</h1>
       <p class="muted">
         Write your scenes, pick your locked characters, and the studio makes every scene one by one
         with the same faces and style, then joins them into one long video.
@@ -43,6 +43,22 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
         <div class="field">
           <label for="title">Title</label>
           <input id="title" type="text" [(ngModel)]="title" placeholder="e.g. Milo and Momo - the mango tree">
+        </div>
+
+        <div class="field story-loader">
+          <label>Load Project → Story</label>
+          <div class="picker-row">
+            <select [(ngModel)]="projectId" (ngModelChange)="onProject()">
+              <option [ngValue]="undefined">Select project...</option>
+              <option *ngFor="let p of projects" [ngValue]="p.id">{{ p.name }}</option>
+            </select>
+            <select [(ngModel)]="episodeId" [disabled]="!projectId">
+              <option [ngValue]="undefined">Select story...</option>
+              <option *ngFor="let e of episodes" [ngValue]="e.id">{{ e.title }}</option>
+            </select>
+            <button class="btn btn-primary" type="button" [disabled]="!episodeId || loadingStory" (click)="loadStory()">{{ loadingStory ? 'Loading...' : 'Load Story' }}</button>
+          </div>
+          <p class="muted">Loads all scenes in order with their saved images, narration/dialogue, music, ambience and SFX. Loading does not start the GPU.</p>
         </div>
 
         <div class="field">
@@ -190,13 +206,11 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
         <p class="error" *ngIf="seq.error">{{ seq.error }}</p>
 
         <div class="row">
-          <button class="btn btn-primary" *ngIf="seq.status === 'AWAITING_APPROVAL' && !seq.busy"
-                  (click)="startVideos()">Looks good - make the videos</button>
-          <button class="btn btn-primary"
-                  *ngIf="(seq.status === 'PARTIAL' || seq.status === 'FAILED' || seq.status === 'CANCELLED') && !seq.busy"
-                  (click)="startVideos()">Retry / continue (finished scenes are kept)</button>
-          <button class="btn" *ngIf="seq.doneScenes > 0 && !seq.busy" (click)="merge()">
-            {{ seq.hasMerged ? 'Merge again' : 'Merge finished clips' }}
+          <button class="btn btn-primary" *ngIf="!seq.busy && seq.status !== 'COMPLETED'" (click)="startVideos()">
+            {{ seq.doneScenes ? 'Continue / Generate Remaining Scenes' : 'Generate All Scenes' }}
+          </button>
+          <button class="btn" *ngIf="seq.doneScenes === seq.totalScenes && !seq.busy" (click)="merge()">
+            {{ seq.hasMerged ? 'Merge Final Again' : 'Merge Final Production Video' }}
           </button>
           <button class="btn" *ngIf="seq.busy" (click)="cancel()">Cancel after this step</button>
           <button class="btn" *ngIf="!seq.busy" (click)="remove()">Delete</button>
@@ -230,11 +244,19 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
               </div>
               <video *ngIf="sc.hasClip" [src]="api.sequenceClipUrl(seq.id, sc.index, sc.clipStamp)" controls
                      [class.wide]="seq.orientation === 'horizontal'"></video>
+              <a class="btn scene-download" *ngIf="sc.hasClip" [href]="api.sequenceClipUrl(seq.id, sc.index, sc.clipStamp)" [download]="'scene-' + (sc.index + 1) + '.mp4'">Download scene video</a>
               <div class="placeholder" *ngIf="!sc.hasClip && sc.step === 'VIDEO_RUNNING'">making video... (many minutes)</div>
             </div>
 
             <p class="text">{{ sc.visual }}</p>
             <p class="text muted" *ngIf="sc.motion">&#9654; {{ sc.motion }}</p>
+            <div class="audio-info" *ngIf="sc.narration || sc.dialogue || sc.audioSpecJson || sc.musicPreset">
+              <strong>Scene audio</strong>
+              <p *ngIf="sc.narration"><b>Narration:</b> {{ sc.narration }}</p>
+              <p *ngIf="sc.dialogue"><b>Dialogue:</b> {{ sc.dialogue }}</p>
+              <p *ngIf="sc.musicPreset"><b>Music:</b> {{ sc.musicPreset }}</p>
+              <p *ngIf="sc.audioSpecJson"><b>Ambience / SFX:</b> {{ sc.audioSpecJson }}</p>
+            </div>
             <p class="muted" *ngIf="sc.hasClip">
               {{ sc.clipSeconds ? sc.clipSeconds.toFixed(1) + 's' : '' }}
               <span *ngIf="sc.requestedSeconds && sc.requestedSeconds < seq.secondsPerScene">
@@ -305,6 +327,9 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
     .edit { display: flex; flex-direction: column; gap: .5rem; }
     .actions .btn { font-size: .8rem; padding: .3rem .6rem; }
     .upload { cursor: pointer; }
+    .story-loader { padding: 1rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+    .audio-info { padding: .7rem; border-radius: 9px; background: rgba(255,255,255,.025); border: 1px solid var(--border); font-size: .82rem; }
+    .audio-info p { margin: .25rem 0; }
   `]
 })
 export class VideoSequenceComponent implements OnInit, OnDestroy {
@@ -331,6 +356,9 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
   universes: Universe[] = [];
   characters: Character[] = [];
   projectId?: string;
+  episodeId?: string;
+  episodes: any[] = [];
+  loadingStory = false;
   universeId?: string;
   selectedChars = new Set<string>();
   hasRef: Record<string, boolean | undefined> = {};
@@ -388,9 +416,10 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
   }
 
   onProject(): void {
-    this.universes = []; this.characters = []; this.universeId = undefined;
+    this.universes = []; this.characters = []; this.universeId = undefined; this.episodes = []; this.episodeId = undefined;
     if (!this.projectId) { return; }
     this.api.listUniverses(this.projectId).subscribe({ next: u => { this.universes = u; }, error: () => { this.error = 'Could not load universes.'; } });
+    this.api.listEpisodes(this.projectId).subscribe({ next: e => { this.episodes = e; }, error: () => { this.error = 'Could not load stories.'; } });
   }
 
   onUniverse(): void {
@@ -416,6 +445,15 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
 
   selectedWithoutRef(): boolean {
     return [...this.selectedChars].some(id => this.hasRef[id] === false);
+  }
+
+  loadStory(): void {
+    if (!this.episodeId) return;
+    this.loadingStory = true; this.error = '';
+    this.api.createSequenceFromEpisode(this.episodeId, { engine: this.engine, secondsPerScene: this.secondsPerScene, orientation: this.orientation, crossfadeSeconds: this.crossfade, continuity: this.continuity, reviewKeyframes: false }).subscribe({
+      next: s => { this.loadingStory = false; this.showForm = false; this.seq = s; this.refreshList(false); this.startPolling(); },
+      error: err => { this.loadingStory = false; this.error = err?.error?.message || 'Could not load the story.'; }
+    });
   }
 
   create(): void {

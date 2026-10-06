@@ -167,9 +167,9 @@ public class StoryEngineService {
             scene.setMotionPrompt(motionPromptBuilder.buildMotionPrompt(scene));
             scene.setMotionNegativePrompt(motionPromptBuilder.buildMotionNegativePrompt(scene));
 
-            double narrationSeconds = estimateNarrationSeconds(scene.getNarration());
+            double narrationSeconds = estimateVoiceSegmentsSeconds(scene.getVoiceSegmentsJson(), scene.getNarration());
             scene.setNarrationSeconds(narrationSeconds);
-            scene.setImageDurationSeconds(narrationSeconds + 0.6); // SMART padding
+            scene.setImageDurationSeconds(narrationSeconds + 0.75); // clean end beat
             totalDuration += scene.getImageDurationSeconds();
 
             scenes.add(scene);
@@ -326,6 +326,28 @@ public class StoryEngineService {
         return Math.max(2.0, (words / 150.0) * 60.0);
     }
 
+    private double estimateVoiceSegmentsSeconds(String voiceSegmentsJson, String narrationFallback) {
+        try {
+            if (voiceSegmentsJson != null && !voiceSegmentsJson.isBlank()) {
+                JsonNode segments = mapper.readTree(voiceSegmentsJson);
+                if (segments.isArray() && segments.size() > 0) {
+                    double total = 0.0;
+                    for (JsonNode segment : segments) {
+                        String text = segment.path("text").asText("").trim();
+                        if (text.isBlank()) continue;
+                        double speed = Math.max(0.75, Math.min(1.25, segment.path("speed").asDouble(1.0)));
+                        int words = text.split("\\s+").length;
+                        total += (words / 145.0) * 60.0 / speed;
+                        total += Math.max(0, segment.path("pauseBeforeMs").asInt(0)) / 1000.0;
+                        total += Math.max(0, segment.path("pauseAfterMs").asInt(0)) / 1000.0;
+                    }
+                    if (total > 0.0) return Math.max(2.0, total);
+                }
+            }
+        } catch (Exception ignored) { }
+        return estimateNarrationSeconds(narrationFallback);
+    }
+
     private String buildContinuityContext(UUID universeId) {
         if (universeId == null) return "This is a standalone story (no universe/continuity constraints).";
         List<EpisodeMemory> memories = episodeMemoryRepository.findByUniverseIdOrderByCreatedAtDesc(universeId);
@@ -383,6 +405,15 @@ public class StoryEngineService {
             unambiguous production English so the image/video pipeline stays reliable.
             If the requested language is Auto-detect, infer it from the user's idea and use that language
             consistently for all story-facing text.
+            MULTILINGUAL LEARNING LANGUAGE STYLE: For Entertainment Learning prompts, the user may request
+            languageStyle=NATIVE, MIXED_TECH or MIXED_MODERN. NATIVE means natural target-language dialogue
+            with only unavoidable technical proper nouns/code terms preserved. MIXED_TECH means the explanation
+            and humour are native to the selected Indian language, while established technical terms such as
+            Java, class, object, API, Kafka, Kubernetes, SQL, HTTP, CPU, RAM, algorithm, Article, section,
+            formula names and code identifiers remain in natural English where speakers would normally use them.
+            MIXED_MODERN means authentic conversational code-switching only where it sounds natural; do not
+            alternate languages sentence-by-sentence mechanically. Never use English merely because the topic
+            is technical. Preserve the requested language's grammar, idioms and cultural voice.
 
             Make the content highly engaging and retention-aware. Build a strong hook in the opening
             seconds: begin with an unusual event, intriguing question, funny surprise, emotional beat,
@@ -399,6 +430,29 @@ public class StoryEngineService {
             Avoid filler, generic motivational speeches, repetitive moral lessons, predictable openings,
             random characters introduced only for spectacle, and twists that contradict established character
             behavior. Every surprise must grow from the story's characters, objects, location or setup.
+
+            POLITICAL / CURRENT-AFFAIRS SATIRE MODE:
+            When the genre or user idea asks for political satire, current-affairs satire, news parody,
+            social commentary, or a "roast everyone" format, switch to mature satirical writing rather than
+            children's-story conventions. The default target is the SYSTEM around the controversy: activists,
+            political parties, government spokespeople, bureaucracy, media, influencers, online commenters and
+            ordinary citizens can all be satirical targets. Do not automatically make one faction the hero.
+            Roast opposing sides with comparable comedic intensity when the premise supports it. Use fictional
+            names, fictional institutions and invented dialogue unless the user explicitly asks for a factual
+            commentary segment. Never invent a real person's quote, action, arrest, admission, statistic or
+            accusation and present it as fact. If a real current event is the inspiration, clearly transform it
+            into fictional characters/situations and keep disputed allegations framed as allegations or satire.
+            Do not create deceptive fake-news packaging that could reasonably be mistaken for an authentic news
+            report. Do not target protected classes. Political satire may be sharp, irreverent, absurd and adult,
+            but it should punch at power, hypocrisy, incentives, bureaucracy and public behaviour rather than
+            dehumanize people. Prefer irony, parody, absurd escalation, deadpan reactions, mock press conferences,
+            fictional apps/services, meme-like visual gags and a strong final punchline.
+
+            For CURRENT HOT TOPIC prompts, build around the user's named issue and preserve the distinction
+            between verified context and invented satire. A useful structure is: recognizable current setup,
+            fictionalized escalation, roast side A, roast side B, ordinary-person perspective, escalating absurdity,
+            then a balanced punchline that exposes the underlying contradiction. The audience should understand
+            that it is satire, not breaking news.
             For younger children, keep tension exciting but emotionally safe and resolve frightening moments
             with reassurance. Follow this structure flexibly: Hook, Setup, Curiosity Gap, Escalation,
             Discovery, Complication, Climax, Emotional Payoff, Memorable Ending.
@@ -472,6 +526,13 @@ public class StoryEngineService {
             consistent with the characters array. Put natural pauses into pauseBeforeMs/pauseAfterMs
             (typically 150-800ms around emotional beats), and set emotion per line. Do not put
             dialogue into narration if it is also represented as a character voice segment.
+            Every scene is a self-contained audiovisual beat. Each voice segment MUST finish
+            naturally within the scene. Never split a sentence, thought, name, question, answer,
+            or emotional reaction across scenes. The next scene must begin with a fresh complete
+            line or narration beat, never a continuation of the previous sentence. If an exchange
+            is too long for one scene, end at a natural speaker turn and continue with a new
+            complete sentence in the next scene. Give the final segment enough pauseAfterMs for
+            a clean audio tail before the visual cut.
             Break dialogue into SHORT natural segments rather than one long block per character per
             scene - "Bunny stopped." / "Whoa..." / "Is that a rainbow?" as three segments reads and
             performs far better than one run-on sentence. A segment can be a sentence fragment when
@@ -559,6 +620,34 @@ public class StoryEngineService {
         sb.append("Story language (HARD REQUIREMENT): ").append(episode.getLanguage()).append("\n");
         sb.append("Language rule: all story-facing text (title, logline, narration and dialogue) must be written naturally in the requested language; keep machine-facing image/video production fields in English.\n");
         sb.append("Content goal: maximize genuine viewer retention and shareability through a strong opening hook, curiosity gap, escalating surprises, emotional/comedic payoff, memorable lines and visually distinctive moments. Do not use deceptive clickbait.\n");
+        String genre = episode.getGenre() == null ? "" : episode.getGenre().toLowerCase(Locale.ROOT);
+        String idea = episode.getUserPrompt() == null ? "" : episode.getUserPrompt().toLowerCase(Locale.ROOT);
+        boolean satireMode = genre.contains("satire") || genre.contains("parody") || genre.contains("commentary")
+                || genre.contains("political") || idea.contains("satire") || idea.contains("roast everyone")
+                || idea.contains("current affairs") || idea.contains("news parody");
+        boolean learningMode = genre.contains("entertainment learning") || idea.contains("[entertainment_learning]") || idea.contains("teach") && (genre.contains("educational") || genre.contains("learning"));
+        if (learningMode) {
+            sb.append("ENTERTAINMENT LEARNING MODE: Teach the requested topic through an entertaining story, never as a lecture.\n");
+            sb.append("Open with a concrete conflict, surprise, joke, mystery or absurd situation. Do NOT say 'today we will learn' or begin with a textbook definition.\n");
+            sb.append("The technical/factual explanation must emerge naturally from character actions and dialogue. End with a memorable punchline or reveal that makes the concept stick.\n");
+            sb.append("Use this hidden structure: hook -> entertaining problem -> metaphor/action -> accurate concept reveal -> concrete example -> punchline -> optional 1-2 second takeaway.\n");
+            sb.append("Do not sacrifice factual accuracy for a joke. Never invent formulas, legal provisions, medical facts, programming behaviour, exam rules, dates, statistics or definitions.\n");
+            sb.append("For programming topics, explain the actual language/runtime behaviour and include a tiny correct code example naturally in dialogue/visuals when useful.\n");
+            sb.append("For medical topics, provide educational information only; do not diagnose, prescribe, or imply that a fictional character's symptoms prove a condition.\n");
+            sb.append("For law/Constitution topics, identify the correct current legal framework and distinguish historical IPC/CrPC/IEA references from current BNS/BNSS/BSA where relevant; do not fabricate sections or case holdings.\n");
+            sb.append("For UPSC/NEET/JEE and other exams, prioritize syllabus-relevant concepts and reasoning. Never invent current exam rules, dates, eligibility, syllabus or scoring claims.\n");
+            sb.append("For construction/civil topics, keep safety-critical instructions conservative and do not turn dangerous site practices into actionable unsafe advice.\n");
+            sb.append("Difficulty should be reflected in the depth, not by making the story less entertaining. Fit the explanation to the requested duration; for 30/60/90 second videos, prioritize one concept over breadth.\n");
+            sb.append("MULTILINGUAL QUALITY CHECK: Before returning JSON, silently verify that title, logline, narration and dialogue consistently follow the requested language and languageStyle. Do not mix scripts or languages accidentally. If the target is an Indian language, prefer native spoken phrasing over literal translation. Technical terms may remain English only when allowed by MIXED_TECH or MIXED_MODERN, or when they are proper names/code identifiers that should not be translated.\n");
+        }
+        if (satireMode) {
+            sb.append("SATIRE MODE: mature balanced political/current-affairs satire.\n");
+            sb.append("Satirical target balance: do not automatically side with protesters, government, opposition, media, influencers or institutions.\n");
+            sb.append("Use fictional characters/institutions and invented dialogue; never fabricate a real person's quote or factual event.\n");
+            sb.append("Make the satire obvious through absurdity, irony, parody, fictional names or an explicit satire framing.\n");
+            sb.append("If the idea names a live controversy, distinguish verified context from the invented comic plot.\n");
+            sb.append("Build at least two strong roast beats aimed at different sides and finish with a punchline about the contradiction.\n");
+        }
         if (!characters.isEmpty()) {
             sb.append("Existing canonical characters (do NOT change their appearance):\n");
             for (Character c : characters) {

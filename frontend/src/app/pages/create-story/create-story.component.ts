@@ -26,6 +26,28 @@ import { Project, Universe, Character } from '../../models/models';
         placeholder="e.g. Create a funny 3-minute story about Bobo and Mimi discovering a magical moon."
       ></textarea>
 
+      <div class="learning-panel">
+        <div class="trend-head"><div><strong>🎬 Entertainment Learning</strong><span>Teach any topic through a funny, cinematic story — not a lecture.</span></div><span class="live-chip">ANY SUBJECT</span></div>
+        <div class="learning-grid">
+          <div><label>Learning category</label><select [(ngModel)]="learningCategory" (ngModelChange)="applyLearningCategory()"><option *ngFor="let c of learningCategories" [value]="c.value">{{ c.label }}</option></select></div>
+          <div><label>Learning style</label><select [(ngModel)]="learningStyle"><option *ngFor="let s of learningStyles" [value]="s.value">{{ s.label }}</option></select></div>
+          <div><label>Difficulty</label><select [(ngModel)]="learningDifficulty"><option>Beginner</option><option>Intermediate</option><option>Advanced</option><option>Interview / Exam</option></select></div>
+          <div><label>Learning duration</label><select [(ngModel)]="learningDuration" (ngModelChange)="syncLearningDuration()"><option [ngValue]="30">30 sec</option><option [ngValue]="60">60 sec</option><option [ngValue]="90">90 sec</option><option [ngValue]="180">3 min</option></select></div>
+          <div><label>Language style</label><select [(ngModel)]="learningLanguageStyle"><option *ngFor="let m of learningLanguageStyles" [value]="m.value">{{ m.label }}</option></select></div>
+        </div>
+        <div class="field-help">The engine first identifies the correct concept, then hides the explanation inside a story. Medical, legal and exam content gets stricter accuracy/currentness instructions.</div>
+      </div>
+
+      <div class="trend-panel">
+        <div class="trend-head"><div><strong>🔥 Trend & Satire Studio</strong><span>Turn a hot topic into obvious, balanced fictional satire — roast the contradiction, not just one side.</span></div><span class="live-chip">CURRENT-AFFAIRS READY</span></div>
+        <div class="preset-grid">
+          <button type="button" class="preset-card" *ngFor="let p of satirePresets" (click)="applySatirePreset(p)">
+            <strong>{{ p.name }}</strong><span>{{ p.genre }}</span>
+          </button>
+        </div>
+        <div class="field-help">For live political topics, the engine keeps verified context separate from invented scenes and dialogue; it will not present fictional claims as real news.</div>
+      </div>
+
       <div class="section-heading">
         <div><h2>Story settings</h2><span>Control the story, audience and generation model.</span></div>
       </div>
@@ -150,6 +172,18 @@ import { Project, Universe, Character } from '../../models/models';
     </div>
   `,
   styles: [`
+    .learning-panel { margin: 0 0 1.2rem; padding: 1rem; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-raised); } .learning-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.75rem; }
+    .learning-panel select { width:100%; }
+    @media (max-width: 900px) { .learning-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width: 560px) { .learning-grid { grid-template-columns:1fr; } }
+    .trend-panel { margin: 0 0 1.2rem; padding: 1rem; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-raised); }
+    .trend-head { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; margin-bottom:.8rem; }
+    .trend-head strong { display:block; font-size:.9rem; } .trend-head span { display:block; color:var(--muted); font-size:.72rem; margin-top:.25rem; max-width:75ch; }
+    .live-chip { color:var(--accent)!important; border:1px solid var(--accent); border-radius:999px; padding:.3rem .55rem; white-space:nowrap; font-weight:700; font-size:.65rem!important; margin-top:0!important; }
+    .preset-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.65rem; }
+    .preset-card { text-align:left; min-height:72px; padding:.7rem; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:inherit; cursor:pointer; }
+    .preset-card:hover { border-color:var(--accent); transform:translateY(-1px); }
+    .preset-card strong,.preset-card span { display:block; } .preset-card span { color:var(--muted); font-size:.68rem; margin-top:.25rem; }
     .hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; margin-bottom: 1.6rem; }
     .eyebrow { font-size: .72rem; font-weight: 800; letter-spacing: .16em; color: var(--accent); margin-bottom: .35rem; }
     .sub { color: var(--muted); margin-bottom: 0; max-width: 70ch; }
@@ -197,6 +231,16 @@ export class CreateStoryComponent implements OnInit {
   newProjectName = '';
   selectedUniverseId = '';
   durationSeconds = 180;
+  learningCategory = 'general';
+  learningStyle = 'COMEDY';
+  learningDifficulty = 'Beginner';
+  learningDuration = 60;
+  learningLanguageStyle = 'NATIVE';
+  learningLanguageStyles = [
+    { value: 'NATIVE', label: 'Native language' },
+    { value: 'MIXED_TECH', label: 'Native + English technical terms' },
+    { value: 'MIXED_MODERN', label: 'Natural bilingual / modern speech' }
+  ];
   targetAge = '5-8';
   genre = 'Adventure';
   tone = 'Funny';
@@ -222,8 +266,58 @@ export class CreateStoryComponent implements OnInit {
     { value: 'Auto-detect', label: 'Auto-detect from my idea' }
   ];
 
-  genres = ['Adventure', 'Comedy', 'Fantasy', 'Educational', 'Mystery', 'Bedtime', 'Friendship', 'Moral', 'Science', 'Animals'];
-  tones = ['Funny', 'Cute', 'Emotional', 'Exciting', 'Calm', 'Magical', 'Mysterious'];
+  learningCategories = [
+    { value: 'general', label: '🌎 General Knowledge' },
+    { value: 'programming', label: '👨‍💻 Programming Languages' },
+    { value: 'technology', label: '🤖 Technology / AI' },
+    { value: 'medical', label: '🩺 Medical / Biology' },
+    { value: 'construction', label: '🏗️ Construction / Civil' },
+    { value: 'law', label: '⚖️ Law / Constitution' },
+    { value: 'upsc', label: '🇮🇳 UPSC / Civil Services' },
+    { value: 'neet', label: '🧬 NEET' },
+    { value: 'jee', label: '🧪 JEE' },
+    { value: 'science', label: '🔬 Science' },
+    { value: 'finance', label: '💰 Finance / Economics' },
+    { value: 'custom', label: '✨ Any Custom Topic' }
+  ];
+  learningStyles = [
+    { value: 'COMEDY', label: '😂 Comedy story' },
+    { value: 'ABSURD', label: '🤯 Absurd situation' },
+    { value: 'MYSTERY', label: '🕵️ Mystery' },
+    { value: 'OFFICE', label: '🏢 Office / everyday life' },
+    { value: 'ACTION', label: '💥 Action / cinematic' },
+    { value: 'DRAMA', label: '🎭 Emotional drama' },
+    { value: 'DETECTIVE', label: '🔎 Detective case' }
+  ];
+
+  genres = ['Adventure', 'Comedy', 'Fantasy', 'Educational', 'Mystery', 'Bedtime', 'Friendship', 'Moral', 'Science', 'Animals', 'Political Satire', 'Current Affairs Satire', 'News Parody', 'Social Commentary', 'Gen-Z / Meme Satire', 'Corporate Satire', 'Tech / AI Satire', 'Dark Comedy'];
+  tones = ['Funny', 'Cute', 'Emotional', 'Exciting', 'Calm', 'Magical', 'Mysterious', 'Sharp Satire', 'Deadpan', 'Absurd', 'Darkly Funny', 'Witty'];
+
+  satirePresets = [
+    { name: 'Roast Everyone', genre: 'Political Satire', tone: 'Sharp Satire', prompt: 'Create a mature, balanced political satire that mocks the government, opposition/protesters, bureaucracy, media and ordinary online behaviour rather than taking one side. Use fictional characters and invented dialogue, with a strong absurd final punchline.' },
+    { name: 'CJP Current Topic', genre: 'Current Affairs Satire', tone: 'Deadpan', prompt: 'Create a mature fictional satire inspired by the current Cockroach Janta Party (CJP) protests and the controversy around voter-roll revisions. Roast both the protest movement and the government/institutions with comparable comedic intensity. Keep real-world claims clearly framed as context/allegations, invent the characters and dialogue, and make it unmistakably satire rather than fake news.' },
+    { name: 'Newsroom Roast', genre: 'News Parody', tone: 'Absurd', prompt: 'Create a fictional mock-news satire where a newsroom tries to cover a political controversy while every side contradicts itself. Roast politicians, activists, anchors, bureaucracy, influencers and viewers equally.' },
+    { name: 'AI Politics', genre: 'Tech / AI Satire', tone: 'Witty', prompt: 'Create a modern Indian political satire where an AI assistant is asked to solve a political controversy but discovers that every side has trained it on a different version of reality. Roast everyone through absurd technology and bureaucracy.' }
+  ];
+
+  syncLearningDuration(): void {
+    this.durationSeconds = this.learningDuration;
+  }
+
+  applyLearningCategory(): void {
+    if (this.learningCategory === 'custom') return;
+    const labels: Record<string,string> = { programming:'Programming / Software', technology:'Technology / AI', medical:'Medical / Biology', construction:'Construction / Civil', law:'Law / Constitution', upsc:'UPSC / Civil Services', neet:'NEET', jee:'JEE', science:'Science', finance:'Finance / Economics', general:'General Knowledge' };
+    this.genre = 'Educational';
+    this.durationSeconds = this.learningDuration;
+    this.targetAge = 'General';
+  }
+
+  applySatirePreset(preset: { name: string; genre: string; tone: string; prompt: string }): void {
+    this.genre = preset.genre;
+    this.tone = preset.tone;
+    this.prompt = preset.prompt;
+    this.targetAge = 'General';
+  }
   styles = [
     '3D Realistic', '3D Animated Feature', 'Cinematic Realistic', 'Anime',
     'Cartoon', 'Storybook', 'Watercolor', '2D Animation', 'Claymation',
@@ -343,7 +437,9 @@ export class CreateStoryComponent implements OnInit {
       this.api.createDraft({
         projectId,
         universeId: this.selectedUniverseId || undefined,
-        prompt: this.prompt,
+        prompt: this.learningCategory !== 'custom' ? `${this.prompt}
+
+[ENTERTAINMENT_LEARNING] category=${this.learningCategory}; style=${this.learningStyle}; difficulty=${this.learningDifficulty}; requestedDuration=${this.learningDuration}s; languageStyle=${this.learningLanguageStyle}` : this.prompt,
         durationSeconds: this.durationSeconds,
         targetAge: this.targetAge,
         genre: this.genre,

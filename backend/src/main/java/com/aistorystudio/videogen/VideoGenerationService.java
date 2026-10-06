@@ -175,7 +175,7 @@ public class VideoGenerationService {
                     && (prompt == null || !prompt.contains("[NATIVE H3 AUDIO]"))) {
                 generationPrompt = (prompt == null ? "" : prompt)
                         + "\n\n[NATIVE H3 AUDIO]\nNarrator (off-screen): <d>" + narrationText.trim() + "</d>\n"
-                        + "DELIVERY: Perform the complete narration with natural conversational pacing, realistic breaths and pauses, subtle emotional variation, human-like intonation and emphasis. Do not rush, chant, read mechanically, skip words, or paraphrase. Synchronize the voice with the visible action; keep the visible character's lips closed during off-screen narration.";
+                        + "DELIVERY: Perform the complete narration with natural conversational pacing, realistic breaths and pauses, subtle emotional variation, human-like intonation and emphasis. Do not rush, chant, read mechanically, skip words, or paraphrase. Synchronize the voice with the visible action; keep the visible character's lips closed during off-screen narration. SCENE BOUNDARY: finish the final spoken line completely before the clip ends; never cut off a word, sentence, question, answer, reaction or emotional release; leave a short natural tail after the final word. The next scene must start with a new complete spoken beat, never a continuation of this scene.";
             }
             VideoGenerationProvider.VideoGenerationRequest request = new VideoGenerationProvider.VideoGenerationRequest(
                     job.getStartingImagePath(), generationPrompt, negativePrompt,

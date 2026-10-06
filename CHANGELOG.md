@@ -1,3 +1,10 @@
+## v18.26 — Entertainment Learning Engine
+- Added Entertainment Learning mode for programming, technology/AI, medical/biology, construction/civil, law/Constitution, UPSC, NEET, JEE, science, finance/economics and general knowledge.
+- Added 30/60/90-second and 3-minute learning durations, difficulty levels and story-based teaching styles.
+- Learning prompts require accurate concepts, natural story-first teaching, memorable punchlines and no lecture-style openings.
+- Added stricter guardrails for medical, legal, exam and construction topics.
+- Legal prompts distinguish historical IPC/CrPC/IEA from current BNS/BNSS/BSA where relevant.
+
 # v18.9 — MiniMax H3 Storyboard Pipeline
 
 - Added image-first MiniMax H3 storyboard video generation with native synchronized audio.
@@ -144,3 +151,13 @@ See docs/history/.
 - Added distinct Indian English story language alongside International English and Hinglish.
 - Indian English uses en-IN-NeerjaNeural when Edge TTS is selected/available.
 - Story generation explicitly preserves natural contemporary Indian-English phrasing and conversational rhythm.
+
+## v18.23 — Persistent Story Video Production
+- Added Project → Story loader to Story Video Production.
+- Snapshots story scene images/audio and stores narration, dialogue, music, ambience/SFX and language in the sequence manifest.
+- Added PostgreSQL persistence for sequence manifests/status/expiry so browser/server reconnects can resume completed scenes.
+- Generate All Scenes runs clips one-by-one, persists each completed clip, and resumes without redoing finished scenes.
+- Final merge is blocked until every scene has a successful video.
+- Added per-scene MP4 download and final merged preview/download.
+- Added 24-hour automatic sequence/media retention (configurable with VIDEO_SEQUENCE_RETENTION_HOURS).
+- Added xfade failure fallback to production-safe hard-cut concat.

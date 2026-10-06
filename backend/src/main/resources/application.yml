@@ -164,7 +164,7 @@ studio:
   # see VideoGenJobStore.cleanup().
   video-sequence:
     # how long a finished scene sequence (keyframes, clips, merged video) is kept
-    retention-hours: ${VIDEO_SEQUENCE_RETENTION_HOURS:72}
+    retention-hours: ${VIDEO_SEQUENCE_RETENTION_HOURS:24}
   video-generation:
     retention-hours: ${VIDEO_GENERATION_RETENTION_HOURS:24}
   animation:

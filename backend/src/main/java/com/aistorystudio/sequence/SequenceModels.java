@@ -35,6 +35,14 @@ public final class SequenceModels {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class SequenceScene {
         public int index;
+        public UUID sceneId;
+        public String sourceImageFile;
+        public String sourceAudioFile;
+        public String narration;
+        public String dialogue;
+        public String audioSpecJson;
+        public String musicPreset;
+        public String language;
         /** What the frame looks like (used for the keyframe image). */
         public String visual;
         /** What moves / camera / audio (used for the video model). */
@@ -56,6 +64,8 @@ public final class SequenceModels {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class VideoSequence {
         public UUID id;
+        public UUID projectId;
+        public UUID episodeId;
         /** Epoch millis (a plain long: this manifest is written by a bare ObjectMapper without the java.time module). */
         public long createdAtMs = System.currentTimeMillis();
         public String title;

@@ -52,7 +52,13 @@ public final class ClipMerger {
             } else if (cf <= 0.01 || shortest < cf * 3) {
                 run(concatCopyArgs(work, normalized, output));
             } else {
-                run(crossfadeArgs(normalized, durations, output, cf));
+                try {
+                    run(crossfadeArgs(normalized, durations, output, cf));
+                } catch (RuntimeException transitionFailure) {
+                    // Production fallback: never lose a complete scene sequence because one
+                    // xfade/acrossfade graph is incompatible with a clip's timestamps.
+                    run(concatCopyArgs(work, normalized, output));
+                }
             }
             return output;
         } catch (IOException e) {
