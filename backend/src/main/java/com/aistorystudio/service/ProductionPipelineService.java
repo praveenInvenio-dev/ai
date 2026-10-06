@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Value;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -1028,6 +1029,17 @@ public class ProductionPipelineService {
     private Path sceneImageCopy(Path source, Path target) throws java.io.IOException {
         Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         return target;
+    }
+
+    private static boolean looksLikeOutOfMemory(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String m = t.getMessage() == null ? "" : t.getMessage().toLowerCase(Locale.ROOT);
+            if (m.contains("out of memory") || m.contains("oom") || m.contains("cuda error")
+                    || m.contains("allocat") || m.contains("killed")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String fmt(double value) {
