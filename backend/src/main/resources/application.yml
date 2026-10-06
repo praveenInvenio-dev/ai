@@ -234,6 +234,11 @@ studio:
       minimax-h3-width: ${LOCAL_AI_ANIMATION_MINIMAX_H3_WIDTH:0}
       minimax-h3-height: ${LOCAL_AI_ANIMATION_MINIMAX_H3_HEIGHT:0}
       minimax-h3-max-duration-seconds: ${LOCAL_AI_ANIMATION_MINIMAX_H3_MAX_DURATION_SECONDS:0}
+      # Long story scenes are composed from these continuous visual shots; the scene/TTS duration is never capped here.
+      minimax-h3-shot-seconds: ${LOCAL_AI_ANIMATION_MINIMAX_H3_SHOT_SECONDS:8.0}
+      # Story production uses the saved TTS WAV as the authoritative audio track.
+      # H3 native speech is not used for story narration, avoiding multilingual
+      # pronunciation errors and preventing H3 from truncating long dialogue.
       minimax-h3-free-vram-before-run: ${LOCAL_AI_ANIMATION_MINIMAX_H3_FREE_VRAM:true}
       # Wan 2.2 I2V-A14B (two 14B fp8 experts, ComfyUI offloads one while the
       # other samples). Image-to-video only. Select per job ("WAN_2_2_14B") or

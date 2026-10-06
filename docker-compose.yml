@@ -167,7 +167,8 @@ services:
     volumes:
       - ollama-data:/root/.ollama
     ports:
-      - "11434:11434"
+      # Ollama is intentionally host-local; it is not part of the public web surface.
+      - "127.0.0.1:11434:11434"
     restart: unless-stopped
 
     networks:
@@ -203,7 +204,8 @@ services:
       # starts: installs ComfyUI-VideoHelperSuite, optionally downloads Qwen files.
       - ./comfyui-gpu/pre-start.sh:/root/user-scripts/pre-start.sh
     ports:
-      - "8188:8188"
+      # ComfyUI is an internal worker. Keep the UI/API off the public internet.
+      - "127.0.0.1:8188:8188"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8188/system_stats || exit 1"]
       interval: 30s
@@ -227,7 +229,7 @@ services:
     volumes:
       - tts-data:/voices
     ports:
-      - "5002:5002"
+      - "127.0.0.1:5002:5002"
     restart: unless-stopped
 
   # IndicF5 (AI4Bharat) - near-human Kannada/Hindi/Tamil/Telugu etc, MIT licence.
@@ -255,7 +257,7 @@ services:
       - ./tts-indic/prompts:/prompts
       - indicf5-cache:/hf-cache
     ports:
-      - "5003:5003"
+      - "127.0.0.1:5003:5003"
     restart: unless-stopped
 
   # ChatterBox Turbo (Resemble AI) - expressive English narration with native
@@ -285,7 +287,7 @@ services:
       - voice-profile-audio:/voice-profiles
       - chatterbox-cache:/hf-cache
     ports:
-      - "5004:5004"
+      - "127.0.0.1:5004:5004"
     restart: unless-stopped
 
   # CosyVoice 3 - optional multilingual voice cloning. Kept behind a profile so
@@ -305,7 +307,7 @@ services:
       - voice-profile-audio:/voice-profiles:ro
       - cosyvoice-cache:/root/.cache
     ports:
-      - "5005:5005"
+      - "127.0.0.1:5005:5005"
     restart: unless-stopped
 
   # Video analysis for the AI Video Editor: ffprobe, PySceneDetect, OpenCV.
@@ -325,7 +327,7 @@ services:
       # in place, so only paths cross the network, never the video itself.
       - video-editor-data:/data/video-editor
     ports:
-      - "5010:5010"
+      - "127.0.0.1:5010:5010"
     restart: unless-stopped
 
     networks:
@@ -348,7 +350,9 @@ services:
       # the video-editor-data split above.
       - voice-profile-audio:/voice-profiles
     ports:
-      - "8080:8080"
+      # Backend is reachable from the frontend over Docker networking.
+      # Bind it to loopback only for local diagnostics; never publish it publicly.
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8080}:8080"
     # Makes host.docker.internal resolve on Linux too (Docker Desktop on
     # Mac/Windows already provides it). This is what lets the backend reach
     # an Ollama instance running directly on your machine, outside Docker.
@@ -367,7 +371,9 @@ services:
     build:
       context: ./frontend
     ports:
-      - "4200:80"
+      # This is the ONLY public entry point. Set PUBLIC_HTTP_PORT in .env to
+      # another host port if your cloud provider requires a specific port.
+      - "${PUBLIC_BIND_ADDRESS:-0.0.0.0}:${PUBLIC_HTTP_PORT:-4200}:80"
     depends_on:
       - backend
     restart: unless-stopped

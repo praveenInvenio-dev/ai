@@ -853,8 +853,10 @@ public class StoryboardService {
                 pauses += Math.max(0, s.pauseAfterMs() == null ? 0 : s.pauseAfterMs()) / 1000.0;
             }
         }
-        // ~150 WPM is a natural story narration baseline. Add a small visual tail
-        // but cap at the 10-second H3 profile limit used by this 16GB deployment.
+        // ~150 WPM is a natural story narration baseline. Scene duration is a
+        // STORY/TTS timeline value, not an H3 generation limit. Long scenes are
+        // split into multiple H3 visual shots later, so never truncate narration
+        // to the model's per-shot maximum here.
         return clampSceneDuration((words / 2.5) + pauses + NARRATION_TAIL_SECONDS);
     }
 
@@ -864,7 +866,10 @@ public class StoryboardService {
     }
 
     private double clampSceneDuration(double seconds) {
-        return Math.max(3.0, Math.min(10.0, Math.round(seconds * 10.0) / 10.0));
+        // Keep this clamp deliberately independent from H3/Wan limits. A scene
+        // can legitimately be 20-30s when its narration is that long. The video
+        // renderer is responsible for splitting long scenes into safe AI shots.
+        return Math.max(3.0, Math.min(300.0, Math.round(seconds * 10.0) / 10.0));
     }
 
     private double sceneDuration(Scene scene) {

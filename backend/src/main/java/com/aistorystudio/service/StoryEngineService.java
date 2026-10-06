@@ -396,7 +396,7 @@ public class StoryEngineService {
             Telugu, natural Telugu; Tamil, natural Tamil; Malayalam, natural Malayalam; Marathi, natural
             Marathi; Bengali, natural Bengali; Gujarati, natural Gujarati; Odia, natural Odia; Punjabi,
             natural Punjabi; Urdu, natural Urdu; Indian English, natural contemporary Indian English with authentic Indian phrasing and conversational rhythm (not British-English formality and not forced stereotypes). For Hinglish, use natural conversational Hindi-English
-            code-switching rather than translating every English word. Preserve character names, proper
+            code-switching rather than translating every English word. IMPORTANT FOR VOICE PRONUNCIATION: when the requested language is Hinglish, write Hindi words in Devanagari script and keep English/technical terms in Latin script; do not transliterate Hindi words into Roman letters. For all native Indian-language stories, use the native script of that language. Preserve character names, proper
             nouns and unavoidable technical/production terms where appropriate. Do not write Indian
             language dialogue as awkward word-for-word translations. Use culturally natural expressions,
             child-friendly idioms and spoken phrasing for the target language.

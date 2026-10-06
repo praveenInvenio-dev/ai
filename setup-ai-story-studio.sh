@@ -130,9 +130,20 @@ cat <<EOF
 ========================================================================
 Setup complete.
 
-Access the app from your local machine:
-  ssh -p <PORT> root@<HOST> -L 4200:localhost:4200
-  then open http://localhost:4200
+Access the app from the server itself:
+  http://127.0.0.1:${PUBLIC_HTTP_PORT:-4200}
+
+Access the app from another device over the Internet:
+  ./scripts/public-access.sh
+  then open the printed http://<PUBLIC-IP>:<PORT> URL.
+
+Important: on Vast.ai you must also expose/allow TCP ${PUBLIC_HTTP_PORT:-4200}
+for the instance. The application itself only publishes the frontend; backend,
+ComfyUI, TTS, video-worker and PostgreSQL remain host-local/internal.
+
+If the provider gives you an SSH-only/private instance with no public inbound
+port, the printed URL cannot be reached directly until that network rule is
+added. No domain is required for IP:port access.
 
 Optional manual step - switch to an Ollama Cloud model (needs a one-time
 interactive login, can't be scripted):

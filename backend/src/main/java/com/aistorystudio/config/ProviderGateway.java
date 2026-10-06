@@ -249,10 +249,25 @@ public class ProviderGateway {
 
     /** Edge neural voice for the story language, or null when none fits (English etc. use the
      *  sidecar's default voice). Story language is free text ("Hinglish", "Hindi", "Tamil"). */
+    /** Optional local IndicF5 references bundled with the project. These are used
+     * only when no Edge mapping exists; if the indic compose profile is not running,
+     * the normal configured/fallback TTS path is used. */
+    static String indicVoiceForLanguage(String language) {
+        String l = language == null ? "" : language.trim().toLowerCase(java.util.Locale.ROOT);
+        if (l.startsWith("bengali") || l.equals("bn")) return "indic:bn-in-tanishaa";
+        if (l.startsWith("gujarati") || l.equals("gu")) return "indic:gu-in-dhwani";
+        if (l.startsWith("hindi") || l.startsWith("hinglish") || l.equals("hi")) return "indic:hi-in-swara";
+        if (l.startsWith("kannada") || l.equals("kn")) return "indic:kn-in-sapna";
+        if (l.startsWith("malayalam") || l.equals("ml")) return "indic:ml-in-sobhana";
+        if (l.startsWith("marathi") || l.equals("mr")) return "indic:mr-in-aarohi";
+        if (l.startsWith("tamil") || l.equals("ta")) return "indic:ta-in-pallavi";
+        if (l.startsWith("telugu") || l.equals("te")) return "indic:te-in-shruti";
+        return null;
+    }
+
     static String edgeVoiceForLanguage(String language) {
         String l = language == null ? "" : language.trim().toLowerCase(java.util.Locale.ROOT);
         if (l.startsWith("hindi") || l.startsWith("hinglish") || l.equals("hi") || l.startsWith("hi-")) return "edge:hi-IN-SwaraNeural";
-        if (l.startsWith("indian english") || l.equals("en-in") || l.startsWith("en-in-")) return "edge:en-IN-NeerjaNeural";
         if (l.startsWith("indian english") || l.equals("en-in") || l.startsWith("en-in-")) return "edge:en-IN-NeerjaNeural";
         if (l.startsWith("tamil") || l.equals("ta")) return "edge:ta-IN-PallaviNeural";
         if (l.startsWith("telugu") || l.equals("te")) return "edge:te-IN-ShrutiNeural";
@@ -309,6 +324,34 @@ public class ProviderGateway {
         } catch (Exception e) {
             return fallbackNarration(ttsProvider, request, e);
         }
+    }
+
+    /**
+     * Story-safe multilingual TTS selection. When the story is explicitly an
+     * Indian language and no character voice profile was selected, prefer the
+     * local Edge neural voice for that language over an English-only expressive
+     * engine such as Chatterbox. This keeps the user's selected voice profiles
+     * authoritative while fixing accidental English-phoneme pronunciation of
+     * Hindi/Kannada/Tamil/Telugu/etc.
+     */
+    public TextToSpeechProvider.TtsResult synthesizeForStoryLanguage(TextToSpeechProvider.TtsRequest request) {
+        if (demoMode) return synthesize(request);
+        String edge = edgeVoiceForLanguage(request.language());
+        String indic = indicVoiceForLanguage(request.language());
+        String[] preferredVoices = edge == null ? new String[]{indic} : (indic == null ? new String[]{edge} : new String[]{edge, indic});
+        for (String preferred : preferredVoices) {
+            if (preferred == null) continue;
+            try {
+                TextToSpeechProvider.TtsRequest localized = new TextToSpeechProvider.TtsRequest(
+                        request.text(), preferred, request.language(), request.speed(), request.pitch(),
+                        request.emotion(), request.emotionIntensity(), request.delivery(), request.emphasis(),
+                        request.breath(), request.paralinguisticEvent(), request.actingDirection(), request.referenceTranscript());
+                return localTtsProvider.synthesize(localized);
+            } catch (Exception e) {
+                log.warn("Native story-language TTS voice {} failed: {}", preferred, e.getMessage());
+            }
+        }
+        return synthesize(request);
     }
 
     public boolean isDemoMode() {

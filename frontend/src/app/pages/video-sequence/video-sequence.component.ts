@@ -108,8 +108,9 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
             </select>
           </div>
           <div class="field">
-            <label for="secs">Seconds per scene &mdash; {{ secondsPerScene }}s</label>
+            <label for="secs">Default seconds per scene &mdash; {{ secondsPerScene }}s</label>
             <input id="secs" type="range" min="3" [max]="maxFor(engine)" step="1" [(ngModel)]="secondsPerScene">
+            <p class="muted small">When you load an existing story, its saved narration/TTS duration is used per scene. This default is only for manually entered scenes.</p>
           </div>
           <div class="field">
             <label for="orient">Shape</label>
@@ -150,8 +151,7 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
             <button type="button" class="btn" (click)="scenesText = example">Insert example</button>
           </div>
           <p class="muted">
-            Tip for H3 (it makes sound too): add <code>Audio: ...</code> to the motion text,
-            e.g. <code>Audio: soft wind, distant temple bell</code>.
+            Tip: H3 now supplies visuals only for story production. The saved TTS/dialogue track is the authoritative audio, while ambience/SFX are mixed consistently by the renderer.
           </p>
         </div>
 

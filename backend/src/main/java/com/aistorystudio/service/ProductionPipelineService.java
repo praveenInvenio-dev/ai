@@ -14,6 +14,7 @@ import com.aistorystudio.provider.StorageProvider;
 import com.aistorystudio.provider.TextToSpeechProvider;
 import com.aistorystudio.provider.VideoGenerationProvider;
 import com.aistorystudio.provider.VisionProvider;
+import com.aistorystudio.sequence.ClipMerger;
 import com.aistorystudio.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -61,6 +62,10 @@ public class ProductionPipelineService {
     private boolean storyPipelineAiVideoEnabled;
     @Value("${studio.animation.local-ai.h3-for-all-scenes:false}")
     private boolean h3ForAllScenes;
+    /** Maximum duration of one H3 visual shot. Long narration scenes are split into
+     *  several visually-continuous shots instead of being truncated to H3's per-shot cap. */
+    @Value("${studio.animation.local-ai.minimax-h3-shot-seconds:8.0}")
+    private double h3ShotSeconds;
     /** vertical (default, 1080x1920, Shorts/Reels native) or horizontal (1920x1080). */
     @Value("${studio.video.orientation:vertical}") private String videoOrientation;
 
@@ -564,10 +569,11 @@ public class ProductionPipelineService {
             log.warn("Character '{}' has voiceProfileId {} but that VoiceProfile no longer exists - "
                     + "falling back to the default TTS provider for this line.", seg.character(), voiceProfileId);
         }
-        return providerGateway.synthesize(new TextToSpeechProvider.TtsRequest(
+        TextToSpeechProvider.TtsRequest request = new TextToSpeechProvider.TtsRequest(
                 seg.text().trim(), seg.voice() == null || seg.voice().isBlank() ? null : seg.voice(),
                 episode.getLanguage(), p.speed(), p.pitch(), p.emotion(), p.intensity(), p.delivery(),
-                p.emphasis(), p.breath(), p.paralinguisticEvent(), p.actingDirection()));
+                p.emphasis(), p.breath(), p.paralinguisticEvent(), p.actingDirection());
+        return providerGateway.synthesizeForStoryLanguage(request);
     }
 
     private List<Character> charactersForEpisode(Episode episode) {
@@ -803,7 +809,10 @@ public class ProductionPipelineService {
         List<MediaProcessor.SceneClip> clips = new ArrayList<>();
         for (Scene scene : scenes) {
             var decision = animationDecisionService.decide(scene);
-            double duration = scene.getImageDurationSeconds() != null ? scene.getImageDurationSeconds() : 5.0;
+            double duration = scene.getImageDurationSeconds() != null && scene.getImageDurationSeconds() > 0
+                    ? scene.getImageDurationSeconds()
+                    : (scene.getNarrationSeconds() != null && scene.getNarrationSeconds() > 0
+                        ? scene.getNarrationSeconds() + 0.6 : 5.0);
             AiVideoResult aiVideo = null;
             // Both AI tiers still correctly report unavailable unless
             // genuinely configured (see LocalAIAnimationProvider /
@@ -868,47 +877,161 @@ public class ProductionPipelineService {
         }
         try {
             boolean h3 = h3ForAllScenes;
-            String prompt;
-            if (h3) {
-                Path characterReference = resolveCharacterReference(episode, scene);
-                List<String> characterNames = sceneCharacterNames(scene);
-                prompt = h3PromptBuilder.build(
-                        scene.getAction(), scene.getLocation(), scene.getEmotion(), scene.getNarration(),
-                        scene.getVoiceSegmentsJson(), scene.getAudioSpecJson(), episode.getLanguage(), episode.getVisualStyle(), duration,
-                        characterNames, characterReference != null);
-            } else {
-                prompt = scene.getMotionPrompt();
-                if (prompt == null || prompt.isBlank()) {
-                    prompt = (scene.getAction() == null ? "" : scene.getAction() + ". ")
-                            + (scene.getCameraMovement() == null ? "" : "Camera: " + scene.getCameraMovement() + ". ")
-                            + (scene.getEmotion() == null ? "" : "Mood: " + scene.getEmotion());
-                }
-            }
             String negativePrompt = scene.getMotionNegativePrompt() != null && !scene.getMotionNegativePrompt().isBlank()
                     ? scene.getMotionNegativePrompt()
-                    : "static, blurry, distorted, extra limbs, identity drift, duplicate subject";
+                    : "static, blurry, distorted, extra limbs, identity drift, duplicate subject, "
+                    + "new background, changed location, changed weather, changed time of day, "
+                    + "new clothing, new props, text artifacts";
+
+            if (h3) {
+                return generateContinuousH3Scene(episode, scene, sceneImage, duration, negativePrompt);
+            }
+
+            String prompt = scene.getMotionPrompt();
+            if (prompt == null || prompt.isBlank()) {
+                prompt = (scene.getAction() == null ? "" : scene.getAction() + ". ")
+                        + (scene.getCameraMovement() == null ? "" : "Camera: " + scene.getCameraMovement() + ". ")
+                        + (scene.getEmotion() == null ? "" : "Mood: " + scene.getEmotion());
+            }
             double requestedDuration = Math.max(3.0, Math.min(10.0, duration));
-            Path characterReference = h3 ? resolveCharacterReference(episode, scene) : null;
             var request = new VideoGenerationProvider.VideoGenerationRequest(
                     sceneImage.toString(), prompt, negativePrompt,
-                    requestedDuration, 0, 0, h3 ? (characterReference != null ? "minimax-h3-reference-to-video" : "minimax-h3-image-to-video") : null, null,
-                    characterReference == null ? null : characterReference.toString(), null,
-                    h3 ? (characterReference != null ? 20 : ("QUALITY".equalsIgnoreCase(episode.getQualityProfile()) ? 20 : 8)) : 10);
+                    requestedDuration, 0, 0, null, null, null, null, 10);
             long start = System.currentTimeMillis();
             var result = providerGateway.generateVideo(request);
             Path path = storageProvider.store(
                     assetRelativePath(episode, String.format("video/scene-%03d-ai.%s", scene.getSceneNumber(), result.fileExtension())),
                     result.videoBytes());
-            boolean nativeAudio = result.workflowUsed() != null
-                    && result.workflowUsed().toLowerCase(Locale.ROOT).startsWith("minimax-h3");
-            log.info("AI video generated for scene {} in {}s ({} bytes, nativeAudio={}, workflow={})",
-                    scene.getSceneNumber(), (System.currentTimeMillis() - start) / 1000, result.videoBytes().length, nativeAudio, result.workflowUsed());
-            return new AiVideoResult(path, nativeAudio);
+            log.info("AI video generated for scene {} in {}s ({} bytes, workflow={})",
+                    scene.getSceneNumber(), (System.currentTimeMillis() - start) / 1000, result.videoBytes().length, result.workflowUsed());
+            return new AiVideoResult(path, false);
         } catch (Exception e) {
             log.warn("AI video generation failed for scene {}, falling back to 2.5D: {}",
                     scene.getSceneNumber(), e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * H3 is treated as a visual-shot generator, not the source of truth for speech.
+     * A scene may be 20+ seconds while one H3 run is only 8-10 seconds on the 16 GB
+     * profile. Generate 8-second-ish continuation shots, feed the previous shot's
+     * last frame into the next shot, then concatenate the shots. The final scene
+     * keeps the exact TTS duration; FFmpeg later places the already-generated TTS
+     * narration/dialogue over the visual. This also avoids H3's native multilingual
+     * pronunciation problems and makes the user's selected TTS voice authoritative.
+     */
+    private AiVideoResult generateContinuousH3Scene(Episode episode, Scene scene, Path firstImage,
+                                                     double duration, String negativePrompt) {
+        Path work = null;
+        try {
+            double providerMax = providerGateway.maxVideoDurationSecondsFor("minimax-h3-image-to-video");
+            double maxShot = h3ShotSeconds > 0 ? h3ShotSeconds : 8.0;
+            if (providerMax > 0) maxShot = Math.min(maxShot, providerMax);
+            maxShot = Math.max(3.0, maxShot);
+
+            Path characterReference = resolveCharacterReference(episode, scene);
+            List<String> characterNames = sceneCharacterNames(scene);
+            List<Path> shots = new ArrayList<>();
+            work = java.nio.file.Files.createTempDirectory("h3-scene-" + scene.getSceneNumber() + "-");
+            Path currentImage = sceneImageCopy(firstImage, work.resolve("shot-000-start.png"));
+            double remaining = Math.max(0.5, duration);
+            int shotIndex = 0;
+            long started = System.currentTimeMillis();
+
+            while (remaining > 0.20 && shotIndex < 64) {
+                double requested = Math.min(maxShot, remaining);
+                String basePrompt = h3PromptBuilder.build(
+                        scene.getAction(), scene.getLocation(), scene.getEmotion(), "", null,
+                        scene.getAudioSpecJson(), episode.getLanguage(), episode.getVisualStyle(), requested,
+                        characterNames, characterReference != null);
+                String continuity = "\n\nCONTINUITY SHOT " + (shotIndex + 1) + ": "
+                        + "This is a continuation of the same scene, not a new scene. "
+                        + "The supplied first frame is the exact previous shot's final frame. "
+                        + "Preserve the exact characters, faces, hair, clothing, colors, props, architecture, "
+                        + "street/landscape layout, weather, time of day, lighting direction, shadows, "
+                        + "background palette and atmosphere. Do not introduce a new location, reset the set, "
+                        + "teleport objects, change costumes, or restyle the image. Continue the existing action "
+                        + "smoothly from the starting frame. Use only subtle physically plausible camera motion. "
+                        + "Do not create speech, subtitles, captions, lyrics or invented dialogue; final speech/audio "
+                        + "is supplied separately by the story's TTS track. "
+                        + "Keep background ambience and visible environmental effects coherent with the same location.";
+                String prompt = basePrompt + continuity;
+
+                VideoGenerationProvider.VideoGenerationResult result;
+                try {
+                    result = providerGateway.generateVideo(new VideoGenerationProvider.VideoGenerationRequest(
+                            currentImage.toString(), prompt, negativePrompt,
+                            requested, 0, 0,
+                            characterReference != null ? "minimax-h3-reference-to-video" : "minimax-h3-image-to-video",
+                            null, characterReference == null ? null : characterReference.toString(), null,
+                            "QUALITY".equalsIgnoreCase(episode.getQualityProfile()) ? 20 : 8));
+                } catch (RuntimeException e) {
+                    if (requested > 5.0 && looksLikeOutOfMemory(e)) {
+                        log.warn("Scene {} H3 shot {} OOM at {}s; retrying this visual shot at 5s.",
+                                scene.getSceneNumber(), shotIndex + 1, requested);
+                        result = providerGateway.generateVideo(new VideoGenerationProvider.VideoGenerationRequest(
+                                currentImage.toString(), prompt, negativePrompt,
+                                5.0, 0, 0,
+                                characterReference != null ? "minimax-h3-reference-to-video" : "minimax-h3-image-to-video",
+                                null, characterReference == null ? null : characterReference.toString(), null, 8));
+                    } else {
+                        throw e;
+                    }
+                }
+
+                Path raw = work.resolve(String.format(Locale.ROOT, "shot-%03d.%s", shotIndex, result.fileExtension()));
+                Files.write(raw, result.videoBytes());
+                double actual = ClipMerger.probeDuration(raw);
+                if (actual <= 0.2) throw new IllegalStateException("H3 returned an unusable visual shot.");
+                shots.add(raw);
+                remaining -= actual;
+                log.info("H3 scene {} shot {}: requested={}s actual={}s remaining={}s",
+                        scene.getSceneNumber(), shotIndex + 1, fmt(requested), fmt(actual), fmt(Math.max(0, remaining)));
+
+                if (remaining > 0.20) {
+                    currentImage = ClipMerger.extractLastFrame(raw, work.resolve(String.format(Locale.ROOT, "continuation-%03d.png", shotIndex)));
+                }
+                shotIndex++;
+            }
+
+            if (shots.isEmpty()) throw new IllegalStateException("H3 produced no visual shots.");
+            Path merged = work.resolve("scene-visual.mp4");
+            ClipMerger.merge(shots, merged, horizontalVideo() ? 1920 : 1080, horizontalVideo() ? 1080 : 1920, 0);
+            Path stored = storageProvider.store(
+                    assetRelativePath(episode, String.format("video/scene-%03d-ai.%s", scene.getSceneNumber(), "mp4")),
+                    Files.readAllBytes(merged));
+            double finalDuration = ClipMerger.probeDuration(stored);
+            if (finalDuration + 0.35 < duration) {
+                throw new IllegalStateException(String.format("H3 visual timeline ended at %.2fs; %.2fs required.", finalDuration, duration));
+            }
+            log.info("H3 continuous scene {} generated as {} visual shots in {}s, visualDuration={}s, targetScene={}s",
+                    scene.getSceneNumber(), shots.size(), (System.currentTimeMillis() - started) / 1000, fmt(finalDuration), fmt(duration));
+            // Native H3 audio is intentionally discarded. The production pipeline's exact
+            // multilingual TTS track is muxed by FFmpeg, so Hindi/Kannada/etc. pronunciation
+            // comes from the selected voice engine rather than H3's native speech synthesizer.
+            return new AiVideoResult(stored, false);
+        } catch (Exception e) {
+            log.warn("Continuous H3 scene {} failed: {}", scene.getSceneNumber(), e.getMessage());
+            return null;
+        } finally {
+            if (work != null) {
+                try (var walk = Files.walk(work)) {
+                    walk.sorted(Comparator.reverseOrder()).forEach(path -> {
+                        try { Files.deleteIfExists(path); } catch (Exception ignored) { }
+                    });
+                } catch (Exception ignored) { }
+            }
+        }
+    }
+
+    private Path sceneImageCopy(Path source, Path target) throws java.io.IOException {
+        Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        return target;
+    }
+
+    private static String fmt(double value) {
+        return String.format(Locale.ROOT, "%.2f", value);
     }
 
     /**

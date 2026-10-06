@@ -67,6 +67,10 @@ public class VideoSequenceService {
     private static final Set<String> ENGINES = Set.of("WAN_2_2", "WAN_2_2_14B", "MINIMAX_H3");
     private static final int MAX_SCENES = 12;
     private static final String ROOT = "video-sequences";
+    /** H3 visual-shot target on the 16 GB profile. Long scenes are composed from
+     * several continuous shots; narration duration is never reduced to this value. */
+    @org.springframework.beans.factory.annotation.Value("${studio.animation.local-ai.minimax-h3-shot-seconds:8.0}")
+    private double h3ShotSeconds;
 
     private final ProviderGateway providerGateway;
     private final StorageProvider storage;
@@ -251,6 +255,7 @@ public class VideoSequenceService {
             out.musicPreset = ep.getMusicPreset(); out.language = ep.getLanguage();
             snapshotAsset(s, sc, AssetType.IMAGE, String.format(Locale.ROOT, "source-image-%02d.png", out.index + 1), true, out);
             snapshotAsset(s, sc, AssetType.AUDIO_NARRATION, String.format(Locale.ROOT, "source-audio-%02d.wav", out.index + 1), false, out);
+            out.requestedSeconds = storySceneDuration(sc);
             s.scenes.add(out);
         }
         sequences.put(s.id, s); save(s); return s;
@@ -591,8 +596,6 @@ public class VideoSequenceService {
 
     private void makeClip(VideoSequence s, SequenceScene sc) {
         sc.error = null;
-        // CHAIN: scene n starts from the last frame of scene n-1. Scene 1 (or a scene whose
-        // predecessor failed) starts from a normal locked-character keyframe.
         if (s.chain() && sc.index > 0) {
             SequenceScene prev = s.scenes.get(sc.index - 1);
             if (clipExists(s, prev)) {
@@ -605,60 +608,160 @@ public class VideoSequenceService {
                 sc.uploadedKeyframe = false;
             }
         }
-        if (!keyframeExists(s, sc)) {
-            makeKeyframe(s, sc);
-        }
+        if (!keyframeExists(s, sc)) makeKeyframe(s, sc);
         sc.step = SceneStep.VIDEO_RUNNING;
         save(s);
 
         String workflow = workflowFor(s.engine);
-        double max = providerGateway.maxVideoDurationSecondsFor(workflow);
-        double seconds = max > 0 ? Math.min(s.secondsPerScene, max) : s.secondsPerScene;
+        double seconds = requestedSceneSeconds(s, sc);
         String prompt = videoPrompt(s, sc);
         long started = System.currentTimeMillis();
-        VideoGenerationProvider.VideoGenerationResult result;
+        Path stored;
+        long seed = ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
         try {
-            result = generate(s, sc, workflow, prompt, seconds);
-            sc.requestedSeconds = seconds;
-        } catch (RuntimeException e) {
-            // A 10 s H3 clip is heavy for a 16 GB card. On an out-of-memory failure retry once at 5 s
-            // so the sequence still completes (the merge copes with clips of different length).
-            if (seconds > 5.0 && looksLikeOutOfMemory(e)) {
-                log.warn("Sequence {} scene {}: out of memory at {}s, retrying at 5s", s.id, sc.index + 1, seconds);
-                result = generate(s, sc, workflow, prompt, 5.0);
-                sc.requestedSeconds = 5.0;
+            if ("MINIMAX_H3".equals(s.engine)) {
+                stored = generateContinuousH3SequenceClip(s, sc, prompt, seconds);
             } else {
-                throw e;
+                double max = providerGateway.maxVideoDurationSecondsFor(workflow);
+                double requestSeconds = max > 0 ? Math.min(seconds, max) : seconds;
+                VideoGenerationProvider.VideoGenerationResult result;
+                try {
+                    result = generate(s, sc, workflow, prompt, requestSeconds);
+                } catch (RuntimeException e) {
+                    if (requestSeconds > 5.0 && looksLikeOutOfMemory(e)) {
+                        log.warn("Sequence {} scene {} OOM at {}s, retrying at 5s", s.id, sc.index + 1, requestSeconds);
+                        result = generate(s, sc, workflow, prompt, 5.0);
+                        requestSeconds = 5.0;
+                    } else throw e;
+                }
+                Path raw = dir(s).resolve(String.format(Locale.ROOT, "scene-%02d-raw.%s", sc.index + 1, result.fileExtension()));
+                Files.write(raw, result.videoBytes());
+                stored = raw;
+                seed = result.seedUsed();
             }
-        }
-        String fileName = String.format(Locale.ROOT, "scene-%02d.%s", sc.index + 1, result.fileExtension());
-        deleteFile(s, sc.clipFile);
-        Path stored = storage.store(rel(s, fileName), result.videoBytes());
-        sc.clipFile = fileName;
-        sc.videoSeed = result.seedUsed();
-        sc.videoMillis = System.currentTimeMillis() - started;
-        try {
+
+            // H3's native speech is deliberately discarded. The exact TTS narration/dialogue
+            // snapshot is the authoritative audio track, which fixes multilingual pronunciation
+            // and guarantees the full scene dialogue remains audible for the entire scene.
+            Path finalPath = dir(s).resolve(String.format(Locale.ROOT, "scene-%02d.mp4", sc.index + 1));
+            if (sc.sourceAudioFile != null && Files.isRegularFile(file(s, sc.sourceAudioFile))) {
+                // Never ask FFmpeg to read and overwrite the same MP4 in one command.
+                Path muxed = dir(s).resolve(String.format(Locale.ROOT, "scene-%02d-audio.mp4", sc.index + 1));
+                ClipMerger.muxExternalAudio(stored, file(s, sc.sourceAudioFile), muxed, seconds);
+                Files.move(muxed, finalPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                if (!stored.equals(finalPath)) Files.deleteIfExists(stored);
+                stored = finalPath;
+            } else {
+                if (!stored.equals(finalPath)) Files.move(stored, finalPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                stored = finalPath;
+            }
+            if (sc.clipFile != null && !sc.clipFile.equals(stored.getFileName().toString())) deleteFile(s, sc.clipFile);
+            sc.clipFile = stored.getFileName().toString();
+            sc.videoSeed = seed;
+            sc.requestedSeconds = seconds;
+            sc.videoMillis = System.currentTimeMillis() - started;
             sc.clipSeconds = ClipMerger.probeDuration(stored);
-        } catch (RuntimeException e) {
-            sc.clipSeconds = null;
+            if (sc.clipSeconds + 0.35 < seconds) {
+                throw new IllegalStateException(String.format(Locale.ROOT,
+                        "Scene %d rendered only %.2fs of %.2fs required.", sc.index + 1, sc.clipSeconds, seconds));
+            }
+            sc.step = SceneStep.DONE;
+            save(s);
+        } catch (RuntimeException | java.io.IOException e) {
+            sc.step = SceneStep.FAILED;
+            sc.error = message(e);
+            save(s);
+            throw new IllegalStateException(sc.error, e);
         }
-        sc.step = SceneStep.DONE;
-        save(s);
     }
 
-    private VideoGenerationProvider.VideoGenerationResult generate(VideoSequence s, SequenceScene sc, String workflow,
-                                                                   String prompt, double seconds) {
+    private double requestedSceneSeconds(VideoSequence s, SequenceScene sc) {
+        if (sc.requestedSeconds != null && sc.requestedSeconds > 0) return sc.requestedSeconds;
+        double max = providerGateway.maxVideoDurationSecondsFor(workflowFor(s.engine));
+        return Math.max(2.0, max > 0 ? Math.min(s.secondsPerScene, max) : s.secondsPerScene);
+    }
+
+    private double storySceneDuration(Scene sc) {
+        if (sc.getImageDurationSeconds() != null && sc.getImageDurationSeconds() > 0) return sc.getImageDurationSeconds();
+        if (sc.getNarrationSeconds() != null && sc.getNarrationSeconds() > 0) return sc.getNarrationSeconds() + 0.6;
+        if (sc.getNarration() != null && !sc.getNarration().isBlank()) {
+            int words = sc.getNarration().trim().split("\\s+").length;
+            return Math.max(3.0, Math.min(300.0, words / 2.5 + 0.6));
+        }
+        return Math.max(2.0, sDefaultSeconds());
+    }
+
+    private double sDefaultSeconds() { return 5.0; }
+
+    /** Generate one long H3 scene as a chain of short visual shots. */
+    private Path generateContinuousH3SequenceClip(VideoSequence s, SequenceScene sc, String prompt, double seconds) throws java.io.IOException {
+        double providerMax = providerGateway.maxVideoDurationSecondsFor("minimax-h3-image-to-video");
+        double maxShot = h3ShotSeconds > 0 ? h3ShotSeconds : 8.0;
+        if (providerMax > 0) maxShot = Math.min(maxShot, providerMax);
+        maxShot = Math.max(3.0, maxShot);
+        Path work = Files.createTempDirectory("sequence-h3-" + s.id + "-" + sc.index + "-");
+        try {
+            List<Path> shots = new ArrayList<>();
+            Path currentImage = file(s, sc.keyframeFile);
+            double remaining = seconds;
+            int index = 0;
+            while (remaining > 0.20 && index < 64) {
+                double requested = Math.min(maxShot, remaining);
+                String continuation = prompt
+                        + "\n\nVISUAL CONTINUITY CONTRACT: continuation shot " + (index + 1)
+                        + ". The starting frame is the exact final frame of the previous shot. "
+                        + "Continue from it without resetting the environment. Preserve exact face identity, "
+                        + "hair, clothing, body proportions, props, architecture, road/ground layout, sky, "
+                        + "weather, time of day, lighting direction, shadows, color palette and atmosphere. "
+                        + "Do not introduce unrelated objects or a different background. No subtitles, no captions, "
+                        + "no invented speech. Final audio is supplied separately by the TTS track."
+                        + (index == 0 ? "" : " Keep the same camera language and action trajectory as the prior shot.");
+                VideoGenerationProvider.VideoGenerationResult result;
+                try {
+                    result = generateFromImage(s, currentImage, continuation, requested, workflowFor(s.engine));
+                } catch (RuntimeException e) {
+                    if (requested > 5.0 && looksLikeOutOfMemory(e)) {
+                        result = generateFromImage(s, currentImage, continuation, 5.0, workflowFor(s.engine));
+                    } else throw e;
+                }
+                Path raw = work.resolve(String.format(Locale.ROOT, "shot-%03d.%s", index, result.fileExtension()));
+                Files.write(raw, result.videoBytes());
+                double actual = ClipMerger.probeDuration(raw);
+                if (actual <= 0.2) throw new IllegalStateException("H3 returned an unusable shot.");
+                shots.add(raw);
+                remaining -= actual;
+                if (remaining > 0.20) currentImage = ClipMerger.extractLastFrame(raw, work.resolve(String.format(Locale.ROOT, "frame-%03d.png", index)));
+                index++;
+            }
+            if (shots.isEmpty()) throw new IllegalStateException("H3 produced no shots.");
+            Path merged = work.resolve("scene-visual.mp4");
+            ClipMerger.merge(shots, merged, s.horizontal() ? 1920 : 1080, s.horizontal() ? 1080 : 1920, 0);
+            Path finalPath = dir(s).resolve(String.format(Locale.ROOT, "scene-%02d.mp4", sc.index + 1));
+            Files.copy(merged, finalPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            return finalPath;
+        } finally {
+            try (var walk = Files.walk(work)) {
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> { try { Files.deleteIfExists(p); } catch (Exception ignored) {} });
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private VideoGenerationProvider.VideoGenerationResult generateFromImage(VideoSequence s, Path image, String prompt,
+                                                                              double seconds, String workflow) {
         boolean h3 = "MINIMAX_H3".equals(s.engine);
-        // H3 follows the start image's orientation by itself; Wan needs an explicit canvas for 16:9.
-        int w = 0;
-        int h = 0;
+        int w = 0, h = 0;
         if (s.horizontal() && !h3) {
             w = "WAN_2_2".equals(s.engine) ? 1280 : 832;
             h = "WAN_2_2".equals(s.engine) ? 704 : 480;
         }
         return providerGateway.generateVideo(new VideoGenerationProvider.VideoGenerationRequest(
-                file(s, sc.keyframeFile).toString(), prompt, null, seconds, w, h, workflow, null,
+                image.toString(), prompt, null, seconds, w, h, workflow, null,
                 ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE), 0));
+    }
+
+    private VideoGenerationProvider.VideoGenerationResult generate(VideoSequence s, SequenceScene sc, String workflow,
+                                                                   String prompt, double seconds) {
+        return generateFromImage(s, file(s, sc.keyframeFile), prompt, seconds, workflow);
     }
 
     private void merge(VideoSequence s) {
@@ -714,11 +817,11 @@ public class VideoSequenceService {
         StringBuilder p = new StringBuilder(motion)
                 .append(" Keep the characters' faces, outfits, colors and proportions exactly as in the first frame; the background and lighting stay consistent.");
         if (s.engine.equals("MINIMAX_H3")) {
-            if (sc.language != null && !sc.language.isBlank()) p.append("\nLANGUAGE: ").append(sc.language).append(". ");
-            if (sc.narration != null && !sc.narration.isBlank()) p.append("\nNarration (complete, off-screen): <d>").append(sc.narration.trim()).append("</d>");
-            if (sc.dialogue != null && !sc.dialogue.isBlank()) p.append("\nDialogue (complete, in order):\n").append(sc.dialogue.trim());
-            if (sc.audioSpecJson != null && !sc.audioSpecJson.isBlank()) p.append("\nAmbience / SFX / music direction: ").append(sc.audioSpecJson);
-            p.append("\nAUDIO DELIVERY: natural human conversational performance, realistic breaths and pauses, emotion matched to the scene, complete every spoken line before the scene ends. Do not cut words, sentences, questions, answers or reactions. Leave a short natural tail. This scene must begin with a fresh complete thought and must not continue unfinished speech from the previous scene.");
+            if (sc.language != null && !sc.language.isBlank()) p.append("\nLANGUAGE CONTEXT: ").append(sc.language).append(". ");
+            p.append("\nAUDIO OWNERSHIP: generate visuals only. Do not invent dialogue, narration, subtitles or captions. ");
+            p.append("The final scene uses the exact saved multilingual TTS/dialogue WAV, including its natural pauses and emotional delivery. ");
+            p.append("VISUAL CONTINUITY: preserve the same environment, background architecture, lighting, weather, props, color palette and atmosphere throughout this scene. ");
+            if (sc.audioSpecJson != null && !sc.audioSpecJson.isBlank()) p.append("Visual/environment cues from the scene audio plan: ").append(sc.audioSpecJson);
         }
         return p.toString();
     }

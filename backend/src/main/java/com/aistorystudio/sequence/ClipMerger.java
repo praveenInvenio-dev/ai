@@ -147,6 +147,26 @@ public final class ClipMerger {
         }
     }
 
+    /**
+     * Replaces any model-generated audio with the supplied narration/dialogue WAV.
+     * The video stream is copied and the external audio is padded/trimmed to the
+     * exact visual duration. Story production uses this so H3's native speech is
+     * never allowed to shorten a scene or mispronounce an Indian language.
+     */
+    public static Path muxExternalAudio(Path video, Path audio, Path output, double durationSeconds) {
+        if (video == null || audio == null) throw new IllegalArgumentException("Video and audio are required.");
+        double duration = Math.max(0.1, durationSeconds);
+        run(List.of("ffmpeg", "-nostdin", "-y",
+                "-i", video.toAbsolutePath().toString(),
+                "-i", audio.toAbsolutePath().toString(),
+                "-filter_complex", "[1:a]apad=whole_dur=" + fmt(duration) + "[a]",
+                "-map", "0:v:0", "-map", "[a]",
+                "-t", fmt(duration),
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                "-movflags", "+faststart", output.toAbsolutePath().toString()));
+        return output;
+    }
+
     /** Last frame of a clip as a PNG - the start image for the next scene in CHAIN mode. */
     public static Path extractLastFrame(Path clip, Path outPng) {
         run(List.of("ffmpeg", "-nostdin", "-y", "-sseof", "-0.15", "-i", clip.toString(),

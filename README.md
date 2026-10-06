@@ -441,7 +441,65 @@ Mock providers (`MockImageGenerationProvider`, `MockTTSProvider`) let you
 exercise the full pipeline — timing, video assembly, subtitles, packaging —
 without a GPU or any model downloads; they're what `DEMO_MODE` switches on.
 
-## 16. Production deployment
+## 16. Internet access / remote devices
+
+The Docker stack uses a single public entry point: the Angular/Nginx `frontend`
+container. Nginx proxies `/api/*` to Spring Boot over the private Docker network,
+so browsers on another device do not need direct access to port 8080. PostgreSQL,
+ComfyUI, TTS, and the video worker are bound to loopback/internal Docker networking
+and are not intentionally exposed to the Internet.
+
+### Vast.ai / public-IP setup
+
+1. Start the GPU stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
+
+2. Check the public URL:
+
+```bash
+./scripts/public-access.sh
+```
+
+3. In the Vast.ai instance/network settings, allow the TCP host port from
+   `PUBLIC_HTTP_PORT` (default `4200`). The application binds that port to
+   `0.0.0.0`.
+
+4. From any phone/laptop on the Internet, open:
+
+```text
+http://<VAST-PUBLIC-IP>:4200
+```
+
+No domain is required. The same URL works for the Angular UI, REST API, uploads,
+SSE progress, and generated media because they all travel through the frontend
+Nginx entry point.
+
+### Changing the public port
+
+Set these in `.env` before recreating the frontend:
+
+```dotenv
+PUBLIC_BIND_ADDRESS=0.0.0.0
+PUBLIC_HTTP_PORT=4200
+```
+
+Then run:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --force-recreate frontend
+```
+
+Do not expose PostgreSQL `5432`, Spring Boot `8080`, ComfyUI `8188`, TTS `5002-5005`,
+or video-worker `5010` publicly.
+
+> If your cloud provider does not permit inbound ports on the instance, a public
+> IP alone is not sufficient; the provider firewall/network rule must allow the
+> selected TCP port.
+
+## 17. Production deployment
 
 - Set `DEMO_MODE=false`, real DB credentials, and pull real models before
   going live.
@@ -450,7 +508,7 @@ without a GPU or any model downloads; they're what `DEMO_MODE` switches on.
 - Consider a GPU host for `docker-compose.gpu.yml` — image generation is by
   far the slowest stage on CPU.
 
-## 17. Licensing
+## 18. Licensing
 
 The application code license is up to you to add (e.g. `LICENSE` at the
 repo root). See [`MODEL_LICENSE.md`](./MODEL_LICENSE.md) for the licensing
@@ -460,7 +518,7 @@ use.
 
 ---
 
-## Docker commands
+## 19. Docker commands
 
 ```bash
 docker compose up -d              # start everything
@@ -471,7 +529,7 @@ docker compose pull               # update images
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d   # GPU mode
 ```
 
-## Known limitations of this initial scaffold
+## 20. Known limitations of this initial scaffold
 
 - The backend build now fails fast (via `backend/check-migrations.sh`,
   wired into the Maven `validate` phase) if two Flyway migration files ever
@@ -489,7 +547,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d   # GPU mod
 - No authentication layer yet — add one before exposing this beyond your own
   machine.
 
-## Next recommended improvements
+## 21. Next recommended improvements
 
 1. First-run setup wizard + Model Manager UI (install/delete models from the
    browser instead of `docker compose exec`).
