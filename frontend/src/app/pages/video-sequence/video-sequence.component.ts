@@ -108,9 +108,9 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
             </select>
           </div>
           <div class="field">
-            <label for="secs">Default seconds per scene &mdash; {{ secondsPerScene }}s</label>
+            <label for="secs">Visual shot target &mdash; {{ secondsPerScene }}s</label>
             <input id="secs" type="range" min="3" [max]="maxFor(engine)" step="1" [(ngModel)]="secondsPerScene">
-            <p class="muted small">When you load an existing story, its saved narration/TTS duration is used per scene. This default is only for manually entered scenes.</p>
+            <p class="muted small">Existing stories use measured narration/TTS duration automatically. H3 splits any scene longer than 8s into continuous visual shots. This value is only for manually entered scenes.</p>
           </div>
           <div class="field">
             <label for="orient">Shape</label>
@@ -340,7 +340,9 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
   title = '';
   style = '';
   engine: 'MINIMAX_H3' | 'WAN_2_2_14B' | 'WAN_2_2' = 'MINIMAX_H3';
-  secondsPerScene = 5;
+  // Maximum visual shot target for H3. Existing stories ignore this and use
+  // their measured narration/TTS duration; long scenes are split automatically.
+  secondsPerScene = 8;
   orientation: 'vertical' | 'horizontal' = 'vertical';
   continuity: 'KEYFRAMES' | 'CHAIN' = 'KEYFRAMES';
   crossfade = 0.4;
@@ -450,7 +452,7 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
   loadStory(): void {
     if (!this.episodeId) return;
     this.loadingStory = true; this.error = '';
-    this.api.createSequenceFromEpisode(this.episodeId, { engine: this.engine, secondsPerScene: this.secondsPerScene, orientation: this.orientation, crossfadeSeconds: this.crossfade, continuity: this.continuity, reviewKeyframes: false }).subscribe({
+    this.api.createSequenceFromEpisode(this.episodeId, { engine: this.engine, orientation: this.orientation, crossfadeSeconds: this.crossfade, continuity: this.continuity, reviewKeyframes: false }).subscribe({
       next: s => { this.loadingStory = false; this.showForm = false; this.seq = s; this.refreshList(false); this.startPolling(); },
       error: err => { this.loadingStory = false; this.error = err?.error?.message || 'Could not load the story.'; }
     });

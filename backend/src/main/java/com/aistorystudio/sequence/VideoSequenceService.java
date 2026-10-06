@@ -227,8 +227,15 @@ public class VideoSequenceService {
         if (dbScenes.isEmpty()) throw new IllegalArgumentException("This story has no scenes yet.");
         String normalizedEngine = engine == null ? "MINIMAX_H3" : engine.trim().toUpperCase(Locale.ROOT);
         if (!ENGINES.contains(normalizedEngine)) throw new IllegalArgumentException("Unsupported video engine: " + engine);
-        double wanted = secondsPerScene == null ? 5.0 : secondsPerScene;
+        // Existing stories are narration-duration driven. Never let the generic
+        // UI 5s value become the story scene duration. H3 is a visual-shot
+        // limit; long narration is split into continuous <=8s shots later.
         double max = providerGateway.maxVideoDurationSecondsFor(workflowFor(normalizedEngine));
+        double wanted = secondsPerScene == null ? 8.0 : secondsPerScene;
+        if (dbScenes.stream().anyMatch(sc -> (sc.getNarrationSeconds() != null && sc.getNarrationSeconds() > 0)
+                || (sc.getImageDurationSeconds() != null && sc.getImageDurationSeconds() > 0))) {
+            wanted = 8.0;
+        }
 
         VideoSequence s = new VideoSequence();
         s.id = UUID.randomUUID(); s.projectId = ep.getProjectId(); s.episodeId = ep.getId();
@@ -253,9 +260,11 @@ public class VideoSequenceService {
             out.narration = blankTo(sc.getNarration(), "");
             out.dialogue = dialogueFrom(sc); out.audioSpecJson = sc.getAudioSpecJson();
             out.musicPreset = ep.getMusicPreset(); out.language = ep.getLanguage();
+            // The story's measured TTS/narration duration is authoritative.
+            // A 16s scene remains 16s; H3 divides the visual into <=8s shots.
+            out.requestedSeconds = storySceneDuration(sc);
             snapshotAsset(s, sc, AssetType.IMAGE, String.format(Locale.ROOT, "source-image-%02d.png", out.index + 1), true, out);
             snapshotAsset(s, sc, AssetType.AUDIO_NARRATION, String.format(Locale.ROOT, "source-audio-%02d.wav", out.index + 1), false, out);
-            out.requestedSeconds = storySceneDuration(sc);
             s.scenes.add(out);
         }
         sequences.put(s.id, s); save(s); return s;
@@ -682,16 +691,25 @@ public class VideoSequenceService {
     }
 
     private double storySceneDuration(Scene sc) {
-        if (sc.getImageDurationSeconds() != null && sc.getImageDurationSeconds() > 0) return sc.getImageDurationSeconds();
+        // The actual narration WAV is the strongest source of truth. This also
+        // repairs older stories whose DB duration was left at the old 5s default.
+        try {
+            Asset audio = assetRepository
+                    .findFirstBySceneIdAndAssetTypeAndActiveTrueOrderByVersionDesc(sc.getId(), AssetType.AUDIO_NARRATION)
+                    .orElse(null);
+            if (audio != null && audio.getFilePath() != null && Files.isRegularFile(Path.of(audio.getFilePath()))) {
+                double wavSeconds = ClipMerger.probeDuration(Path.of(audio.getFilePath()));
+                if (wavSeconds > 0.2) return wavSeconds + 0.6;
+            }
+        } catch (Exception ignored) { }
         if (sc.getNarrationSeconds() != null && sc.getNarrationSeconds() > 0) return sc.getNarrationSeconds() + 0.6;
+        if (sc.getImageDurationSeconds() != null && sc.getImageDurationSeconds() > 0) return sc.getImageDurationSeconds();
         if (sc.getNarration() != null && !sc.getNarration().isBlank()) {
             int words = sc.getNarration().trim().split("\\s+").length;
             return Math.max(3.0, Math.min(300.0, words / 2.5 + 0.6));
         }
-        return Math.max(2.0, sDefaultSeconds());
+        return 3.0;
     }
-
-    private double sDefaultSeconds() { return 5.0; }
 
     /** Generate one long H3 scene as a chain of short visual shots. */
     private Path generateContinuousH3SequenceClip(VideoSequence s, SequenceScene sc, String prompt, double seconds) throws java.io.IOException {

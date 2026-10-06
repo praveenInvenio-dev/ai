@@ -397,6 +397,18 @@ public class ProductionPipelineService {
             // earlier run that partially failed) is not re-synthesised.
             Path existing = activeAudioPathFor(episode.getId(), scene.getId());
             if (existing != null) {
+                // Do not trust an old/default scene duration (often 5s). The
+                // narration WAV is the source of truth every time production
+                // starts. This is especially important for stories created
+                // before the long-scene/H3 pipeline was enabled.
+                double existingDuration = probeWavFileDuration(existing);
+                if (existingDuration > 0) {
+                    scene.setNarrationSeconds(existingDuration);
+                    scene.setImageDurationSeconds(existingDuration + 0.6);
+                    sceneRepository.save(scene);
+                    log.info("Scene {} duration synchronized from existing TTS WAV: narration={}s, timeline={}s",
+                            scene.getSceneNumber(), fmt(existingDuration), fmt(existingDuration + 0.6));
+                }
                 result.put(scene.getId(), existing);
                 continue;
             }
@@ -806,6 +818,16 @@ public class ProductionPipelineService {
         catch (Exception e) { return -1; }
     }
 
+    private double probeWavFileDuration(Path wav) {
+        if (wav == null || !Files.isRegularFile(wav)) return -1;
+        try (var ais = javax.sound.sampled.AudioSystem.getAudioInputStream(wav.toFile())) {
+            return ais.getFrameLength() / ais.getFormat().getFrameRate();
+        } catch (Exception e) {
+            log.warn("Could not probe existing narration WAV {}: {}", wav, e.getMessage());
+            return -1;
+        }
+    }
+
     private Path assembleVideo(Episode episode, List<Scene> scenes, Map<UUID, Path> images, Map<UUID, Path> audio) {
         List<MediaProcessor.SceneClip> clips = new ArrayList<>();
         for (Scene scene : scenes) {
@@ -813,7 +835,14 @@ public class ProductionPipelineService {
             double duration = scene.getImageDurationSeconds() != null && scene.getImageDurationSeconds() > 0
                     ? scene.getImageDurationSeconds()
                     : (scene.getNarrationSeconds() != null && scene.getNarrationSeconds() > 0
-                        ? scene.getNarrationSeconds() + 0.6 : 5.0);
+                        ? scene.getNarrationSeconds() + 0.6
+                        : durationFromSceneAudio(audio.get(scene.getId())));
+            if (duration <= 0) {
+                // 5s is only an emergency fallback for a scene with genuinely
+                // no narration/audio metadata. It must never override a TTS
+                // duration or be used as the H3 scene duration.
+                duration = 5.0;
+            }
             AiVideoResult aiVideo = null;
             // Both AI tiers still correctly report unavailable unless
             // genuinely configured (see LocalAIAnimationProvider /
@@ -856,6 +885,12 @@ public class ProductionPipelineService {
                 horizontalVideo() ? 1920 : 1080, horizontalVideo() ? 1080 : 1920));
         saveAsset(episode.getId(), null, AssetType.VIDEO, video, "ffmpeg", null, null);
         return video;
+    }
+
+
+    private double durationFromSceneAudio(Path audioPath) {
+        double audioDuration = probeWavFileDuration(audioPath);
+        return audioDuration > 0 ? audioDuration + 0.6 : -1;
     }
 
     /**
