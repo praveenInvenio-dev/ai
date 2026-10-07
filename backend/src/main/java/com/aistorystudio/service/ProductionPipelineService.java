@@ -466,6 +466,9 @@ public class ProductionPipelineService {
             double speechDuration = probeAudioFileDuration(speech);
             if (speechDuration <= 0.2) throw new IllegalStateException("Rumik produced unusable speech for scene " + scene.getSceneNumber());
 
+            // Rumik and H3 share the same GPU on the target 20 GB server.
+            // Explicitly unload Rumik before asking ComfyUI/H3 to allocate its model.
+            unloadRumikModels();
             Path soundscape = generateH3Soundscape(episode, scene, speechDuration, work);
             Path mixed = work.resolve("scene-mixed.wav");
             mixSpeechAndSoundscape(speech, soundscape, mixed);
@@ -480,6 +483,19 @@ public class ProductionPipelineService {
                     walk.sorted(Comparator.reverseOrder()).forEach(x -> { try { Files.deleteIfExists(x); } catch (Exception ignored) {} });
                 } catch (Exception ignored) {}
             }
+        }
+    }
+
+    private void unloadRumikModels() {
+        try {
+            var client = org.springframework.web.reactive.function.client.WebClient.builder().baseUrl(rumikBaseUrl).build();
+            client.post().uri("/unload").retrieve().bodyToMono(String.class)
+                    .block(java.time.Duration.ofSeconds(30));
+            log.info("Rumik models unloaded before H3 generation");
+        } catch (Exception e) {
+            // Do not silently continue into a likely CUDA OOM. The service is intentionally
+            // sequential on shared-GPU deployments, so fail with an actionable message.
+            throw new IllegalStateException("Could not unload Rumik before H3 generation at " + rumikBaseUrl + ": " + e.getMessage(), e);
         }
     }
 
