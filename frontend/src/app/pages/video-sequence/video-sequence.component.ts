@@ -369,6 +369,12 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
   selectedChars = new Set<string>();
   hasRef: Record<string, boolean | undefined> = {};
   referenceOptions: Record<string, CharacterReference[]> = {};
+  referenceLabel(r: CharacterReference): string {
+    const state = r.locked ? 'locked' : (r.primary ? 'primary' : 'saved');
+    const when = r.createdAt ? new Date(r.createdAt).toLocaleString() : '';
+    return `${state} · ${when}`;
+  }
+
   selectedReferenceIds: Record<string, string> = {};
 
   creating = false;
