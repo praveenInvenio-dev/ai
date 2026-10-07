@@ -400,6 +400,12 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void { this.stopPolling(); }
 
+  referenceLabel(r: CharacterReference): string {
+    const state = r.locked ? 'locked' : (r.primary ? 'primary' : 'saved');
+    const when = r.createdAt ? new Date(r.createdAt).toLocaleString() : '';
+    return when ? `${state} · ${when}` : state;
+  }
+
   // ---- form helpers
   maxFor(engine: string): number {
     const s = this.status;
