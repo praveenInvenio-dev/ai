@@ -105,7 +105,7 @@ public class FunnySkitService {
  @Async("videoGenerationExecutor") public void renderApprovedAsync(UUID id, String tone, String speaker){
    FunnySkitJob job=jobs.get(id); if(job==null)return; job.setStatus(FunnySkitJob.Status.RUNNING); List<Path> temp=new ArrayList<>();
    try{ Path character=findCharacterReference(id); List<Path> speechParts=new ArrayList<>();
-     for(int i=0;i<3;i++){Path speech=Files.createTempFile("skit-speech-p"+(i+1)+"-", ".wav"); Files.write(speech, media.fitAudioDuration(rumikSpeech(cleanSpeechText(job.getDialogues()[i]),job.getLanguage(),tone,speaker),5.0)); speechParts.add(speech); temp.add(speech);}
+     for(int i=0;i<3;i++){Path speech=Files.createTempFile("skit-speech-p"+(i+1)+"-", ".wav"); byte[] raw=synthesizeSkitSpeech(cleanSpeechText(job.getDialogues()[i]),job.getLanguage(),tone,speaker); byte[] polished=media.humanizeVoice(raw); Files.write(speech, media.fitAudioDuration(polished,5.0)); speechParts.add(speech); temp.add(speech);}
      List<Path> clips=new ArrayList<>(); Path previousEnd=character;
      for(int i=0;i<3;i++){Path storyboard=Path.of(job.getImagePaths()[i]); Path clip=generateChunkFromImage(character,i==0?storyboard:previousEnd,storyboard,job.getVisualPrompts()[i],job.getSoundscape(),speechParts.get(i),5,job.getLanguage(),i+1,3); clips.add(clip); temp.add(clip); Path end=Files.createTempFile("skit-end-", ".png"); extractLastFrame(clip,end); temp.add(end); previousEnd=end;}
      Path out=Files.createTempFile("funny-skit-", ".mp4"); temp.add(out); media.concatVideos(clips,out); Path stored=storage.store("funny-skits/results/"+id+".mp4",Files.readAllBytes(out)); job.setResultVideoPath(stored.toString()); job.setStatus(FunnySkitJob.Status.SUCCEEDED);
@@ -142,6 +142,11 @@ public class FunnySkitService {
    if(text==null) return "";
    return text.replaceAll("\\[(?:gasp|laugh|chuckle|giggle|sigh|surprise|laughter|laughing|crying|breath|scream)\\]", "")
        .replaceAll("\\s{2,}", " ").trim();
+ }
+
+ private byte[] synthesizeSkitSpeech(String text,String language,String tone,String speaker){
+   var request=new com.aistorystudio.provider.TextToSpeechProvider.TtsRequest(text, speaker==null||speaker.isBlank()?null:speaker, language, 1.0, 1.0, tone, 0.85, "natural conversational comedy delivery", java.util.List.of(), true, null, "Expressive Indian comedy performance; natural pauses; conversational timing; clear pronunciation; do not sound like a voice-over; keep the same character voice.");
+   return gateway.synthesizeForStoryLanguage(request).audioBytes();
  }
  private byte[] rumikSpeech(String text,String language,String tone,String speaker){
    String sp=speaker==null||speaker.isBlank()?rumikSpeaker:speaker; Map<String,Object> body=new LinkedHashMap<>(); body.put("speaker",sp); body.put("input",text); body.put("description",description(language,tone)); body.put("temperature",0.62); body.put("top_k",20); body.put("max_new_tokens",2200);

@@ -381,12 +381,9 @@ public class ProductionPipelineService {
             try {
                 Path path;
                 String provider;
-                if (h3AudioEnabledInStoryPipeline && rumikSpeechEnabled) {
-                    path = generateRumikH3SceneAudio(episode, scene);
-                    provider = "rumik-oss-1+h3-soundscape";
-                } else if (h3AudioEnabledInStoryPipeline) {
-                    path = generateH3SceneAudio(episode, scene);
-                    provider = "h3-audio";
+                if (h3AudioEnabledInStoryPipeline) {
+                    path = generateSpeechH3SceneAudio(episode, scene);
+                    provider = "tts+humanized-voice+h3-soundscape";
                 } else {
                     path = generateTtsSceneAudio(episode, scene);
                     provider = "tts-multi-voice";
@@ -436,109 +433,36 @@ public class ProductionPipelineService {
         return result;
     }
 
-    /** Indian-language production path: Rumik OSS-1 owns speech performance; H3 owns
-     * ambience/SFX/music. The two tracks are mixed after generation so H3 never has to
-     * synthesize uncertain Indian-language dialogue. */
-    private Path generateRumikH3SceneAudio(Episode episode, Scene scene) {
+    /** Dialogue comes from the configured TTS provider; H3 supplies only non-verbal sound design. */
+    private Path generateSpeechH3SceneAudio(Episode episode, Scene scene) {
         List<VoiceSegment> sourceSegments = readVoiceSegments(scene);
-        if (sourceSegments.isEmpty()) {
-            sourceSegments = List.of(new VoiceSegment("Narrator", scene.getNarration(), "", 1.0, 1.0,
-                    scene.getEmotion(), 0, 0, null, null, List.of(), false, null, null));
-        }
+        if (sourceSegments.isEmpty()) sourceSegments = List.of(new VoiceSegment("Narrator", scene.getNarration(), "", 1.0, 1.0, scene.getEmotion(), 0, 0, null, null, List.of(), false, null, null));
         Path work = null;
         try {
-            work = Files.createTempDirectory("rumik-h3-scene-" + scene.getSceneNumber() + "-");
-            List<Path> speechParts = new ArrayList<>();
-            for (int i = 0; i < sourceSegments.size(); i++) {
-                VoiceSegment seg = sourceSegments.get(i);
+            work = Files.createTempDirectory("tts-h3-scene-" + scene.getSceneNumber() + "-");
+            List<byte[]> parts = new ArrayList<>();
+            for (VoiceSegment seg : sourceSegments) {
                 if (seg == null || seg.text() == null || seg.text().isBlank()) continue;
-                Prosody p = prosody(seg);
-                String description = rumikDescription(p, episode.getLanguage());
-                byte[] wav = generateRumikSpeech(cleanRumikText(seg.text()), episode.getLanguage(), description);
-                Path raw = work.resolve(String.format(Locale.ROOT, "speech-%03d.wav", i));
-                Files.write(raw, wav);
-                speechParts.add(raw);
+                double pauseScale = lookupEmotionProsody(seg.emotion()).pauseScale();
+                appendSilence(parts, scaledPause(seg.pauseBeforeMs(), pauseScale));
+                TextToSpeechProvider.TtsResult tts = synthesizeSegment(episode, seg, prosody(seg));
+                if (tts == null || tts.audioBytes() == null || tts.audioBytes().length < 1000) throw new IllegalStateException("TTS returned empty speech");
+                parts.add(tts.audioBytes());
+                appendSilence(parts, scaledPause(seg.pauseAfterMs(), pauseScale));
             }
-            if (speechParts.isEmpty()) throw new IllegalStateException("Rumik produced no speech for scene " + scene.getSceneNumber());
-
-            Path speech = work.resolve("speech.wav");
-            concatenateAudioWithPauses(speechParts, sourceSegments, speech);
-            double speechDuration = probeAudioFileDuration(speech);
-            if (speechDuration <= 0.2) throw new IllegalStateException("Rumik produced unusable speech for scene " + scene.getSceneNumber());
-
-            // Rumik and H3 share the same GPU on the target 20 GB server.
-            // Explicitly unload Rumik before asking ComfyUI/H3 to allocate its model.
-            unloadRumikModels();
-            Path soundscape = generateH3Soundscape(episode, scene, speechDuration, work);
-            Path mixed = work.resolve("scene-mixed.wav");
-            mixSpeechAndSoundscape(speech, soundscape, mixed);
-            Path stored = storageProvider.store(assetRelativePath(episode,
-                    String.format("audio/scene-%03d-rumik-h3.wav", scene.getSceneNumber())), Files.readAllBytes(mixed));
-            return stored;
+            if (parts.isEmpty()) throw new IllegalStateException("Scene " + scene.getSceneNumber() + " has no spoken text.");
+            byte[] polished = mediaProcessor.humanizeVoice(concatenateWav(parts));
+            Path speech = work.resolve("speech-humanized.wav"); Files.write(speech, polished);
+            double duration = probeAudioFileDuration(speech);
+            if (duration <= 0.2) throw new IllegalStateException("TTS produced unusable speech");
+            Path soundscape = generateH3Soundscape(episode, scene, duration, work);
+            Path mixed = work.resolve("scene-mixed.wav"); mixSpeechAndSoundscape(speech, soundscape, mixed);
+            return storageProvider.store(assetRelativePath(episode, String.format("audio/scene-%03d-tts-h3.wav", scene.getSceneNumber())), Files.readAllBytes(mixed));
         } catch (Exception e) {
-            throw new IllegalStateException("Rumik + H3 audio generation failed for scene " + scene.getSceneNumber() + ": " + e.getMessage(), e);
+            throw new IllegalStateException("TTS + H3 audio generation failed for scene " + scene.getSceneNumber() + ": " + e.getMessage(), e);
         } finally {
-            if (work != null) {
-                try (var walk = Files.walk(work)) {
-                    walk.sorted(Comparator.reverseOrder()).forEach(x -> { try { Files.deleteIfExists(x); } catch (Exception ignored) {} });
-                } catch (Exception ignored) {}
-            }
+            if (work != null) try (var walk = Files.walk(work)) { walk.sorted(Comparator.reverseOrder()).forEach(x -> { try { Files.deleteIfExists(x); } catch (Exception ignored) {} }); } catch (Exception ignored) {}
         }
-    }
-
-    private void unloadRumikModels() {
-        try {
-            var client = org.springframework.web.reactive.function.client.WebClient.builder().baseUrl(rumikBaseUrl).build();
-            client.post().uri("/unload").retrieve().bodyToMono(String.class)
-                    .block(java.time.Duration.ofSeconds(30));
-            log.info("Rumik models unloaded before H3 generation");
-        } catch (Exception e) {
-            // Do not silently continue into a likely CUDA OOM. The service is intentionally
-            // sequential on shared-GPU deployments, so fail with an actionable message.
-            throw new IllegalStateException("Could not unload Rumik before H3 generation at " + rumikBaseUrl + ": " + e.getMessage(), e);
-        }
-    }
-
-    private String cleanRumikText(String text) {
-        if (text == null) return "";
-        return text.replaceAll("\\[(?:gasp|laugh|chuckle|giggle|sigh|surprise|laughter|laughing|crying|breath|scream)\\]", "")
-                .replaceAll("\\s{2,}", " ").trim();
-    }
-
-    private byte[] generateRumikSpeech(String text, String language, String description) {
-        try {
-            var body = mapper.createObjectNode();
-            body.put("speaker", rumikVoice == null || rumikVoice.isBlank() ? "Ira" : rumikVoice);
-            body.put("input", text);
-            body.put("description", description == null ? "" : description);
-            body.put("temperature", 0.62);
-            body.put("top_k", 20);
-            body.put("max_new_tokens", 4096);
-            String json = mapper.writeValueAsString(body);
-            var client = org.springframework.web.reactive.function.client.WebClient.builder().baseUrl(rumikBaseUrl).build();
-            byte[] wav = client.post().uri("/v1/audio/speech")
-                    .header("Content-Type", "application/json")
-                    .bodyValue(json).retrieve().bodyToMono(byte[].class)
-                    .block(java.time.Duration.ofSeconds(180));
-            if (wav == null || wav.length < 1000) throw new IllegalStateException("Rumik returned empty audio");
-            return wav;
-        } catch (Exception e) {
-            throw new IllegalStateException("Rumik TTS unavailable at " + rumikBaseUrl + ": " + e.getMessage(), e);
-        }
-    }
-
-    private String rumikDescription(Prosody p, String language) {
-        String lang = language == null ? "" : language.toLowerCase(Locale.ROOT);
-        String accent = lang.contains("hindi") || lang.contains("hinglish") ? "Hindi accent"
-                : lang.contains("telugu") ? "Telugu accent"
-                : lang.contains("tamil") ? "Tamil accent"
-                : lang.contains("kannada") ? "Kannada accent"
-                : lang.contains("bengali") ? "Bengali accent"
-                : lang.contains("punjabi") ? "Punjabi accent"
-                : lang.contains("english") ? "Indian English accent" : "natural accent";
-        String tone = p.emotion() == null || p.emotion().isBlank() ? "natural" : p.emotion();
-        String pace = p.speed() >= 1.10 ? "fast" : p.speed() <= 0.92 ? "slow" : "steady pace";
-        return tone + ", " + accent + ", " + pace;
     }
 
     private Path generateH3Soundscape(Episode episode, Scene scene, double speechDuration, Path work) throws Exception {
@@ -565,10 +489,8 @@ public class ProductionPipelineService {
     }
 
     private void mixSpeechAndSoundscape(Path speech, Path soundscape, Path output) throws Exception {
-        Process proc = new ProcessBuilder("ffmpeg", "-nostdin", "-y",
-                "-i", speech.toString(), "-i", soundscape.toString(),
-                "-filter_complex", "[0:a]highpass=f=70,acompressor=threshold=-20dB:ratio=2.5:attack=5:release=80:makeup=2,volume=1.0[voice];[1:a]volume=0.15[bed];[voice][bed]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=7,aresample=48000,aformat=channel_layouts=stereo[a]",
-                "-map", "[a]", "-c:a", "pcm_s16le", output.toString()).redirectErrorStream(true).start();
+        Process proc = new ProcessBuilder("ffmpeg", "-nostdin", "-y", "-i", speech.toString(), "-stream_loop", "-1", "-i", soundscape.toString(),
+                "-filter_complex", "[0:a]aresample=48000,aformat=channel_layouts=stereo[voice];[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.16[bed];[bed][voice]sidechaincompress=threshold=0.025:ratio=7:attack=25:release=350:makeup=1[ducked];[voice][ducked]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-16:TP=-1.0:LRA=7,alimiter=limit=0.97[a]", "-map", "[a]", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", output.toString()).redirectErrorStream(true).start();
         String logText = new String(proc.getInputStream().readAllBytes());
         if (proc.waitFor() != 0) throw new IllegalStateException("FFmpeg speech/soundscape mix failed: " + logText);
     }
@@ -715,6 +637,11 @@ public class ProductionPipelineService {
     private Path activeAudioPathFor(UUID episodeId, UUID sceneId, boolean h3Preferred) {
         return assetRepository.findByEpisodeIdAndAssetType(episodeId, AssetType.AUDIO_NARRATION).stream()
                 .filter(a -> sceneId.equals(a.getSceneId()) && a.isActive())
+                // Do not reuse a legacy Rumik/H3-only asset after the new pipeline
+                // is enabled. Otherwise an existing active row would make the scene
+                // silently skip the new TTS + humanization + ducking path.
+                .filter(a -> !h3Preferred || "tts+humanized-voice+h3-soundscape".equals(a.getProvider())
+                        || (a.getFilePath() != null && a.getFilePath().contains("-tts-h3.")))
                 .findFirst()
                 .map(a -> Path.of(a.getFilePath()))
                 .filter(p -> p.toFile().exists() && p.toFile().length() > 0)

@@ -141,6 +141,7 @@ services:
   # Speech is generated here; MiniMax H3 remains the soundscape/SFX/music engine.
   # The model is downloaded into the persistent HF cache on first use.
   tts-rumik:
+    profiles: ["legacy-rumik"]
     build:
       context: ./tts-rumik
     environment:
@@ -150,8 +151,6 @@ services:
       HF_HOME: /hf-cache
     volumes:
       - rumik-cache:/hf-cache
-    # Internal-only: backend reaches Rumik as http://tts-rumik:5006.
-    # Do not publish this GPU service to the host; it is not a public API.
     expose:
       - "5006"
     restart: unless-stopped

@@ -1606,7 +1606,7 @@ public class FFmpegProcessor implements MediaProcessor {
             voice = Files.createTempFile("skit-voice-", ".wav"); sound = Files.createTempFile("skit-sound-", ".wav"); out = Files.createTempFile("skit-mix-", ".wav");
             Files.write(voice, voiceBytes); Files.write(sound, soundscapeBytes);
             List<String> args = new ArrayList<>(List.of(ffmpegBin,"-y","-i",voice.toString(),"-i",sound.toString(),"-filter_complex",
-                "[0:a]highpass=f=70,acompressor=threshold=-20dB:ratio=2.5:attack=5:release=80:makeup=2,volume=1.0,aresample=48000[v];[1:a]volume=0.15,aresample=48000[s];[v][s]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=7,aformat=channel_layouts=stereo[a]",
+                "[0:a]aresample=48000,aformat=channel_layouts=stereo[voice];[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.16[bed];[bed][voice]sidechaincompress=threshold=0.025:ratio=7:attack=25:release=350:makeup=1[ducked];[voice][ducked]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-16:TP=-1.0:LRA=7,alimiter=limit=0.97[a]",
                 "-map","[a]","-t",fmt(durationSeconds),"-ar","48000","-ac","2",out.toString()));
             run(args); return Files.readAllBytes(out);
         } catch(Exception e){ throw new IllegalStateException("Could not mix voice and soundscape",e); }
@@ -1707,14 +1707,17 @@ public class FFmpegProcessor implements MediaProcessor {
             args.add("-i");
             args.add(in.toAbsolutePath().toString());
             args.add("-af");
-            args.add("highpass=f=80,afftdn=nf=-25,"
-                    + "acompressor=threshold=-18dB:ratio=2.5:attack=15:release=250:makeup=2,"
-                    + "deesser=i=0.4:m=0.5:f=0.5:s=o,"
-                    + "loudnorm=I=-16:TP=-1.5:LRA=11,alimiter=limit=0.97");
+            args.add("aresample=48000,aformat=channel_layouts=stereo,"
+                    + "highpass=f=75,"
+                    + "equalizer=f=250:t=q:w=1:g=-1.5,"
+                    + "equalizer=f=3300:t=q:w=1:g=1.5,"
+                    + "acompressor=threshold=-20dB:ratio=2.5:attack=15:release=140:makeup=1.5,"
+                    + "deesser=i=0.35:m=0.5:f=0.5:s=o,"
+                    + "loudnorm=I=-16:TP=-1.0:LRA=7,alimiter=limit=0.97");
             args.add("-ar");
-            args.add("22050");
+            args.add("48000");
             args.add("-ac");
-            args.add("1");
+            args.add("2");
             args.add(out.toAbsolutePath().toString());
             run(args);
             byte[] result = Files.readAllBytes(out);

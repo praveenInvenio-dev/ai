@@ -173,8 +173,10 @@ studio:
       enabled-in-story-pipeline: ${LOCAL_AI_AUDIO_H3_ENABLED_IN_STORY_PIPELINE:true}
       turbo: ${LOCAL_AI_AUDIO_H3_TURBO:true}
       max-duration-seconds: ${LOCAL_AI_AUDIO_H3_MAX_DURATION_SECONDS:10.0}
+    # Legacy Rumik settings are retained only for compatibility with old voice profiles.
+    # Classic Story Production no longer calls Rumik; TTS + H3 soundscape is the default.
     rumik:
-      enabled: ${RUMIK_SPEECH_ENABLED:true}
+      enabled: ${RUMIK_SPEECH_ENABLED:false}
       base-url: ${RUMIK_TTS_BASE_URL:http://tts-rumik:5006}
       voice: ${RUMIK_SPEAKER:Ira}
   animation:

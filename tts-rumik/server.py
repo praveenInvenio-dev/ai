@@ -1,4 +1,4 @@
-import os, io, traceback, gc
+import os, io
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -24,19 +24,6 @@ class SpeechRequest(BaseModel):
     max_new_tokens: int = 4096
     description: str = ''
 
-def unload_models():
-    global _tokenizer, _model, _mimi
-    _tokenizer = None
-    _model = None
-    _mimi = None
-    gc.collect()
-    if DEVICE.startswith('cuda') and torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        try:
-            torch.cuda.ipc_collect()
-        except Exception:
-            pass
-
 def load_models():
     global _tokenizer, _model, _mimi
     if _model is not None:
@@ -51,20 +38,7 @@ def load_models():
 
 @app.get('/health')
 def health():
-    free = total = None
-    if DEVICE.startswith('cuda') and torch.cuda.is_available():
-        try:
-            free, total = torch.cuda.mem_get_info()
-            free = round(free / (1024 ** 3), 2)
-            total = round(total / (1024 ** 3), 2)
-        except Exception:
-            pass
-    return {'ok': True, 'loaded': _model is not None, 'model': REPO, 'cuda_free_gb': free, 'cuda_total_gb': total}
-
-@app.post('/unload')
-def unload():
-    unload_models()
-    return health() | {'unloaded': True}
+    return {'ok': True, 'loaded': _model is not None, 'model': REPO}
 
 @app.post('/v1/audio/speech')
 def speech(req: SpeechRequest):
@@ -90,6 +64,4 @@ def speech(req: SpeechRequest):
         sf.write(buf, wav.float().cpu().numpy(), 24000, format='WAV', subtype='PCM_16')
         return Response(content=buf.getvalue(), media_type='audio/wav')
     except Exception as e:
-        print(f'[RUMIK ERROR] {type(e).__name__}: {e}', flush=True)
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f'{type(e).__name__}: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
