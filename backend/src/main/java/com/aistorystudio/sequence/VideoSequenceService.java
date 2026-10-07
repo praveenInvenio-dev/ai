@@ -8,6 +8,8 @@ import com.aistorystudio.domain.Episode;
 import com.aistorystudio.domain.Scene;
 import com.aistorystudio.domain.VideoSequenceRecord;
 import com.aistorystudio.domain.enums.AssetType;
+import com.aistorystudio.domain.enums.EpisodeStatus;
+import com.aistorystudio.h3.H3SceneRenderer;
 import com.aistorystudio.pipeline.promptbuilder.NegativePromptBuilder;
 import com.aistorystudio.provider.ImageGenerationProvider;
 import com.aistorystudio.provider.StorageProvider;
@@ -67,11 +69,6 @@ public class VideoSequenceService {
     private static final Set<String> ENGINES = Set.of("WAN_2_2", "WAN_2_2_14B", "MINIMAX_H3");
     private static final int MAX_SCENES = 12;
     private static final String ROOT = "video-sequences";
-    /** H3 visual-shot target on the 16 GB profile. Long scenes are composed from
-     * several continuous shots; narration duration is never reduced to this value. */
-    @org.springframework.beans.factory.annotation.Value("${studio.animation.local-ai.minimax-h3-shot-seconds:8.0}")
-    private double h3ShotSeconds;
-
     private final ProviderGateway providerGateway;
     private final StorageProvider storage;
     private final CharacterRepository characterRepository;
@@ -80,6 +77,7 @@ public class VideoSequenceService {
     private final EpisodeRepository episodeRepository;
     private final SceneRepository sceneRepository;
     private final VideoSequenceRecordRepository sequenceRecordRepository;
+    private final H3SceneRenderer h3SceneRenderer;
     private final ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
     private final NegativePromptBuilder negativePromptBuilder = new NegativePromptBuilder();
     private final Map<UUID, VideoSequence> sequences = new ConcurrentHashMap<>();
@@ -91,6 +89,7 @@ public class VideoSequenceService {
                                 CharacterReferenceRepository characterReferenceRepository,
                                 AssetRepository assetRepository, EpisodeRepository episodeRepository,
                                 SceneRepository sceneRepository, VideoSequenceRecordRepository sequenceRecordRepository,
+                                H3SceneRenderer h3SceneRenderer,
                                 @Value("${studio.video-sequence.retention-hours:24}") long retentionHours) {
         this.providerGateway = providerGateway;
         this.storage = storage;
@@ -100,6 +99,7 @@ public class VideoSequenceService {
         this.episodeRepository = episodeRepository;
         this.sceneRepository = sceneRepository;
         this.sequenceRecordRepository = sequenceRecordRepository;
+        this.h3SceneRenderer = h3SceneRenderer;
         this.retention = Duration.ofHours(retentionHours);
     }
 
@@ -114,13 +114,14 @@ public class VideoSequenceService {
                                double secondsPerScene, String orientation, double crossfadeSeconds,
                                String continuity, boolean reviewKeyframes, SequenceStatus status, String error,
                                boolean busy, boolean hasMerged, Double mergedSeconds, long mergedStamp,
-                               int doneScenes, int totalScenes, Instant createdAt, List<SceneView> scenes) {}
+                               int doneScenes, int totalScenes, Instant createdAt, List<SceneView> scenes,
+                               String speechEngine) {}
 
     public record SceneInput(String visual, String motion) {}
 
     public record CreateRequest(String title, String style, List<UUID> characterIds, Map<UUID,UUID> characterReferenceIds, String engine,
                                 Double secondsPerScene, String orientation, Double crossfadeSeconds,
-                                String continuity, Boolean reviewKeyframes, List<SceneInput> scenes) {}
+                                String continuity, Boolean reviewKeyframes, List<SceneInput> scenes, String speechEngine) {}
 
     public record Status(boolean available, String reason, double wanMaxSeconds, double wan14bMaxSeconds,
                          double h3MaxSeconds, int maxScenes) {}
@@ -162,7 +163,8 @@ public class VideoSequenceService {
         boolean hasMerged = merged != null && Files.isRegularFile(merged);
         return new SequenceView(s.id, s.projectId, s.episodeId, s.title, s.style, s.characterIds, s.engine, s.secondsPerScene, s.orientation,
                 s.crossfadeSeconds, s.continuity, s.reviewKeyframes, s.status, s.error, running.contains(s.id),
-                hasMerged, s.mergedSeconds, stamp(merged), done, s.scenes.size(), Instant.ofEpochMilli(s.createdAtMs), scenes);
+                hasMerged, s.mergedSeconds, stamp(merged), done, s.scenes.size(), Instant.ofEpochMilli(s.createdAtMs), scenes,
+                s.speechEngine == null ? "H3" : s.speechEngine);
     }
 
     // ----------------------------------------------------------------- create
@@ -194,6 +196,7 @@ public class VideoSequenceService {
         s.crossfadeSeconds = Math.max(0, Math.min(1.5, req.crossfadeSeconds() == null ? 0.4 : req.crossfadeSeconds()));
         s.continuity = "CHAIN".equalsIgnoreCase(req.continuity()) ? "CHAIN" : "KEYFRAMES";
         s.reviewKeyframes = req.reviewKeyframes() == null || req.reviewKeyframes();
+        s.speechEngine = H3SceneRenderer.SpeechEngine.parse(req.speechEngine()).name();
         if (req.characterIds() != null) {
             for (UUID cid : req.characterIds()) {
                 characterRepository.findById(cid).orElseThrow(
@@ -228,12 +231,21 @@ public class VideoSequenceService {
 
     public VideoSequence createFromEpisode(UUID episodeId, String engine, Double secondsPerScene, String orientation,
                                            Double crossfadeSeconds, String continuity, Boolean reviewKeyframes) {
+        return createFromEpisode(episodeId, engine, secondsPerScene, orientation, crossfadeSeconds, continuity,
+                reviewKeyframes, null);
+    }
+
+    public VideoSequence createFromEpisode(UUID episodeId, String engine, Double secondsPerScene, String orientation,
+                                           Double crossfadeSeconds, String continuity, Boolean reviewKeyframes,
+                                           String speechEngine) {
         Episode ep = episodeRepository.findById(episodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Story not found: " + episodeId));
         List<Scene> dbScenes = sceneRepository.findByEpisodeIdOrderByOrderIndexAsc(episodeId);
         if (dbScenes.isEmpty()) throw new IllegalArgumentException("This story has no scenes yet.");
         String normalizedEngine = engine == null ? "MINIMAX_H3" : engine.trim().toUpperCase(Locale.ROOT);
         if (!ENGINES.contains(normalizedEngine)) throw new IllegalArgumentException("Unsupported video engine: " + engine);
+        String unavailable = providerGateway.localAiVideoUnavailableReason();
+        if (unavailable != null) throw new IllegalStateException("Video generation is not available: " + unavailable);
         // Existing stories are narration-duration driven. Never let the generic
         // UI 5s value become the story scene duration. H3 is a visual-shot
         // limit; long narration is split into continuous <=8s shots later.
@@ -252,6 +264,7 @@ public class VideoSequenceService {
         s.crossfadeSeconds = Math.max(0, Math.min(1.5, crossfadeSeconds == null ? 0.4 : crossfadeSeconds));
         s.continuity = "CHAIN".equalsIgnoreCase(continuity) ? "CHAIN" : "KEYFRAMES";
         s.reviewKeyframes = false; s.status = SequenceStatus.AWAITING_APPROVAL;
+        s.speechEngine = H3SceneRenderer.SpeechEngine.parse(speechEngine).name();
 
         List<Character> chars = new ArrayList<>();
         if (ep.getUniverseId() != null) chars.addAll(characterRepository.findByUniverseId(ep.getUniverseId()));
@@ -266,6 +279,7 @@ public class VideoSequenceService {
             out.motion = blankTo(sc.getMotionPrompt(), "Natural cinematic movement");
             out.narration = blankTo(sc.getNarration(), "");
             out.dialogue = dialogueFrom(sc); out.audioSpecJson = sc.getAudioSpecJson();
+            out.voiceSegmentsJson = sc.getVoiceSegmentsJson(); out.location = sc.getLocation(); out.emotion = sc.getEmotion();
             out.musicPreset = ep.getMusicPreset(); out.language = ep.getLanguage();
             // The story's measured TTS/narration duration is authoritative.
             // A 16s scene remains 16s; H3 divides the visual into <=8s shots.
@@ -634,9 +648,25 @@ public class VideoSequenceService {
         long started = System.currentTimeMillis();
         Path stored;
         long seed = ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
+        boolean h3Native = "MINIMAX_H3".equals(s.engine);
         try {
-            if ("MINIMAX_H3".equals(s.engine)) {
-                stored = generateContinuousH3SequenceClip(s, sc, prompt, seconds);
+            if (h3Native) {
+                // Same renderer as Video Generation and Storyboard: H3 speaks the scene,
+                // narrator lines are voice-over (never lip-synced), long lines become
+                // several chained shots instead of being cut.
+                Path finalH3 = dir(s).resolve(String.format(Locale.ROOT, "scene-%02d-h3.mp4", sc.index + 1));
+                Path work = Files.createTempDirectory("sequence-h3-" + s.id + "-" + sc.index + "-");
+                try {
+                    H3SceneRenderer.Result r = h3SceneRenderer.render(h3Spec(s, sc, seconds),
+                            new H3SceneRenderer.Options(file(s, sc.keyframeFile), s.horizontal() ? 1920 : 1080,
+                                    s.horizontal() ? 1080 : 1920, work, () -> s.cancelRequested));
+                    Files.copy(r.video(), finalH3, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    seconds = r.seconds();
+                    if (!r.warnings().isEmpty()) log.info("Sequence {} scene {} H3 notes: {}", s.id, sc.index + 1, r.warnings());
+                } finally {
+                    deleteDir(work);
+                }
+                stored = finalH3;
             } else {
                 double max = providerGateway.maxVideoDurationSecondsFor(workflow);
                 double requestSeconds = max > 0 ? Math.min(seconds, max) : seconds;
@@ -660,7 +690,7 @@ public class VideoSequenceService {
             // snapshot is the authoritative audio track, which fixes multilingual pronunciation
             // and guarantees the full scene dialogue remains audible for the entire scene.
             Path finalPath = dir(s).resolve(String.format(Locale.ROOT, "scene-%02d.mp4", sc.index + 1));
-            if (sc.sourceAudioFile != null && Files.isRegularFile(file(s, sc.sourceAudioFile))) {
+            if (!h3Native && sc.sourceAudioFile != null && Files.isRegularFile(file(s, sc.sourceAudioFile))) {
                 // Never ask FFmpeg to read and overwrite the same MP4 in one command.
                 Path muxed = dir(s).resolve(String.format(Locale.ROOT, "scene-%02d-audio.mp4", sc.index + 1));
                 ClipMerger.muxExternalAudio(stored, file(s, sc.sourceAudioFile), muxed, seconds);
@@ -718,59 +748,6 @@ public class VideoSequenceService {
         return 3.0;
     }
 
-    /** Generate one long H3 scene as a chain of short visual shots. */
-    private Path generateContinuousH3SequenceClip(VideoSequence s, SequenceScene sc, String prompt, double seconds) throws java.io.IOException {
-        double providerMax = providerGateway.maxVideoDurationSecondsFor("minimax-h3-image-to-video");
-        double maxShot = h3ShotSeconds > 0 ? h3ShotSeconds : 8.0;
-        if (providerMax > 0) maxShot = Math.min(maxShot, providerMax);
-        maxShot = Math.max(3.0, maxShot);
-        Path work = Files.createTempDirectory("sequence-h3-" + s.id + "-" + sc.index + "-");
-        try {
-            List<Path> shots = new ArrayList<>();
-            Path currentImage = file(s, sc.keyframeFile);
-            double remaining = seconds;
-            int index = 0;
-            while (remaining > 0.20 && index < 64) {
-                double requested = Math.min(maxShot, remaining);
-                String continuation = prompt
-                        + "\n\nVISUAL CONTINUITY CONTRACT: continuation shot " + (index + 1)
-                        + ". The starting frame is the exact final frame of the previous shot. "
-                        + "Continue from it without resetting the environment. Preserve exact face identity, "
-                        + "hair, clothing, body proportions, props, architecture, road/ground layout, sky, "
-                        + "weather, time of day, lighting direction, shadows, color palette and atmosphere. "
-                        + "Do not introduce unrelated objects or a different background. No subtitles, no captions, "
-                        + "no invented speech. Final audio is supplied separately by the TTS track."
-                        + (index == 0 ? "" : " Keep the same camera language and action trajectory as the prior shot.");
-                VideoGenerationProvider.VideoGenerationResult result;
-                try {
-                    result = generateFromImage(s, currentImage, continuation, requested, workflowFor(s.engine));
-                } catch (RuntimeException e) {
-                    if (requested > 5.0 && looksLikeOutOfMemory(e)) {
-                        result = generateFromImage(s, currentImage, continuation, 5.0, workflowFor(s.engine));
-                    } else throw e;
-                }
-                Path raw = work.resolve(String.format(Locale.ROOT, "shot-%03d.%s", index, result.fileExtension()));
-                Files.write(raw, result.videoBytes());
-                double actual = ClipMerger.probeDuration(raw);
-                if (actual <= 0.2) throw new IllegalStateException("H3 returned an unusable shot.");
-                shots.add(raw);
-                remaining -= actual;
-                if (remaining > 0.20) currentImage = ClipMerger.extractLastFrame(raw, work.resolve(String.format(Locale.ROOT, "frame-%03d.png", index)));
-                index++;
-            }
-            if (shots.isEmpty()) throw new IllegalStateException("H3 produced no shots.");
-            Path merged = work.resolve("scene-visual.mp4");
-            ClipMerger.merge(shots, merged, s.horizontal() ? 1920 : 1080, s.horizontal() ? 1080 : 1920, 0);
-            Path finalPath = dir(s).resolve(String.format(Locale.ROOT, "scene-%02d.mp4", sc.index + 1));
-            Files.copy(merged, finalPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            return finalPath;
-        } finally {
-            try (var walk = Files.walk(work)) {
-                walk.sorted(Comparator.reverseOrder()).forEach(p -> { try { Files.deleteIfExists(p); } catch (Exception ignored) {} });
-            } catch (Exception ignored) {}
-        }
-    }
-
     private VideoGenerationProvider.VideoGenerationResult generateFromImage(VideoSequence s, Path image, String prompt,
                                                                               double seconds, String workflow) {
         boolean h3 = "MINIMAX_H3".equals(s.engine);
@@ -809,6 +786,42 @@ public class VideoSequenceService {
         }
         s.error = null;
         save(s);
+        publishToEpisode(s, out);
+    }
+
+    /**
+     * A story's sequence IS its final video: copy it next to the episode's other assets (the
+     * sequence folder expires after the retention window) and make it the active VIDEO asset,
+     * so Story Approval, the dashboard and the package download all serve it.
+     */
+    private void publishToEpisode(VideoSequence s, Path merged) {
+        if (s.episodeId == null) return;
+        try {
+            Episode ep = episodeRepository.findById(s.episodeId).orElse(null);
+            if (ep == null) return;
+            String rel = ep.getProjectId() + "/" + ep.getId() + "/video/final-h3-" + s.id + ".mp4";
+            Path target = storage.resolve(rel);
+            Files.createDirectories(target.getParent());
+            Files.copy(merged, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            List<Asset> previous = assetRepository.findByEpisodeIdAndAssetType(ep.getId(), AssetType.VIDEO);
+            int version = previous.stream().mapToInt(Asset::getVersion).max().orElse(0) + 1;
+            previous.forEach(a -> a.setActive(false));
+            assetRepository.saveAll(previous);
+            Asset a = new Asset();
+            a.setEpisodeId(ep.getId());
+            a.setAssetType(AssetType.VIDEO);
+            a.setFilePath(target.toString());
+            a.setVersion(version);
+            a.setActive(true);
+            a.setProvider("minimax-h3-native");
+            a.setWorkflow("video-sequence:" + s.id);
+            a.setDurationSeconds(s.mergedSeconds);
+            assetRepository.save(a);
+            ep.setStatus(EpisodeStatus.PRODUCTION_COMPLETE);
+            episodeRepository.save(ep);
+        } catch (Exception e) {
+            log.warn("Sequence {} finished but could not be attached to story {}: {}", s.id, s.episodeId, e.getMessage());
+        }
     }
 
     // ----------------------------------------------------------------- prompts
@@ -831,6 +844,19 @@ public class VideoSequenceService {
         return b.toString();
     }
 
+    /** Scene -> renderer input. Story scenes carry ordered voice segments; manual scenes are silent. */
+    private H3SceneRenderer.SceneSpec h3Spec(VideoSequence s, SequenceScene sc, double silentSeconds) {
+        List<H3SceneRenderer.Line> lines = sc.voiceSegmentsJson != null && !sc.voiceSegmentsJson.isBlank()
+                ? H3SceneRenderer.linesFromVoiceSegments(mapper, sc.voiceSegmentsJson, sc.narration)
+                : H3SceneRenderer.linesFromText(sc.narration, sc.dialogue);
+        String motion = sc.motion == null || sc.motion.isBlank()
+                ? "Natural, subtle character motion and a slow, smooth camera move" : sc.motion.trim();
+        if (s.chain() && sc.index > 0) motion = sc.visual.trim() + ". " + motion;
+        String key = s.episodeId != null ? s.episodeId.toString() : s.id.toString();
+        return new H3SceneRenderer.SceneSpec(motion, sc.location, sc.emotion, s.style, sc.language, lines,
+                sc.audioSpecJson, null, silentSeconds, key, H3SceneRenderer.SpeechEngine.parse(s.speechEngine));
+    }
+
     private String videoPrompt(VideoSequence s, SequenceScene sc) {
         String motion = sc.motion == null || sc.motion.isBlank()
                 ? "Natural, subtle character motion and a slow, smooth camera move."
@@ -841,13 +867,6 @@ public class VideoSequenceService {
         }
         StringBuilder p = new StringBuilder(motion)
                 .append(" Keep the characters' faces, outfits, colors and proportions exactly as in the first frame; the background and lighting stay consistent.");
-        if (s.engine.equals("MINIMAX_H3")) {
-            if (sc.language != null && !sc.language.isBlank()) p.append("\nLANGUAGE CONTEXT: ").append(sc.language).append(". ");
-            p.append("\nAUDIO OWNERSHIP: generate visuals only. Do not invent dialogue, narration, subtitles or captions. ");
-            p.append("The final scene uses the exact saved multilingual TTS/dialogue WAV, including its natural pauses and emotional delivery. ");
-            p.append("VISUAL CONTINUITY: preserve the same environment, background architecture, lighting, weather, props, color palette and atmosphere throughout this scene. ");
-            if (sc.audioSpecJson != null && !sc.audioSpecJson.isBlank()) p.append("Visual/environment cues from the scene audio plan: ").append(sc.audioSpecJson);
-        }
         return p.toString();
     }
 

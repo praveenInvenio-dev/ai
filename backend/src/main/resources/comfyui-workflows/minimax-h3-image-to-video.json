@@ -165,9 +165,9 @@
         "1",
         0
       ],
-      "turbo_mode": "{{H3_TURBO_MODE}}",
-      "turbo_model_strength": "{{H3_TURBO_STRENGTH}}",
-      "turbo_steps": "{{H3_TURBO_STEPS}}"
+      "turbo_mode": false,
+      "turbo_model_strength": 1.0,
+      "turbo_steps": 8
     }
   }
 }

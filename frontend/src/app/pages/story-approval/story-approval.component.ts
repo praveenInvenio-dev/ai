@@ -150,13 +150,16 @@ import { Episode, SceneDto, VoiceSegment } from '../../models/models';
         <button class="btn btn-ghost" (click)="regenerate()" [disabled]="busy || imageJob">Regenerate story</button>
         <button class="btn btn-primary" *ngIf="!imagesReady && !imageJob" (click)="generateImages()" [disabled]="busy">✨ Approve story & generate images</button>
         <ng-container *ngIf="imagesReady">
-          <button class="btn btn-secondary" (click)="produceVideo()" [disabled]="busy || !voicesReady" title="Restore the classic image + narration/2.5D production pipeline">🎞️ Generate Final Video (Images + Audio)</button>
-          <button class="btn btn-primary" (click)="continueToVideoGeneration()" [disabled]="busy">🎬 Video Generation (H3 / AI Video)</button>
+          <label class="check" style="display:flex;gap:.5rem;align-items:flex-start" title="IndicF5 voices speak; H3 animates (lip-synced) and adds ambience/music">
+            <input type="checkbox" [(ngModel)]="useIndicTts"> Indic TTS voice instead of H3 speech
+          </label>
+          <button class="btn btn-primary" (click)="produceVideo()" [disabled]="busy" title="Every scene through MiniMax H3: H3 speaks narration (voice-over) and dialogue (lip-synced), with ambience, SFX and music">🎬 Produce story video (H3 voice + video)</button>
+          <button class="btn btn-secondary" (click)="continueToVideoGeneration()" [disabled]="busy">Test one scene in Video Generation</button>
         </ng-container>
       </footer>
       <p class="hint action-hint" *ngIf="imagesReady">
-        <strong>Generate Final Video</strong> combines the approved scene images with narration/audio using the classic production pipeline.
-        <strong>Video Generation</strong> opens the dedicated AI-video workflow for H3 and other video engines.
+        <strong>Produce story video</strong> animates every approved image with MiniMax H3. H3 generates the speech too: narration is off-screen voice-over (no lip movement), character dialogue is lip-synced. Long scenes become several continuous shots. You will be taken to Story Video Production to watch progress; the finished video is attached to this story.
+        <strong>Video Generation</strong> renders a single scene with the same engine, for quick tests.
       </p>
       <section class="card classic-output" *ngIf="classicVideoReady">
         <strong>✓ Classic image + audio video is ready</strong>
@@ -346,29 +349,14 @@ export class StoryApprovalComponent implements OnInit, OnDestroy {
     this.router.navigate(['/video-generation'], { queryParams: { projectId: this.episode.projectId || undefined, episodeId: this.episode.id } });
   }
   applyVoice(speaker:string){ const voice=this.voiceMap[speaker]; this.scenes.filter(s=>(s.voiceSegments||[]).some(x=>(x.character||'Narrator')===speaker)).forEach(s=>{(s.voiceSegments||[]).forEach(x=>{if((x.character||'Narrator')===speaker)x.voice=voice;});this.api.updateSceneVoices(this.episode!.id,s.id,s.voiceSegments||[]).subscribe();}); }
+  /** INDIC_TTS instead of H3 speech - one or the other. */
+  useIndicTts=false;
   produceVideo(){
-    if(!this.episode || !this.voicesReady)return;
+    if(!this.episode)return;
     this.busy=true; this.error='';
-    const updates=this.scenes.map(s=>{
-      const segments=(s.voiceSegments||[]).map(x=>{ const speaker=x.character||'Narrator'; return {...x,voice:this.voiceMap[speaker]||x.voice}; });
-      s.voiceSegments=segments;
-      return this.api.updateSceneVoices(this.episode!.id,s.id,segments);
-    });
-    forkJoin(updates).subscribe({
-      next:()=>this.api.assembleStoryboard(this.episode!.id, this.voiceMap['Narrator'] || undefined).subscribe({
-        next:()=>{
-          this.busy=false;
-          this.error='';
-          this.autoProducing=false;
-          this.classicVideoReady=true;
-          // Keep the user on Story Approval so the classic output can be
-          // previewed/downloaded from the episode video endpoint. This path
-          // intentionally uses the legacy image + TTS + FFmpeg assembler and
-          // does not invoke H3 or the new persistent scene-video queue.
-        },
-        error:e=>{this.busy=false;this.error=e?.error?.message||'Could not assemble the classic image + audio video.';}
-      }),
-      error:e=>{this.busy=false;this.error=e?.error?.message||'Could not save voice selections.';}
+    this.api.produceEpisodeVideo(this.episode.id, this.useIndicTts ? 'INDIC_TTS' : 'H3').subscribe({
+      next: seq => { this.busy=false; this.router.navigate(['/video-sequence'], { queryParams: { id: seq.id } }); },
+      error: e => { this.busy=false; this.error=e?.error?.message||'Could not start H3 story production.'; }
     });
   }
 }

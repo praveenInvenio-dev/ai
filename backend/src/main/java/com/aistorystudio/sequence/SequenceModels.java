@@ -43,6 +43,10 @@ public final class SequenceModels {
         public String narration;
         public String dialogue;
         public String audioSpecJson;
+        /** Story Engine voice segments (ordered narrator / character lines) - drives H3 speech. */
+        public String voiceSegmentsJson;
+        public String location;
+        public String emotion;
         public String musicPreset;
         public String language;
         /** What the frame looks like (used for the keyframe image). */
@@ -85,6 +89,8 @@ public final class SequenceModels {
          *  CHAIN (each scene starts from the last frame of the previous clip). */
         public String continuity;
         public boolean reviewKeyframes;
+        /** H3 (H3 speaks) or INDIC_TTS (IndicF5 voices speak, H3 animates + ambience). H3 engine only. */
+        public String speechEngine = "H3";
         public volatile SequenceStatus status = SequenceStatus.KEYFRAMES_RUNNING;
         public volatile String error;
         public String mergedFile;

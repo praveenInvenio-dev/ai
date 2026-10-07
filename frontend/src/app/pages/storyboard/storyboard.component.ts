@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService, StoryboardEpisode, StoryboardScene, Voice, VoiceSegment } from '../../services/api.service';
 
 /**
@@ -184,8 +184,12 @@ import { ApiService, StoryboardEpisode, StoryboardScene, Voice, VoiceSegment } f
       <!-- Step 4: generate -->
       <section class="panel actions">
         <button class="btn primary" [disabled]="!canAssemble()" (click)="assemble()">
-          {{ busy ? 'Working…' : '✨ Generate final video' }}
+          {{ busy ? 'Starting…' : '🎬 Produce video (H3 voice + video)' }}
         </button>
+        <label class="check" style="display:flex;gap:.5rem;align-items:flex-start">
+          <input type="checkbox" [(ngModel)]="useIndicTts"> Use Indic TTS voice (IndicF5) instead of H3 speech
+        </label>
+        <p class="muted small">Every scene is animated by MiniMax H3, which also speaks the lines: Narrator rows are off-screen voice-over (no lip movement), character rows are lip-synced. Progress opens in Story Video Production.</p>
         <p class="muted reason" *ngIf="blockedReason()">{{ blockedReason() }}</p>
         <p class="done" *ngIf="resultFile">Video ready: <code>{{ resultFile }}</code></p>
       </section>
@@ -336,11 +340,13 @@ export class StoryboardComponent implements OnInit {
   busy = false;
   error = '';
   resultFile = '';
+  /** INDIC_TTS instead of H3 speech - one or the other. */
+  useIndicTts = false;
   voices: Voice[] = [];
   previewing: VoiceSegment | null = null;
   defaultVoice = '';
 
-  constructor(private api: ApiService, private route: ActivatedRoute) {}
+  constructor(private api: ApiService, private route: ActivatedRoute, private router: Router) {}
 
   ngOnInit(): void {
     this.api.listVoices().subscribe({
@@ -609,9 +615,9 @@ export class StoryboardComponent implements OnInit {
     this.busy = true;
     this.error = '';
     this.resultFile = '';
-    this.api.assembleStoryboard(this.episode.id).subscribe({
-      next: result => { this.resultFile = result.fileName; this.busy = false; },
-      error: err => this.failed(err, 'Video assembly failed.')
+    this.api.produceEpisodeVideo(this.episode.id, this.useIndicTts ? 'INDIC_TTS' : 'H3').subscribe({
+      next: seq => { this.busy = false; this.router.navigate(['/video-sequence'], { queryParams: { id: seq.id } }); },
+      error: err => this.failed(err, 'Could not start H3 video production.')
     });
   }
 

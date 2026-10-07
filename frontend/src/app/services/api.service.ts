@@ -374,7 +374,8 @@ export class ApiService {
 
   createVideoGenerationJob(
     image: File | null, prompt: string, negativePrompt: string, durationSeconds: number,
-    narrationText?: string, voiceProfileId?: string, workflow?: string
+    narrationText?: string, voiceProfileId?: string, workflow?: string,
+    h3?: { sceneId?: string; dialogueText?: string; audioDirection?: string; useSceneVoices?: boolean; speechEngine?: SpeechEngine }
   ): Observable<{ jobId: string }> {
     const form = new FormData();
     if (image) { form.append('image', image, image.name); }
@@ -384,6 +385,11 @@ export class ApiService {
     if (narrationText) { form.append('narrationText', narrationText); }
     if (voiceProfileId) { form.append('voiceProfileId', voiceProfileId); }
     if (workflow) { form.append('workflow', workflow); }
+    if (h3?.sceneId) { form.append('sceneId', h3.sceneId); }
+    if (h3?.dialogueText) { form.append('dialogueText', h3.dialogueText); }
+    if (h3?.audioDirection) { form.append('audioDirection', h3.audioDirection); }
+    if (h3?.useSceneVoices) { form.append('useSceneVoices', 'true'); }
+    if (h3?.speechEngine) { form.append('speechEngine', h3.speechEngine); }
     return this.http.post<{ jobId: string }>(`${this.base}/video-generation/jobs`, form);
   }
 
@@ -400,7 +406,7 @@ export class ApiService {
   }
   funnySkitResultUrl(jobId: string): string { return `${this.base}/funny-skits/jobs/${jobId}/video`; }
   regenerateFunnySkitImage(jobId: string, scene: number): Observable<any> { return this.http.post(`${this.base}/funny-skits/jobs/${jobId}/images/${scene}/regenerate`, {}); }
-  renderFunnySkit(jobId: string, tone: string, speaker = "Ira"): Observable<any> { return this.http.post(`${this.base}/funny-skits/jobs/${jobId}/render?tone=${encodeURIComponent(tone)}&speaker=${encodeURIComponent(speaker)}`, {}); }
+  renderFunnySkit(jobId: string, tone: string, speaker = "Ira", speechEngine: SpeechEngine = 'H3'): Observable<any> { return this.http.post(`${this.base}/funny-skits/jobs/${jobId}/render?tone=${encodeURIComponent(tone)}&speaker=${encodeURIComponent(speaker)}&speechEngine=${speechEngine}`, {}); }
   funnySkitImageUrl(jobId: string, scene: number): string { return `${this.base}/funny-skits/jobs/${jobId}/images/${scene}`; }
 
   getVideoGenerationJob(jobId: string): Observable<VideoGenerationJob> {
@@ -415,10 +421,14 @@ export class ApiService {
   listSequences(): Observable<SequenceView[]> {
     return this.http.get<SequenceView[]>(`${this.base}/video-sequences`);
   }
-  createSequenceFromEpisode(episodeId: string, options: { engine?: string; secondsPerScene?: number; orientation?: string; crossfadeSeconds?: number; continuity?: string; reviewKeyframes?: boolean } = {}): Observable<SequenceView> {
+  createSequenceFromEpisode(episodeId: string, options: { engine?: string; secondsPerScene?: number; orientation?: string; crossfadeSeconds?: number; continuity?: string; reviewKeyframes?: boolean; speechEngine?: SpeechEngine } = {}): Observable<SequenceView> {
     let params: any = {};
     Object.entries(options).forEach(([k, v]) => { if (v !== undefined && v !== null) params[k] = String(v); });
     return this.http.post<SequenceView>(`${this.base}/video-sequences/from-episode/${episodeId}`, {}, { params });
+  }
+  /** Storyboard / Story Approval: load the story into an H3 sequence and start it (H3 speech). */
+  produceEpisodeVideo(episodeId: string, speechEngine: SpeechEngine = 'H3', orientation: 'vertical' | 'horizontal' = 'vertical'): Observable<SequenceView> {
+    return this.http.post<SequenceView>(`${this.base}/video-sequences/produce-episode/${episodeId}`, {}, { params: { orientation, speechEngine } });
   }
   createSequence(req: CreateSequenceRequest): Observable<SequenceView> {
     return this.http.post<SequenceView>(`${this.base}/video-sequences`, req);
@@ -752,6 +762,7 @@ export interface SequenceSceneView {
 
 export interface SequenceView {
   id: string;
+  speechEngine?: SpeechEngine;
   projectId?: string;
   episodeId?: string;
   title: string;
@@ -778,6 +789,7 @@ export interface SequenceView {
 
 export interface CreateSequenceRequest {
   title: string;
+  speechEngine?: SpeechEngine;
   style: string;
   characterIds: string[];
   characterReferenceIds?: Record<string,string>;
@@ -799,3 +811,7 @@ export interface VideoGenerationJob {
   seedUsed: number | null;
   workflowUsed: string | null;
 }
+
+/** Who speaks in H3 flows: H3 itself, or IndicF5 (tts-indic) voices with H3 lip sync + ambience. */
+export type SpeechEngine = 'H3' | 'INDIC_TTS';
+

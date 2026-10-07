@@ -520,6 +520,46 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         return path == null || path.isBlank();
     }
 
+    /**
+     * The H3 reference graphs load an optional second reference image / reference audio.
+     * A LoadImage/LoadAudio node with an empty filename makes ComfyUI reject the whole
+     * prompt, so drop such nodes and every input that points at them (e.g. start image +
+     * voice audio without a separate character sheet).
+     */
+    private String pruneEmptyMediaInputs(String workflowJson) {
+        try {
+            var root = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(workflowJson);
+            java.util.Set<String> removed = new java.util.HashSet<>();
+            root.fieldNames().forEachRemaining(id -> {
+                JsonNode node = root.get(id);
+                String type = node.path("class_type").asText("");
+                JsonNode inputs = node.path("inputs");
+                if (("LoadImage".equals(type) && inputs.path("image").asText("").isBlank())
+                        || ("LoadAudio".equals(type) && inputs.path("audio").asText("").isBlank())) {
+                    removed.add(id);
+                }
+            });
+            if (removed.isEmpty()) return workflowJson;
+            removed.forEach(root::remove);
+            root.fields().forEachRemaining(e -> {
+                if (e.getValue().path("inputs") instanceof com.fasterxml.jackson.databind.node.ObjectNode in) {
+                    java.util.List<String> drop = new java.util.ArrayList<>();
+                    in.fields().forEachRemaining(f -> {
+                        JsonNode v = f.getValue();
+                        if (v.isArray() && v.size() == 2 && v.get(0).isTextual() && removed.contains(v.get(0).asText())) {
+                            drop.add(f.getKey());
+                        }
+                    });
+                    drop.forEach(in::remove);
+                }
+            });
+            return mapper.writeValueAsString(root);
+        } catch (Exception e) {
+            log.warn("Could not prune empty media inputs from H3 workflow: {}", e.getMessage());
+            return workflowJson;
+        }
+    }
+
     private String fillMiniMaxH3Template(String workflowName, String positive, long seed, int width, int height, int length, int steps, String startingImageFilename, String voiceReferenceAudioPath, String characterReferenceImageFilename) {
         boolean useVoiceReference = voiceReferenceAudioPath != null && !voiceReferenceAudioPath.isBlank();
         boolean useCharacterReference = characterReferenceImageFilename != null && !characterReferenceImageFilename.isBlank();
@@ -548,7 +588,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         numeric.put("{{HEIGHT}}", height);
         numeric.put("{{LENGTH}}", length);
         numeric.put("{{STEPS}}", steps);
-        return WorkflowTemplateFiller.fill(mapper, template, text, numeric);
+        return pruneEmptyMediaInputs(WorkflowTemplateFiller.fill(mapper, template, text, numeric));
     }
 
     /** Same pixel budget as the configured H3 size, orientation taken from the

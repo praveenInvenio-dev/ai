@@ -1,5 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import {
   ApiService, SequenceSceneView, SequenceStatusInfo, SequenceView
@@ -109,11 +110,15 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
               <option value="WAN_2_2_14B">Wan 2.2 14B - best picture, {{ maxFor('WAN_2_2_14B') }}s</option>
               <option value="WAN_2_2">Wan 2.2 5B - fastest, {{ maxFor('WAN_2_2') }}s</option>
             </select>
+            <label class="check" *ngIf="engine === 'MINIMAX_H3'" style="display:flex;gap:.5rem;align-items:flex-start">
+              <input type="checkbox" [(ngModel)]="useIndicTts">
+              <span>Indic TTS voice (IndicF5) instead of H3 speech<br><span class="muted small">Applies to "Load Story" and new sequences.</span></span>
+            </label>
           </div>
           <div class="field">
             <label for="secs">Visual shot target &mdash; {{ secondsPerScene }}s</label>
             <input id="secs" type="range" min="3" [max]="maxFor(engine)" step="1" [(ngModel)]="secondsPerScene">
-            <p class="muted small">Existing stories use measured narration/TTS duration automatically. H3 splits any scene longer than 8s into continuous visual shots. This value is only for manually entered scenes.</p>
+            <p class="muted small">With H3, story scenes are timed by their speech: long lines are split into continuous shots so nothing is cut. This value is only used for scenes without speech.</p>
           </div>
           <div class="field">
             <label for="orient">Shape</label>
@@ -154,7 +159,7 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
             <button type="button" class="btn" (click)="scenesText = example">Insert example</button>
           </div>
           <p class="muted">
-            Tip: H3 now supplies visuals only for story production. The saved TTS/dialogue track is the authoritative audio, while ambience/SFX are mixed consistently by the renderer.
+            Tip: with MiniMax H3, H3 speaks the story. Narrator lines are off-screen voice-over (characters do not move their lips), character lines are lip-synced. Wan engines have no audio and keep using the saved TTS track.
           </p>
         </div>
 
@@ -190,6 +195,7 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
             <p class="muted">
               {{ engineName(seq.engine) }} &middot; {{ seq.secondsPerScene }}s per scene &middot;
               {{ seq.orientation }} &middot; {{ seq.continuity === 'CHAIN' ? 'chained' : 'keyframes' }}
+              <ng-container *ngIf="seq.engine === 'MINIMAX_H3'"> &middot; voice: {{ seq.speechEngine === 'INDIC_TTS' ? 'Indic TTS (IndicF5)' : 'H3 speech' }}</ng-container>
             </p>
           </div>
           <div class="row">
@@ -351,6 +357,8 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
   continuity: 'KEYFRAMES' | 'CHAIN' = 'KEYFRAMES';
   crossfade = 0.4;
   review = true;
+  /** INDIC_TTS instead of H3 speech - one or the other (H3 engine only). */
+  useIndicTts = false;
   scenesText = '';
   readonly example =
     'Milo, a cheerful boy in a yellow shirt, points up at a glowing golden mango hanging in a big sunny tree, Momo the puppy beside him | Milo points and gasps, Momo wags her tail, leaves sway, slow push-in\n' +
@@ -384,7 +392,7 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
 
   private pollHandle?: ReturnType<typeof setInterval>;
 
-  constructor(public api: ApiService) {}
+  constructor(public api: ApiService, private route: ActivatedRoute) {}
 
   ngOnInit(): void {
     this.api.sequenceStatus().subscribe({
@@ -395,7 +403,10 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
       }
     });
     this.api.listProjects().subscribe({ next: p => { this.projects = p; }, error: () => { /* picker stays empty */ } });
-    this.refreshList(true);
+    // Storyboard / Story Approval "Produce video" links here with ?id=<sequence>.
+    const openId = this.route.snapshot.queryParamMap.get('id');
+    if (openId) { this.open(openId); }
+    this.refreshList(!openId);
   }
 
   ngOnDestroy(): void { this.stopPolling(); }
@@ -412,6 +423,8 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
     const v = engine === 'MINIMAX_H3' ? s?.h3MaxSeconds : engine === 'WAN_2_2_14B' ? s?.wan14bMaxSeconds : s?.wanMaxSeconds;
     return v && v > 0 ? Math.floor(v) : (engine === 'MINIMAX_H3' ? 10 : 5);
   }
+
+  speechEngine(): 'H3' | 'INDIC_TTS' { return this.engine === 'MINIMAX_H3' && this.useIndicTts ? 'INDIC_TTS' : 'H3'; }
 
   onEngine(): void { this.secondsPerScene = Math.min(this.secondsPerScene, this.maxFor(this.engine)); }
 
@@ -464,7 +477,7 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
   loadStory(): void {
     if (!this.episodeId) return;
     this.loadingStory = true; this.error = '';
-    this.api.createSequenceFromEpisode(this.episodeId, { engine: this.engine, orientation: this.orientation, crossfadeSeconds: this.crossfade, continuity: this.continuity, reviewKeyframes: false }).subscribe({
+    this.api.createSequenceFromEpisode(this.episodeId, { engine: this.engine, orientation: this.orientation, crossfadeSeconds: this.crossfade, continuity: this.continuity, reviewKeyframes: false, speechEngine: this.speechEngine() }).subscribe({
       next: s => { this.loadingStory = false; this.showForm = false; this.seq = s; this.refreshList(false); this.startPolling(); },
       error: err => { this.loadingStory = false; this.error = err?.error?.message || 'Could not load the story.'; }
     });
@@ -475,7 +488,7 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
     this.api.createSequence({
       title: this.title.trim(), style: this.style.trim(), characterIds: [...this.selectedChars], characterReferenceIds: Object.fromEntries([...this.selectedChars].filter(id=>!!this.selectedReferenceIds[id]).map(id=>[id,this.selectedReferenceIds[id]])),
       engine: this.engine, secondsPerScene: this.secondsPerScene, orientation: this.orientation,
-      crossfadeSeconds: this.crossfade, continuity: this.continuity, reviewKeyframes: this.review,
+      crossfadeSeconds: this.crossfade, continuity: this.continuity, reviewKeyframes: this.review, speechEngine: this.speechEngine(),
       scenes: this.parsedScenes()
     }).subscribe({
       next: s => { this.creating = false; this.showForm = false; this.seq = s; this.refreshList(false); this.startPolling(); },

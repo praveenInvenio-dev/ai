@@ -47,12 +47,21 @@ public class VideoGenerationController {
             // clip as before this existed.
             @RequestParam(value = "narrationText", required = false) String narrationText,
             @RequestParam(value = "voiceProfileId", required = false) UUID voiceProfileId,
-            @RequestParam(value = "workflow", required = false, defaultValue = "WAN_2_2") String workflow) {
+            @RequestParam(value = "workflow", required = false, defaultValue = "WAN_2_2") String workflow,
+            // H3 speech: a loaded story scene, edited dialogue ("Name: line"), and the
+            // ambience/SFX/music direction. Narrator lines are rendered as voice-over.
+            @RequestParam(value = "sceneId", required = false) UUID sceneId,
+            @RequestParam(value = "dialogueText", required = false) String dialogueText,
+            @RequestParam(value = "audioDirection", required = false) String audioDirection,
+            @RequestParam(value = "useSceneVoices", required = false, defaultValue = "false") boolean useSceneVoices,
+            // H3 (H3 speaks) or INDIC_TTS (IndicF5 voice speaks; H3 animates + ambience)
+            @RequestParam(value = "speechEngine", required = false, defaultValue = "H3") String speechEngine) {
         VideoGenJob job = service.createJob(image, prompt);
         // Fired from this controller bean (not a self-invocation inside the
         // service), which is what lets @Async actually intercept the call -
         // see the note on generateAsync().
-        service.generateAsync(job.getId(), prompt, negativePrompt, durationSeconds, seed, narrationText, voiceProfileId, workflow);
+        service.generateAsync(job.getId(), prompt, negativePrompt, durationSeconds, seed, narrationText, voiceProfileId, workflow,
+                new VideoGenerationService.H3SpeechInput(sceneId, dialogueText, audioDirection, useSceneVoices, speechEngine));
         return ResponseEntity.accepted().body(Map.of("jobId", job.getId()));
     }
 

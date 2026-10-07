@@ -7,6 +7,15 @@ import com.aistorystudio.provider.StorageProvider;
 import com.aistorystudio.provider.TextToSpeechProvider;
 import com.aistorystudio.provider.VideoGenerationProvider;
 import com.aistorystudio.repository.VoiceProfileRepository;
+import com.aistorystudio.domain.Episode;
+import com.aistorystudio.domain.Scene;
+import com.aistorystudio.h3.H3SceneRenderer;
+import com.aistorystudio.repository.EpisodeRepository;
+import com.aistorystudio.repository.SceneRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Files;
+import java.util.Comparator;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,6 +54,10 @@ public class VideoGenerationService {
     private final int defaultWidth;
     private final int defaultHeight;
     private final double maxDurationSeconds;
+    private final H3SceneRenderer h3SceneRenderer;
+    private final SceneRepository sceneRepository;
+    private final EpisodeRepository episodeRepository;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public VideoGenerationService(
             ProviderGateway providerGateway,
@@ -53,6 +66,9 @@ public class VideoGenerationService {
             MediaProcessor mediaProcessor,
             VoiceProfileRepository voiceProfileRepository,
             com.aistorystudio.service.VoiceProfileService voiceProfileService,
+            H3SceneRenderer h3SceneRenderer,
+            SceneRepository sceneRepository,
+            EpisodeRepository episodeRepository,
             @Value("${studio.animation.local-ai.width:832}") int defaultWidth,
             @Value("${studio.animation.local-ai.height:480}") int defaultHeight,
             @Value("${studio.animation.local-ai.max-duration-seconds:6.0}") double maxDurationSeconds) {
@@ -65,6 +81,19 @@ public class VideoGenerationService {
         this.defaultWidth = defaultWidth;
         this.defaultHeight = defaultHeight;
         this.maxDurationSeconds = maxDurationSeconds;
+        this.h3SceneRenderer = h3SceneRenderer;
+        this.sceneRepository = sceneRepository;
+        this.episodeRepository = episodeRepository;
+    }
+
+    /** Extra inputs for H3 speech. sceneId = a story scene loaded on the page;
+     *  useSceneVoices = the user did not edit narration/dialogue, so the scene's ordered
+     *  voice segments are used as-is. */
+    public record H3SpeechInput(UUID sceneId, String dialogueText, String audioDirection, boolean useSceneVoices,
+                                String speechEngine) {
+        public static H3SpeechInput none() {
+            return new H3SpeechInput(null, null, null, false, null);
+        }
     }
 
     public record StatusView(
@@ -152,6 +181,14 @@ public class VideoGenerationService {
     public void generateAsync(UUID jobId, String prompt, String negativePrompt,
                                double durationSeconds, Long seed,
                                String narrationText, UUID voiceProfileId, String workflow) {
+        generateAsync(jobId, prompt, negativePrompt, durationSeconds, seed, narrationText, voiceProfileId, workflow,
+                H3SpeechInput.none());
+    }
+
+    @Async("videoGenerationExecutor")
+    public void generateAsync(UUID jobId, String prompt, String negativePrompt,
+                               double durationSeconds, Long seed,
+                               String narrationText, UUID voiceProfileId, String workflow, H3SpeechInput h3) {
         VideoGenJob job = jobStore.get(jobId);
         if (job == null) {
             log.warn("Video generation job {} vanished before it could start (past its retention window?)", jobId);
@@ -160,33 +197,25 @@ public class VideoGenerationService {
         job.setStatus(VideoGenJobStatus.RUNNING);
         try {
             String resolvedWorkflow = resolveWorkflow(workflow, job.getStartingImagePath() != null);
-            // Voice generation is deliberately kept separate from the video model.
-            // Wan and H3 create the visual clip; the selected Voice Lab/Chatterbox
-            // voice is synthesized afterwards and muxed as the final narration track.
-            String voiceReferenceAudioPath = null;
-            // The VoiceProfile is resolved later by muxNarration(). Do not pass its
-            // reference WAV into H3: standard TTS/voice cloning owns narration.
-            String generationPrompt = prompt;
             boolean nativeH3Audio = resolvedWorkflow.toLowerCase(Locale.ROOT).contains("minimax-h3");
-            // MiniMax H3 is an audiovisual model. For H3, narration is part of the
-            // generation prompt so the model creates synchronized native audio.
-            // Wan keeps the existing external TTS/mux path.
-            if (nativeH3Audio && narrationText != null && !narrationText.isBlank()
-                    && (prompt == null || !prompt.contains("[NATIVE H3 AUDIO]"))) {
-                generationPrompt = (prompt == null ? "" : prompt)
-                        + "\n\n[NATIVE H3 AUDIO]\nNarrator (off-screen): <d>" + narrationText.trim() + "</d>\n"
-                        + "DELIVERY: Perform the complete narration with natural conversational pacing, realistic breaths and pauses, subtle emotional variation, human-like intonation and emphasis. Do not rush, chant, read mechanically, skip words, or paraphrase. Synchronize the voice with the visible action; keep the visible character's lips closed during off-screen narration. SCENE BOUNDARY: finish the final spoken line completely before the clip ends; never cut off a word, sentence, question, answer, reaction or emotional release; leave a short natural tail after the final word. The next scene must start with a new complete spoken beat, never a continuation of this scene.";
+            H3SpeechInput speech = h3 == null ? H3SpeechInput.none() : h3;
+            boolean hasSpeech = notBlank(narrationText) || notBlank(speech.dialogueText()) || speech.sceneId() != null;
+            if (nativeH3Audio && hasSpeech) {
+                // Same renderer as Story Video Production and Storyboard: H3 speaks, narrator is
+                // voice-over (the visual pass never sees narrator words, so no lip sync on it).
+                renderH3Speech(job, prompt, durationSeconds, narrationText, speech);
+                return;
             }
+
             VideoGenerationProvider.VideoGenerationRequest request = new VideoGenerationProvider.VideoGenerationRequest(
-                    job.getStartingImagePath(), generationPrompt, negativePrompt,
-                    durationSeconds, 0, 0, resolvedWorkflow, voiceReferenceAudioPath, seed, 0);
+                    job.getStartingImagePath(), stripNativeAudioBlock(prompt), negativePrompt,
+                    durationSeconds, 0, 0, resolvedWorkflow, null, seed, 0);
             VideoGenerationProvider.VideoGenerationResult result = providerGateway.generateVideo(request);
 
             byte[] finalVideoBytes = result.videoBytes();
             String finalExtension = result.fileExtension();
-            // Both Wan and H3 use the same standalone voice-generation path. The final
-            // narration track is therefore deterministic and can use the selected cloned voice.
-            if (!nativeH3Audio && narrationText != null && !narrationText.isBlank()) {
+            // Wan has no audio: the narration is a TTS track (optionally a Voice Lab clone).
+            if (!nativeH3Audio && notBlank(narrationText)) {
                 finalVideoBytes = muxNarration(jobId, finalVideoBytes, finalExtension, narrationText, voiceProfileId);
                 finalExtension = "mp4";
             }
@@ -204,6 +233,51 @@ public class VideoGenerationService {
             job.setErrorMessage(userMessage(e));
             job.setStatus(VideoGenJobStatus.FAILED);
         }
+    }
+
+    private void renderH3Speech(VideoGenJob job, String prompt, double durationSeconds, String narrationText,
+                                H3SpeechInput speech) throws IOException {
+        Scene scene = speech.sceneId() == null ? null : sceneRepository.findById(speech.sceneId()).orElse(null);
+        Episode episode = scene == null ? null : episodeRepository.findById(scene.getEpisodeId()).orElse(null);
+        List<H3SceneRenderer.Line> lines = scene != null && speech.useSceneVoices()
+                ? H3SceneRenderer.linesFromVoiceSegments(mapper, scene.getVoiceSegmentsJson(), scene.getNarration())
+                : H3SceneRenderer.linesFromText(narrationText, speech.dialogueText());
+        String audioSpec = notBlank(speech.audioDirection()) ? null : (scene == null ? null : scene.getAudioSpecJson());
+        H3SceneRenderer.SceneSpec spec = new H3SceneRenderer.SceneSpec(
+                stripNativeAudioBlock(prompt),
+                scene == null ? null : scene.getLocation(),
+                scene == null ? null : scene.getEmotion(),
+                episode == null ? null : episode.getVisualStyle(),
+                episode == null ? null : episode.getLanguage(),
+                lines, audioSpec, speech.audioDirection(), durationSeconds,
+                episode != null ? episode.getId().toString() : job.getId().toString(),
+                H3SceneRenderer.SpeechEngine.parse(speech.speechEngine()));
+        Path start = job.getStartingImagePath() == null ? null : Path.of(job.getStartingImagePath());
+        Path work = Files.createTempDirectory("videogen-h3-" + job.getId() + "-");
+        try {
+            H3SceneRenderer.Result r = h3SceneRenderer.render(spec, new H3SceneRenderer.Options(start, 0, 0, work, () -> false));
+            Path stored = storage.store("video-generation/results/" + job.getId() + ".mp4", Files.readAllBytes(r.video()));
+            job.setResultVideoPath(stored.toString());
+            job.setFileExtension("mp4");
+            job.setWorkflowUsed("minimax-h3-scene (" + r.shots() + " shot" + (r.shots() == 1 ? "" : "s") + ")");
+            if (!r.warnings().isEmpty()) log.info("Video generation job {} H3 notes: {}", job.getId(), r.warnings());
+            job.setStatus(VideoGenJobStatus.SUCCEEDED);
+        } finally {
+            try (var walk = Files.walk(work)) {
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> { try { Files.deleteIfExists(p); } catch (IOException ignored) { } });
+            } catch (IOException ignored) { }
+        }
+    }
+
+    /** Older pages appended a "[NATIVE H3 AUDIO]" block to the prompt; speech is built server-side now. */
+    private static String stripNativeAudioBlock(String prompt) {
+        if (prompt == null) return "";
+        int i = prompt.toUpperCase(Locale.ROOT).indexOf("[NATIVE H3 AUDIO]");
+        return (i >= 0 ? prompt.substring(0, i) : prompt).trim();
+    }
+
+    private static boolean notBlank(String v) {
+        return v != null && !v.isBlank();
     }
 
     private String resolveWorkflow(String workflow, boolean hasStartingImage) {

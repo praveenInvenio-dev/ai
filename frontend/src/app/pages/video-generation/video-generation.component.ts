@@ -111,14 +111,20 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
       </div>
 
       <div class="field audio-panel" *ngIf="workflow === 'MINIMAX_H3'">
-        <label>Native H3 story audio</label>
-        <p class="muted">Loaded from the selected story scene. H3 generates narration, dialogue, ambience, SFX and music together with the video.</p>
-        <label for="narration">Narration / voiceover</label>
-        <textarea id="narration" rows="2" [(ngModel)]="narrationText" (ngModelChange)="rebuildH3Prompt()" placeholder="Scene narration"></textarea>
-        <label for="dialogue">Dialogue</label>
-        <textarea id="dialogue" rows="3" [(ngModel)]="dialogueText" (ngModelChange)="rebuildH3Prompt()" placeholder="Character: dialogue"></textarea>
+        <label>Native H3 speech &amp; sound</label>
+        <label class="check" style="display:flex;gap:.5rem;align-items:flex-start">
+          <input type="checkbox" [(ngModel)]="useIndicTts">
+          <span><strong>Use Indic TTS voice (IndicF5) instead of H3 speech</strong><br>
+          <span class="muted small">IndicF5 speaks the lines (native Indian-language pronunciation); H3 only animates &mdash; dialogue lip-synced to the TTS voice &mdash; and adds ambience/SFX/music under it. Needs the <code>tts-indic</code> service.</span></span>
+        </label>
+        <p class="muted">H3 speaks every line. <strong>Narration is off-screen voice-over</strong> &mdash; characters do not move their lips for it. <strong>Dialogue</strong> lines are lip-synced by the named character. Long text is split into several continuous shots automatically, so the clip length follows the speech (the slider is only used when there is no speech).</p>
+        <label for="narration">Narration / voice-over (no lip sync)</label>
+        <textarea id="narration" rows="2" [(ngModel)]="narrationText" (ngModelChange)="markAudioEdited()" placeholder="Scene narration"></textarea>
+        <label for="dialogue">On-screen dialogue (lip-synced) &mdash; one per line: <code>Name: line [delivery]</code></label>
+        <textarea id="dialogue" rows="3" [(ngModel)]="dialogueText" (ngModelChange)="markAudioEdited()" placeholder="Advik: Amma, look! [excited]"></textarea>
         <label for="audioDirection">Background ambience / SFX / music</label>
-        <textarea id="audioDirection" rows="4" [(ngModel)]="audioDirection" (ngModelChange)="rebuildH3Prompt()" placeholder="Ambience, sound effects and music direction"></textarea>
+        <textarea id="audioDirection" rows="4" [(ngModel)]="audioDirection" placeholder="Ambience: ...&#10;Sound effects: ...&#10;Music: mood, intensity 0.3"></textarea>
+        <p class="muted small" *ngIf="loadedSceneId && !sceneAudioEdited">Using the scene's original line order (narration and dialogue interleaved).</p>
       </div>
       <div class="field" *ngIf="workflow !== 'MINIMAX_H3'">
         <label for="narration">Narration (optional)</label>
@@ -191,6 +197,11 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   audioDirection = '';
   voiceProfileId = '';
   audioDurationWarning = '';
+  /** Story scene whose lines were loaded; sent so the backend can use its ordered voice segments. */
+  loadedSceneId?: string;
+  /** INDIC_TTS instead of H3 speech - one or the other. */
+  useIndicTts = false;
+  sceneAudioEdited = false;
   voiceProfiles: VoiceProfile[] = [];
 
   // "Use an image from a story" picker
@@ -267,6 +278,7 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     const file = input.files?.[0];
     if (!file) { return; }
     this.selectedFile = file;
+    this.loadedSceneId = undefined; // a manual upload is no longer the story scene
     if (this.previewUrl) { URL.revokeObjectURL(this.previewUrl); }
     this.previewUrl = URL.createObjectURL(file);
   }
@@ -345,6 +357,8 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
         this.dialogueText = this.parseDialogue(scene.voiceSegments, scene.narration || '');
         this.audioDirection = this.parseAudioSpec(scene.audioSpecJson);
         this.workflow = 'MINIMAX_H3';
+        this.loadedSceneId = scene.id;
+        this.sceneAudioEdited = false;
         const estimatedAudioSeconds = this.estimateSceneAudioSeconds(scene.voiceSegments, scene.narration || '');
         const requestedSceneSeconds = Math.max(
           scene.imageDurationSeconds && scene.imageDurationSeconds > 0 ? scene.imageDurationSeconds : 0,
@@ -355,13 +369,11 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
         if (requestedSceneSeconds > 0) {
           this.durationSeconds = Math.min(Math.max(requestedSceneSeconds, 1), this.maxSeconds());
           if (requestedSceneSeconds > this.maxSeconds()) {
-            this.audioDurationWarning = `This scene's narration/dialogue is estimated at ${requestedSceneSeconds.toFixed(1)}s, but H3 supports ${this.maxSeconds().toFixed(1)}s. Shorten the dialogue or split the scene to keep every line audible.`;
+            this.audioDurationWarning = `Speech is about ${requestedSceneSeconds.toFixed(1)}s - longer than one H3 shot (${this.maxSeconds().toFixed(1)}s). It will be rendered as several continuous shots; nothing is cut.`;
           }
         }
-        // H3 is audiovisual: build the complete native audio direction into the
-        // generation prompt. The separate fields below remain editable so the user
-        // can correct narration/dialogue/SFX before pressing Generate.
-        this.rebuildH3Prompt();
+        // Prompt stays visual-only. Speech/sound are sent as separate fields and the
+        // backend builds the H3 prompts (same renderer as Story Video Production).
         this.mode = 'i2v';
         this.loadingScene = false;
       },
@@ -403,22 +415,8 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     return seconds + 0.6;
   }
 
-  rebuildH3Prompt(): void {
-    if (this.workflow !== 'MINIMAX_H3') return;
-    const visual = this.prompt.split(/\n\n\[NATIVE H3 AUDIO\]/i)[0].trim();
-    const sections: string[] = [];
-    if (this.narrationText.trim()) {
-      sections.push(`Narrator (off-screen): <d>${this.narrationText.trim()}</d>`);
-    }
-    if (this.dialogueText.trim()) {
-      sections.push(`Dialogue:\n${this.dialogueText.trim()}`);
-    }
-    if (this.audioDirection.trim()) {
-      sections.push(this.audioDirection.trim());
-    }
-    this.prompt = sections.length
-      ? `${visual}\n\n[NATIVE H3 AUDIO]\n${sections.join('\n')}\nDELIVERY: Perform every spoken line completely. Use natural conversational pacing, realistic pauses, breaths, subtle hesitation where appropriate, expressive but restrained emotion, varied intonation, natural emphasis, and believable turn-taking between speakers. Do not rush, chant, read mechanically, or skip/rephrase any line. Keep narration off-screen unless explicitly stated; only the active dialogue speaker moves their lips. Synchronize speech, facial expression, mouth movement and visible action.`.trim()
-      : visual;
+  markAudioEdited(): void {
+    this.sceneAudioEdited = true;
   }
 
   private parseAudioSpec(raw?: string): string {
@@ -459,8 +457,17 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     this.job = undefined;
 
     const image = this.mode === 'i2v' ? (this.selectedFile ?? null) : null;
-    this.api.createVideoGenerationJob(image, this.prompt, this.negativePrompt, this.durationSeconds,
-      this.narrationText || undefined, this.voiceProfileId || undefined, this.workflow)
+    const h3 = this.workflow === 'MINIMAX_H3';
+    const visualPrompt = this.prompt.split(/\n\n\[NATIVE H3 AUDIO\]/i)[0].trim();
+    this.api.createVideoGenerationJob(image, visualPrompt, this.negativePrompt, this.durationSeconds,
+      this.narrationText || undefined, h3 ? undefined : (this.voiceProfileId || undefined), this.workflow,
+      h3 ? {
+        sceneId: this.loadedSceneId,
+        dialogueText: this.dialogueText || undefined,
+        audioDirection: this.audioDirection || undefined,
+        useSceneVoices: !!this.loadedSceneId && !this.sceneAudioEdited,
+        speechEngine: this.useIndicTts ? 'INDIC_TTS' : 'H3'
+      } : undefined)
       .subscribe({
         next: res => {
           this.submitting = false;

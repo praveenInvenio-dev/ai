@@ -167,6 +167,25 @@ studio:
     retention-hours: ${VIDEO_SEQUENCE_RETENTION_HOURS:24}
   video-generation:
     retention-hours: ${VIDEO_GENERATION_RETENTION_HOURS:24}
+  h3:
+    # Shared H3 scene renderer (Video Generation, Story Video Production, Storyboard).
+    # H3 speaks the scene: narrator = off-screen voice-over (audio-only H3 pass, the
+    # video pass gets no words so nobody lip-syncs it); character lines = lip-synced.
+    scene:
+      max-shot-seconds: ${H3_SCENE_MAX_SHOT_SECONDS:${LOCAL_AI_ANIMATION_MINIMAX_H3_SHOT_SECONDS:8.0}}
+      speech-tail-seconds: ${H3_SCENE_SPEECH_TAIL_SECONDS:0.8}
+      music-intensity-cap: ${H3_SCENE_MUSIC_INTENSITY_CAP:0.35}
+      narrator-voice: ${H3_SCENE_NARRATOR_VOICE:warm, clear, mature storyteller voice with gentle expression}
+      loudness-lufs: ${H3_SCENE_LOUDNESS_LUFS:-16}
+      voice-over-tail-retry: ${H3_SCENE_VO_TAIL_RETRY:true}
+      # "Indic TTS voice" option (speechEngine=INDIC_TTS): IndicF5 voices speak instead of H3.
+      # Needs the tts-indic container: COMPOSE_PROFILES=chatterbox,indic
+      # Empty = language default female voice (e.g. indic:kn-in-sapna). Characters alternate
+      # male/female unless the scene's voice segment already names an indic:* voice.
+      indic-narrator-voice: ${H3_SCENE_INDIC_NARRATOR_VOICE:}
+      # Dialogue shots pass the TTS clip to H3 as reference audio so the lips follow it
+      # (uses the ref2va model, LOCAL_AI_ANIMATION_MINIMAX_H3_REF2VA_MODEL).
+      tts-lipsync-reference: ${H3_SCENE_TTS_LIPSYNC_REFERENCE:true}
   audio:
     h3:
       # Classic Story Production is image-only; H3 supplies the soundtrack.

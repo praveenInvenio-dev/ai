@@ -45,8 +45,25 @@ public class VideoSequenceController {
             @RequestParam(defaultValue = "vertical") String orientation,
             @RequestParam(required = false) Double crossfadeSeconds,
             @RequestParam(defaultValue = "KEYFRAMES") String continuity,
-            @RequestParam(defaultValue = "false") Boolean reviewKeyframes) {
-        VideoSequence s = service.createFromEpisode(episodeId, engine, secondsPerScene, orientation, crossfadeSeconds, continuity, reviewKeyframes);
+            @RequestParam(defaultValue = "false") Boolean reviewKeyframes,
+            @RequestParam(defaultValue = "H3") String speechEngine) {
+        VideoSequence s = service.createFromEpisode(episodeId, engine, secondsPerScene, orientation, crossfadeSeconds, continuity, reviewKeyframes, speechEngine);
+        return ResponseEntity.accepted().body(service.view(s.id));
+    }
+
+    /**
+     * Storyboard / Story Approval "Produce video": one call that loads the story into a
+     * MiniMax H3 sequence and starts it. Same renderer as Video Generation, so H3 speaks
+     * the narration (voice-over, no lip sync) and the character dialogue (lip-synced).
+     */
+    @PostMapping("/produce-episode/{episodeId}")
+    public ResponseEntity<VideoSequenceService.SequenceView> produceEpisode(@PathVariable UUID episodeId,
+            @RequestParam(defaultValue = "vertical") String orientation,
+            @RequestParam(required = false) Double crossfadeSeconds,
+            @RequestParam(defaultValue = "H3") String speechEngine) {
+        VideoSequence s = service.createFromEpisode(episodeId, "MINIMAX_H3", null, orientation,
+                crossfadeSeconds == null ? 0.3 : crossfadeSeconds, "KEYFRAMES", false, speechEngine);
+        service.startVideosAsync(s.id);
         return ResponseEntity.accepted().body(service.view(s.id));
     }
 

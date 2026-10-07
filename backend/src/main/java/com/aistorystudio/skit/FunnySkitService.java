@@ -8,6 +8,8 @@ import com.aistorystudio.repository.CharacterRepository;
 import com.aistorystudio.provider.MediaProcessor;
 import com.aistorystudio.provider.StorageProvider;
 import com.aistorystudio.provider.VideoGenerationProvider;
+import com.aistorystudio.h3.H3SceneRenderer;
+import com.aistorystudio.sequence.ClipMerger;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -25,10 +27,11 @@ import java.util.*;
 public class FunnySkitService {
  private static final Set<String> IMAGE_EXT=Set.of("png","jpg","jpeg","webp");
  private final ProviderGateway gateway; private final StorageProvider storage; private final MediaProcessor media; private final FunnySkitJobStore jobs;
+ private final H3SceneRenderer h3SceneRenderer;
  private final WebClient rumik; private final String rumikSpeaker; private final CharacterRepository characterRepository; private final CharacterReferenceRepository characterReferenceRepository; private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
  public FunnySkitService(ProviderGateway gateway, StorageProvider storage, MediaProcessor media, FunnySkitJobStore jobs,
      WebClient.Builder wb, @Value("${studio.audio.rumik.base-url:http://tts-rumik:5006}") String rumikUrl,
-     @Value("${studio.audio.rumik.voice:Ira}") String rumikSpeaker, CharacterRepository characterRepository, CharacterReferenceRepository characterReferenceRepository){this.gateway=gateway;this.storage=storage;this.media=media;this.jobs=jobs;this.rumik=wb.baseUrl(rumikUrl).build();this.rumikSpeaker=rumikSpeaker;this.characterRepository=characterRepository;this.characterReferenceRepository=characterReferenceRepository;}
+     @Value("${studio.audio.rumik.voice:Ira}") String rumikSpeaker, CharacterRepository characterRepository, CharacterReferenceRepository characterReferenceRepository, H3SceneRenderer h3SceneRenderer){this.h3SceneRenderer=h3SceneRenderer;this.gateway=gateway;this.storage=storage;this.media=media;this.jobs=jobs;this.rumik=wb.baseUrl(rumikUrl).build();this.rumikSpeaker=rumikSpeaker;this.characterRepository=characterRepository;this.characterReferenceRepository=characterReferenceRepository;}
  public record JobView(UUID id, FunnySkitJob.Status status, String errorMessage, String language, String script, String[] visualPrompts, String[] dialogues, String[] imageUrls, String soundscape, String resultVideoPath, String characterId, String characterReferenceId){}
  public FunnySkitJob createJob(MultipartFile character, String idea, String language, UUID characterId, UUID referenceId){
    if(idea==null||idea.isBlank()) throw new IllegalArgumentException("Describe the funny skit idea.");
@@ -102,36 +105,61 @@ public class FunnySkitService {
    }catch(Exception e){throw new IllegalStateException("Could not regenerate scene "+scene+": "+e.getMessage(),e);}
  }
 
- @Async("videoGenerationExecutor") public void renderApprovedAsync(UUID id, String tone, String speaker){
-   FunnySkitJob job=jobs.get(id); if(job==null)return; job.setStatus(FunnySkitJob.Status.RUNNING); List<Path> temp=new ArrayList<>();
-   try{ Path character=findCharacterReference(id); List<Path> speechParts=new ArrayList<>();
-     for(int i=0;i<3;i++){Path speech=Files.createTempFile("skit-speech-p"+(i+1)+"-", ".wav"); byte[] raw=synthesizeSkitSpeech(cleanSpeechText(job.getDialogues()[i]),job.getLanguage(),tone,speaker); byte[] polished=media.humanizeVoice(raw); Files.write(speech, media.fitAudioDuration(polished,5.0)); speechParts.add(speech); temp.add(speech);}
-     List<Path> clips=new ArrayList<>(); Path previousEnd=character;
-     for(int i=0;i<3;i++){Path storyboard=Path.of(job.getImagePaths()[i]); Path clip=generateChunkFromImage(character,i==0?storyboard:previousEnd,storyboard,job.getVisualPrompts()[i],job.getSoundscape(),speechParts.get(i),5,job.getLanguage(),i+1,3); clips.add(clip); temp.add(clip); Path end=Files.createTempFile("skit-end-", ".png"); extractLastFrame(clip,end); temp.add(end); previousEnd=end;}
-     Path out=Files.createTempFile("funny-skit-", ".mp4"); temp.add(out); media.concatVideos(clips,out); Path stored=storage.store("funny-skits/results/"+id+".mp4",Files.readAllBytes(out)); job.setResultVideoPath(stored.toString()); job.setStatus(FunnySkitJob.Status.SUCCEEDED);
-   }catch(Exception e){job.setErrorMessage(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage());job.setStatus(FunnySkitJob.Status.FAILED);} finally{for(Path p:temp)cleanup(p);}
+ /** Kept for callers that do not pass a speech engine: H3 speaks. */
+ public void renderApprovedAsync(UUID id, String tone, String speaker){ renderApprovedAsync(id, tone, speaker, "H3"); }
+
+ /**
+  * Same shared H3 scene renderer as Video Generation / Story Video Production / Storyboard.
+  * Each approved storyboard frame becomes one part; the skit lines are on-screen dialogue
+  * (lip-synced). speechEngine H3 = H3 speaks; INDIC_TTS = IndicF5 voice speaks and H3 lip-syncs
+  * to it (character sheet passed as identity reference), ambience/SFX/music from H3.
+  */
+ @Async("videoGenerationExecutor") public void renderApprovedAsync(UUID id, String tone, String speaker, String speechEngine){
+   FunnySkitJob job=jobs.get(id); if(job==null)return; job.setStatus(FunnySkitJob.Status.RUNNING);
+   Path work=null;
+   try{
+     Path character=findCharacterReference(id);
+     work=Files.createTempDirectory("skit-h3-"+id+"-");
+     H3SceneRenderer.SpeechEngine engine=H3SceneRenderer.SpeechEngine.parse(speechEngine);
+     List<Path> parts=new ArrayList<>();
+     for(int i=0;i<3;i++){
+       Path storyboard=Path.of(job.getImagePaths()[i]);
+       List<H3SceneRenderer.Line> lines=skitLines(job.getDialogues()[i], tone);
+       String visual=job.getVisualPrompts()[i]+". Part "+(i+1)+" of 3 of a short comedy skit; expressive comedic acting and timing.";
+       String sound=job.getSoundscape()==null||job.getSoundscape().isBlank()?null:"Ambience: "+job.getSoundscape();
+       var spec=new H3SceneRenderer.SceneSpec(visual,null,tone,"natural realistic social-media video",job.getLanguage(),
+           lines,null,sound,5.0,"skit-"+id,engine);
+       var r=h3SceneRenderer.render(spec,new H3SceneRenderer.Options(storyboard,0,0,work.resolve("part-"+(i+1)),()->false,character));
+       Path part=work.resolve("skit-part-"+(i+1)+".mp4"); Files.copy(r.video(),part,java.nio.file.StandardCopyOption.REPLACE_EXISTING); parts.add(part);
+     }
+     Path out=work.resolve("funny-skit.mp4");
+     int[] wh=firstSize(parts.get(0));
+     ClipMerger.merge(parts,out,wh[0],wh[1],0);
+     Path stored=storage.store("funny-skits/results/"+id+".mp4",Files.readAllBytes(out));
+     job.setResultVideoPath(stored.toString()); job.setStatus(FunnySkitJob.Status.SUCCEEDED);
+   }catch(Exception e){job.setErrorMessage(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage());job.setStatus(FunnySkitJob.Status.FAILED);}
+   finally{ if(work!=null) deleteTree(work); }
  }
- private Path generateChunkFromImage(Path character,Path startImage,Path storyboard,String visual,String sound,Path audio,double duration,String language,int part,int total)throws Exception{
-   String continuity=part==1?"Begin from this approved storyboard frame.":"Continue exactly from the supplied previous final frame.";
-   String prompt=visual+"\n\n5-SECOND CONTINUATION, PART "+part+" OF "+total+". "+continuity+" The approved storyboard image defines the visual presentation. Preserve it closely while adding natural motion. Keep the locked character identity exactly consistent. Language: "+language+". Use supplied reference audio for spoken performance and timing. No additional dialogue, captions or text.";
-   var req=new VideoGenerationProvider.VideoGenerationRequest(storyboard.toString(),prompt,"blurry, deformed face, identity drift, extra limbs, subtitles, watermark, logos",duration,480,832,"minimax-h3-reference-character-to-video",audio.toString(),character.toString(),null,8);
-   var result=gateway.generateVideo(req);
-   var soundscape=gateway.generateH3Audio(new VideoGenerationProvider.H3AudioRequest("Instrumental/background sound design only. NO SPEECH, NO VOICES, NO DIALOGUE, NO SINGING. "+sound, duration,null,8,true));
-   byte[] mixed=media.mixAudioTracks(Files.readAllBytes(audio),soundscape.audioBytes(),duration);
-   Path raw=Files.createTempFile("skit-raw-", ".mp4"); Files.write(raw,result.videoBytes()); Path clip=Files.createTempFile("skit-part-", ".mp4"); media.addAudioTrack(raw,mixed,clip); Files.deleteIfExists(raw); return clip;
+
+ /** Skit lines are spoken on screen. "Name: line" keeps the name; plain text = the main character. */
+ private List<H3SceneRenderer.Line> skitLines(String dialogue, String tone){
+   List<H3SceneRenderer.Line> out=new ArrayList<>();
+   for(H3SceneRenderer.Line l:H3SceneRenderer.linesFromText(null,dialogue)){
+     String speaker=l.voiceOver()?"Main character":l.speaker();
+     String delivery=l.delivery()==null||l.delivery().isBlank()?tone:l.delivery();
+     out.add(new H3SceneRenderer.Line(speaker,l.text(),delivery,false,0,null));
+   }
+   if(out.isEmpty()&&dialogue!=null&&!dialogue.isBlank()) out.add(new H3SceneRenderer.Line("Main character",dialogue,tone,false,0,null));
+   return out;
  }
- private Path generateChunk(Path character,Path startImage,String visual,String sound,Path audio,double duration,String language,int part,int total)throws Exception{
-   String continuity = part==1
-       ? "This is PART 1. Establish the opening situation naturally."
-       : "This is PART "+part+" of "+total+" and MUST begin exactly from the final moment of the previous part. The supplied starting image is the previous part's final frame. Continue the same character, location, wardrobe, props, lighting and camera context with no reset, jump, redesign or time skip. Continue the physical action smoothly before delivering this part's beat.";
-   String prompt=visual+"\n\n5-SECOND FUNNY SKIT, PART "+part+" OF "+total+". "+continuity+" Keep the locked main character's identity exactly consistent. Language: "+language+". Use the supplied reference audio for the spoken performance and timing. Do not invent additional dialogue. Background: "+sound+". Generate natural synchronized facial/mouth movement, expressive reactions, comedic timing, environmental SFX and light instrumental music. No captions, subtitles, watermarks, logos or extra dialogue.";
-   VideoGenerationProvider.VideoGenerationRequest req=new VideoGenerationProvider.VideoGenerationRequest(startImage.toString(),prompt,"blurry, deformed face, identity drift, extra limbs, subtitles, watermark",duration,480,832,"minimax-h3-reference-character-to-video",audio.toString(),character.toString(),null,8);
-   var result=gateway.generateVideo(req);
-   var soundscape = gateway.generateH3Audio(new VideoGenerationProvider.H3AudioRequest(
-       "Instrumental/background sound design only for this 5-second comedy scene. NO SPEECH, NO VOICES, NO DIALOGUE, NO SINGING. "+sound+". Natural environmental ambience, comedic foley and light music, synchronized to the action.", duration, null, 8, true));
-   byte[] mixed = media.mixAudioTracks(Files.readAllBytes(audio), soundscape.audioBytes(), duration);
-   Path raw=Files.createTempFile("skit-raw-", ".mp4"); Files.write(raw,result.videoBytes());
-   Path clip=Files.createTempFile("skit-part-", ".mp4"); media.addAudioTrack(raw,mixed,clip); Files.deleteIfExists(raw); return clip;
+ private int[] firstSize(Path video){
+   try{ Process p=new ProcessBuilder("ffprobe","-v","error","-select_streams","v:0","-show_entries","stream=width,height","-of","csv=p=0",video.toString()).redirectErrorStream(true).start();
+     String[] wh=new String(p.getInputStream().readAllBytes()).trim().split(","); p.waitFor();
+     int w=Integer.parseInt(wh[0].trim()), h=Integer.parseInt(wh[1].trim()); return new int[]{w-(w%2),h-(h%2)};
+   }catch(Exception e){ return new int[]{480,832}; }
+ }
+ private void deleteTree(Path dir){
+   try(var walk=Files.walk(dir)){ walk.sorted(Comparator.reverseOrder()).forEach(this::deleteQuiet); }catch(Exception ignored){}
  }
  private void extractLastFrame(Path video,Path out)throws Exception{
    Process p=new ProcessBuilder("ffmpeg","-y","-sseof","-0.08","-i",video.toString(),"-frames:v","1","-vf","scale=480:-2","-update","1",out.toString()).redirectErrorStream(true).start();

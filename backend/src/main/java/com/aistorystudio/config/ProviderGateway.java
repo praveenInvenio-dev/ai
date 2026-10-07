@@ -360,6 +360,27 @@ public class ProviderGateway {
         return synthesize(request);
     }
 
+    /**
+     * Indic TTS (IndicF5 via the local tts sidecar, voices "indic:<lang>-in-<name>") used when a
+     * flow picks INDIC_TTS instead of H3 speech. No silent fallback to another engine: the user
+     * explicitly chose this voice, so a failure is reported (usually: the "indic" compose profile
+     * is not running).
+     */
+    public TextToSpeechProvider.TtsResult synthesizeIndicVoice(TextToSpeechProvider.TtsRequest request) {
+        if (demoMode) return mockTtsProvider.synthesize(request);
+        try {
+            return localTtsProvider.synthesize(request);
+        } catch (Exception e) {
+            throw new IllegalStateException("Indic TTS voice '" + request.voice() + "' failed: " + e.getMessage()
+                    + " - is the tts-indic service running? Add 'indic' to COMPOSE_PROFILES (e.g. COMPOSE_PROFILES=chatterbox,indic).", e);
+        }
+    }
+
+    /** Default IndicF5 voice for a language (null when IndicF5 has no voice for it). */
+    public String defaultIndicVoice(String language) {
+        return indicVoiceForLanguage(language);
+    }
+
     public boolean isDemoMode() {
         return demoMode;
     }
