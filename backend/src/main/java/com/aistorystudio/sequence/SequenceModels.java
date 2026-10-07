@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.UUID;
 
@@ -71,6 +73,8 @@ public final class SequenceModels {
         public String title;
         public String style;
         public List<UUID> characterIds = new ArrayList<>();
+        /** Explicit reference selected per character; when absent, the locked/primary reference is used. */
+        public Map<UUID, UUID> characterReferenceIds = new HashMap<>();
         /** WAN_2_2 | WAN_2_2_14B | MINIMAX_H3 */
         public String engine;
         public double secondsPerScene;

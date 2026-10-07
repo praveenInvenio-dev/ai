@@ -454,7 +454,7 @@ public class ProductionPipelineService {
                 if (seg == null || seg.text() == null || seg.text().isBlank()) continue;
                 Prosody p = prosody(seg);
                 String description = rumikDescription(p, episode.getLanguage());
-                byte[] wav = generateRumikSpeech(seg.text().trim(), episode.getLanguage(), description);
+                byte[] wav = generateRumikSpeech(cleanRumikText(seg.text()), episode.getLanguage(), description);
                 Path raw = work.resolve(String.format(Locale.ROOT, "speech-%03d.wav", i));
                 Files.write(raw, wav);
                 speechParts.add(raw);
@@ -483,14 +483,20 @@ public class ProductionPipelineService {
         }
     }
 
+    private String cleanRumikText(String text) {
+        if (text == null) return "";
+        return text.replaceAll("\\[(?:gasp|laugh|chuckle|giggle|sigh|surprise|laughter|laughing|crying|breath|scream)\\]", "")
+                .replaceAll("\\s{2,}", " ").trim();
+    }
+
     private byte[] generateRumikSpeech(String text, String language, String description) {
         try {
             var body = mapper.createObjectNode();
             body.put("speaker", rumikVoice == null || rumikVoice.isBlank() ? "Ira" : rumikVoice);
             body.put("input", text);
             body.put("description", description == null ? "" : description);
-            body.put("temperature", 0.8);
-            body.put("top_k", 30);
+            body.put("temperature", 0.62);
+            body.put("top_k", 20);
             body.put("max_new_tokens", 4096);
             String json = mapper.writeValueAsString(body);
             var client = org.springframework.web.reactive.function.client.WebClient.builder().baseUrl(rumikBaseUrl).build();
@@ -545,7 +551,7 @@ public class ProductionPipelineService {
     private void mixSpeechAndSoundscape(Path speech, Path soundscape, Path output) throws Exception {
         Process proc = new ProcessBuilder("ffmpeg", "-nostdin", "-y",
                 "-i", speech.toString(), "-i", soundscape.toString(),
-                "-filter_complex", "[0:a]volume=1.0[voice];[1:a]volume=0.30[bed];[voice][bed]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,aresample=24000[a]",
+                "-filter_complex", "[0:a]highpass=f=70,acompressor=threshold=-20dB:ratio=2.5:attack=5:release=80:makeup=2,volume=1.0[voice];[1:a]volume=0.15[bed];[voice][bed]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=7,aresample=48000,aformat=channel_layouts=stereo[a]",
                 "-map", "[a]", "-c:a", "pcm_s16le", output.toString()).redirectErrorStream(true).start();
         String logText = new String(proc.getInputStream().readAllBytes());
         if (proc.waitFor() != 0) throw new IllegalStateException("FFmpeg speech/soundscape mix failed: " + logText);
@@ -1062,15 +1068,29 @@ public class ProductionPipelineService {
     private Path assembleVideo(Episode episode, List<Scene> scenes, Map<UUID, Path> images, Map<UUID, Path> audio) {
         List<MediaProcessor.SceneClip> clips = new ArrayList<>();
         for (Scene scene : scenes) {
-            double duration = scene.getImageDurationSeconds() != null && scene.getImageDurationSeconds() > 0
-                    ? scene.getImageDurationSeconds()
-                    : (scene.getNarrationSeconds() != null && scene.getNarrationSeconds() > 0
-                        ? scene.getNarrationSeconds() + 0.6
-                        : durationFromSceneAudio(audio.get(scene.getId())));
-            if (duration <= 0) duration = 5.0;
             if (images.get(scene.getId()) == null || audio.get(scene.getId()) == null) {
                 throw new IllegalStateException("Scene " + scene.getSceneNumber() + " is missing its image or narration audio.");
             }
+
+            // The final render timeline must always follow the actual narration
+            // file, not a stale/story-engine estimate. This prevents the renderer
+            // from moving to the next image while the current sentence is still
+            // speaking. Keep a short end beat after speech for a clean scene cut.
+            double measuredAudio = durationFromSceneAudio(audio.get(scene.getId()));
+            double duration = measuredAudio > 0
+                    ? measuredAudio
+                    : (scene.getImageDurationSeconds() != null && scene.getImageDurationSeconds() > 0
+                        ? scene.getImageDurationSeconds()
+                        : (scene.getNarrationSeconds() != null && scene.getNarrationSeconds() > 0
+                            ? scene.getNarrationSeconds() + 0.75
+                            : 5.0));
+            if (measuredAudio > 0) {
+                double narrationOnly = Math.max(0.0, measuredAudio - 0.75);
+                scene.setNarrationSeconds(narrationOnly);
+                scene.setImageDurationSeconds(duration);
+                sceneRepository.save(scene);
+            }
+
             // Classic Story Production is always image-based. H3 supplies only
             // the soundtrack; the existing 2.5D renderer remains responsible for
             // camera/parallax/particle motion on the generated still image.
@@ -1094,7 +1114,9 @@ public class ProductionPipelineService {
 
     private double durationFromSceneAudio(Path audioPath) {
         double audioDuration = probeAudioFileDuration(audioPath);
-        return audioDuration > 0 ? audioDuration + 0.6 : -1;
+        // Scene audio is already the complete Rumik/H3 mix. Add a small visual
+        // end beat rather than trimming the final speech sample at a scene cut.
+        return audioDuration > 0 ? audioDuration + 0.75 : -1;
     }
 
     /**

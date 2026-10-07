@@ -1606,8 +1606,8 @@ public class FFmpegProcessor implements MediaProcessor {
             voice = Files.createTempFile("skit-voice-", ".wav"); sound = Files.createTempFile("skit-sound-", ".wav"); out = Files.createTempFile("skit-mix-", ".wav");
             Files.write(voice, voiceBytes); Files.write(sound, soundscapeBytes);
             List<String> args = new ArrayList<>(List.of(ffmpegBin,"-y","-i",voice.toString(),"-i",sound.toString(),"-filter_complex",
-                "[0:a]volume=1.0,aresample=24000[v];[1:a]volume=0.32,aresample=24000[s];[v][s]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]",
-                "-map","[a]","-t",fmt(durationSeconds),"-ar","24000","-ac","1",out.toString()));
+                "[0:a]highpass=f=70,acompressor=threshold=-20dB:ratio=2.5:attack=5:release=80:makeup=2,volume=1.0,aresample=48000[v];[1:a]volume=0.15,aresample=48000[s];[v][s]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=7,aformat=channel_layouts=stereo[a]",
+                "-map","[a]","-t",fmt(durationSeconds),"-ar","48000","-ac","2",out.toString()));
             run(args); return Files.readAllBytes(out);
         } catch(Exception e){ throw new IllegalStateException("Could not mix voice and soundscape",e); }
         finally { try{if(voice!=null)Files.deleteIfExists(voice);}catch(Exception ignored){} try{if(sound!=null)Files.deleteIfExists(sound);}catch(Exception ignored){} try{if(out!=null)Files.deleteIfExists(out);}catch(Exception ignored){} }
@@ -1629,7 +1629,7 @@ public class FFmpegProcessor implements MediaProcessor {
             args.add("-i"); args.add(list.toAbsolutePath().toString());
             args.add("-map"); args.add("0:v:0"); args.add("-map"); args.add("0:a:0?");
             args.add("-c:v"); args.add("libx264"); args.add("-preset"); args.add("veryfast"); args.add("-crf"); args.add("18");
-            args.add("-pix_fmt"); args.add("yuv420p"); args.add("-c:a"); args.add("aac"); args.add("-b:a"); args.add("192k");
+            args.add("-pix_fmt"); args.add("yuv420p"); args.add("-c:a"); args.add("aac"); args.add("-b:a"); args.add("192k"); args.add("-ar"); args.add("48000"); args.add("-ac"); args.add("2");
             args.add("-movflags"); args.add("+faststart"); args.add(outputPath.toAbsolutePath().toString());
             run(args);
             return outputPath;

@@ -1,6 +1,10 @@
 package com.aistorystudio.skit;
 
 import com.aistorystudio.config.ProviderGateway;
+import com.aistorystudio.domain.Character;
+import com.aistorystudio.domain.CharacterReference;
+import com.aistorystudio.repository.CharacterReferenceRepository;
+import com.aistorystudio.repository.CharacterRepository;
 import com.aistorystudio.provider.MediaProcessor;
 import com.aistorystudio.provider.StorageProvider;
 import com.aistorystudio.provider.VideoGenerationProvider;
@@ -21,29 +25,43 @@ import java.util.*;
 public class FunnySkitService {
  private static final Set<String> IMAGE_EXT=Set.of("png","jpg","jpeg","webp");
  private final ProviderGateway gateway; private final StorageProvider storage; private final MediaProcessor media; private final FunnySkitJobStore jobs;
- private final WebClient rumik; private final String rumikSpeaker;
+ private final WebClient rumik; private final String rumikSpeaker; private final CharacterRepository characterRepository; private final CharacterReferenceRepository characterReferenceRepository; private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
  public FunnySkitService(ProviderGateway gateway, StorageProvider storage, MediaProcessor media, FunnySkitJobStore jobs,
      WebClient.Builder wb, @Value("${studio.audio.rumik.base-url:http://tts-rumik:5006}") String rumikUrl,
-     @Value("${studio.audio.rumik.voice:Ira}") String rumikSpeaker){this.gateway=gateway;this.storage=storage;this.media=media;this.jobs=jobs;this.rumik=wb.baseUrl(rumikUrl).build();this.rumikSpeaker=rumikSpeaker;}
- public record JobView(UUID id, FunnySkitJob.Status status, String errorMessage, String language, String script, String[] visualPrompts, String[] dialogues, String[] imageUrls, String soundscape, String resultVideoPath){}
- public FunnySkitJob createJob(MultipartFile character, String idea, String language){
-   if(character==null||character.isEmpty()) throw new IllegalArgumentException("Upload the main focus character image.");
+     @Value("${studio.audio.rumik.voice:Ira}") String rumikSpeaker, CharacterRepository characterRepository, CharacterReferenceRepository characterReferenceRepository){this.gateway=gateway;this.storage=storage;this.media=media;this.jobs=jobs;this.rumik=wb.baseUrl(rumikUrl).build();this.rumikSpeaker=rumikSpeaker;this.characterRepository=characterRepository;this.characterReferenceRepository=characterReferenceRepository;}
+ public record JobView(UUID id, FunnySkitJob.Status status, String errorMessage, String language, String script, String[] visualPrompts, String[] dialogues, String[] imageUrls, String soundscape, String resultVideoPath, String characterId, String characterReferenceId){}
+ public FunnySkitJob createJob(MultipartFile character, String idea, String language, UUID characterId, UUID referenceId){
    if(idea==null||idea.isBlank()) throw new IllegalArgumentException("Describe the funny skit idea.");
    if(language==null||language.isBlank()) language="Auto-detect";
    if(gateway.localAiVideoUnavailableReason()!=null) throw new IllegalStateException("Video generation is not available: "+gateway.localAiVideoUnavailableReason());
-   String n=character.getOriginalFilename()==null?"character.png":character.getOriginalFilename(); int dot=n.lastIndexOf('.'); String ext=dot>0?n.substring(dot+1).toLowerCase(Locale.ROOT):"png";
-   if(!IMAGE_EXT.contains(ext)) throw new IllegalArgumentException("Character image must be PNG, JPG, JPEG or WEBP.");
-   FunnySkitJob j=jobs.create(language); try{Path stored=storage.store("funny-skits/uploads/"+j.getId()+"."+ext,character.getBytes()); return j;}catch(IOException e){throw new UncheckedIOException(e);}
+   FunnySkitJob j=jobs.create(language);
+   try {
+     if(characterId != null) {
+       Character c=characterRepository.findById(characterId).orElseThrow(() -> new IllegalArgumentException("Saved character not found: "+characterId));
+       CharacterReference ref = referenceId != null
+           ? characterReferenceRepository.findById(referenceId).filter(r -> characterId.equals(r.getCharacterId())).orElseThrow(() -> new IllegalArgumentException("Selected character reference does not belong to the selected character."))
+           : characterReferenceRepository.findByCharacterId(characterId).stream().filter(CharacterReference::isLocked).findFirst().orElseGet(() -> characterReferenceRepository.findByCharacterId(characterId).stream().filter(CharacterReference::isPrimary).findFirst().orElse(null));
+       if(ref == null) throw new IllegalArgumentException("The selected character has no saved reference. Generate a reference in Character Studio first.");
+       j.setCharacterId(c.getId().toString()); j.setCharacterReferenceId(ref.getId().toString()); j.setCharacterReferencePath(ref.getImagePath());
+       return j;
+     }
+     if(character==null||character.isEmpty()) throw new IllegalArgumentException("Select a saved character or upload the main focus character image.");
+     String n=character.getOriginalFilename()==null?"character.png":character.getOriginalFilename(); int dot=n.lastIndexOf('.'); String ext=dot>0?n.substring(dot+1).toLowerCase(Locale.ROOT):"png";
+     if(!IMAGE_EXT.contains(ext)) throw new IllegalArgumentException("Character image must be PNG, JPG, JPEG or WEBP.");
+     Path stored=storage.store("funny-skits/uploads/"+j.getId()+"."+ext,character.getBytes()); j.setCharacterReferencePath(stored.toString());
+     return j;
+   } catch(IOException e){throw new UncheckedIOException(e);}
  }
+
  @Async("videoGenerationExecutor") public void generateAsync(UUID id, String idea, String language, String tone, String speaker){
    FunnySkitJob job=jobs.get(id); if(job==null)return; job.setStatus(FunnySkitJob.Status.RUNNING);
    Path character=null; List<Path> temp=new ArrayList<>();
    try{
-     character=findUpload(id);
+     character=findCharacterReference(id);
      String json=gateway.llm().generateStructured(
        "You are a viral short-form Indian comedy skit writer. Create ONE 15-second skit divided into EXACTLY THREE CONTINUOUS 5-second beats. The setup can be ANY scenario: family, school, office, street, home, friends, relationship, news, absurd, cinematic, etc. An interview is only one possible format, never mandatory. Return JSON only with keys part1VisualPrompt, part1Dialogue, part2VisualPrompt, part2Dialogue, part3VisualPrompt, part3Dialogue, tone, soundscape. Make dialogue short enough for about 5 seconds in the requested language. Part 2 MUST continue the physical action, camera context and emotional state from Part 1. Part 3 MUST continue directly from Part 2 and deliver the punchline/reaction. Keep the uploaded main character as the visual focus. Keep wardrobe, face, age, props, location, lighting and camera style consistent. No subtitles or on-screen text.",
        "Language: "+language+"\nTone: "+(tone==null?"viral reel comedy":tone)+"\nIdea: "+idea+"\nThe uploaded image is the locked identity reference for the main character.");
-     var node=new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+     var node=parseSkitJsonWithRepair(json, language, tone, idea);
      String[] visuals={node.path("part1VisualPrompt").asText(),node.path("part2VisualPrompt").asText(),node.path("part3VisualPrompt").asText()};
      String[] dialogues={node.path("part1Dialogue").asText(),node.path("part2Dialogue").asText(),node.path("part3Dialogue").asText()};
      String sound=node.path("soundscape").asText("natural ambience, comedic foley, light playful instrumental music");
@@ -74,7 +92,7 @@ public class FunnySkitService {
    FunnySkitJob job=jobs.get(id); if(job==null) throw new IllegalArgumentException("Skit job not found");
    if(scene<1||scene>3) throw new IllegalArgumentException("Scene must be 1, 2 or 3.");
    try{
-     Path character=findUpload(id); Path previous=scene==1?character:Path.of(job.getImagePaths()[scene-2]);
+     Path character=findCharacterReference(id); Path previous=scene==1?character:Path.of(job.getImagePaths()[scene-2]);
      String visual=job.getVisualPrompts()[scene-1];
      String continuity=scene==1?"Opening frame.":"Continue directly from the previous storyboard image. Preserve identity, wardrobe, location, props, lighting and camera context.";
      var req=new com.aistorystudio.provider.ImageGenerationProvider.ImageGenerationRequest("Vertical 9:16 viral comedy storyboard frame. "+visual+" "+continuity+" Locked main character, realistic social-media frame, expressive comedic acting, no text.","deformed face, identity drift, extra limbs, duplicate character, text, subtitles, watermark",768,1344,30,0,null,"qwen-image-2-1-16gb-ref",null,character.toString(),scene==1?null:previous.toString());
@@ -86,8 +104,8 @@ public class FunnySkitService {
 
  @Async("videoGenerationExecutor") public void renderApprovedAsync(UUID id, String tone, String speaker){
    FunnySkitJob job=jobs.get(id); if(job==null)return; job.setStatus(FunnySkitJob.Status.RUNNING); List<Path> temp=new ArrayList<>();
-   try{ Path character=findUpload(id); List<Path> speechParts=new ArrayList<>();
-     for(int i=0;i<3;i++){Path speech=Files.createTempFile("skit-speech-p"+(i+1)+"-", ".wav"); Files.write(speech, media.fitAudioDuration(rumikSpeech(job.getDialogues()[i],job.getLanguage(),tone,speaker),5.0)); speechParts.add(speech); temp.add(speech);}
+   try{ Path character=findCharacterReference(id); List<Path> speechParts=new ArrayList<>();
+     for(int i=0;i<3;i++){Path speech=Files.createTempFile("skit-speech-p"+(i+1)+"-", ".wav"); Files.write(speech, media.fitAudioDuration(rumikSpeech(cleanSpeechText(job.getDialogues()[i]),job.getLanguage(),tone,speaker),5.0)); speechParts.add(speech); temp.add(speech);}
      List<Path> clips=new ArrayList<>(); Path previousEnd=character;
      for(int i=0;i<3;i++){Path storyboard=Path.of(job.getImagePaths()[i]); Path clip=generateChunkFromImage(character,i==0?storyboard:previousEnd,storyboard,job.getVisualPrompts()[i],job.getSoundscape(),speechParts.get(i),5,job.getLanguage(),i+1,3); clips.add(clip); temp.add(clip); Path end=Files.createTempFile("skit-end-", ".png"); extractLastFrame(clip,end); temp.add(end); previousEnd=end;}
      Path out=Files.createTempFile("funny-skit-", ".mp4"); temp.add(out); media.concatVideos(clips,out); Path stored=storage.store("funny-skits/results/"+id+".mp4",Files.readAllBytes(out)); job.setResultVideoPath(stored.toString()); job.setStatus(FunnySkitJob.Status.SUCCEEDED);
@@ -120,12 +138,32 @@ public class FunnySkitService {
    p.getInputStream().transferTo(java.io.OutputStream.nullOutputStream());
    if(!p.waitFor(3,java.util.concurrent.TimeUnit.MINUTES)||p.exitValue()!=0||!Files.exists(out)||Files.size(out)<256) throw new IllegalStateException("Could not extract continuation frame from skit part.");
  }
+ private String cleanSpeechText(String text){
+   if(text==null) return "";
+   return text.replaceAll("\\[(?:gasp|laugh|chuckle|giggle|sigh|surprise|laughter|laughing|crying|breath|scream)\\]", "")
+       .replaceAll("\\s{2,}", " ").trim();
+ }
  private byte[] rumikSpeech(String text,String language,String tone,String speaker){
-   String sp=speaker==null||speaker.isBlank()?rumikSpeaker:speaker; Map<String,Object> body=new LinkedHashMap<>(); body.put("speaker",sp); body.put("input",text); body.put("description",description(language,tone)); body.put("temperature",0.8); body.put("top_k",30); body.put("max_new_tokens",2200);
+   String sp=speaker==null||speaker.isBlank()?rumikSpeaker:speaker; Map<String,Object> body=new LinkedHashMap<>(); body.put("speaker",sp); body.put("input",text); body.put("description",description(language,tone)); body.put("temperature",0.62); body.put("top_k",20); body.put("max_new_tokens",2200);
    return rumik.post().uri("/v1/audio/speech").contentType(MediaType.APPLICATION_JSON).bodyValue(body).retrieve().bodyToMono(byte[].class).block(Duration.ofMinutes(5));
  }
- private String description(String language,String tone){String t=tone==null?"excited":tone; String accent=switch(language.toLowerCase(Locale.ROOT)){case "hindi"->"Hindi accent";case "telugu"->"Telugu accent";case "tamil"->"Tamil accent";case "kannada"->"Kannada accent";case "bengali"->"Bengali accent";case "punjabi"->"Punjabi accent";case "indian english","english"->"Indian English accent";default->language+" speech";}; return t+", "+accent+", fast but clear pace";}
- private Path findUpload(UUID id)throws IOException{try(var s=Files.list(storage.resolve("funny-skits/uploads/"+id+".png").getParent())){return s.filter(p->p.getFileName().toString().startsWith(id.toString()+".")).findFirst().orElseThrow();}}
+ private String description(String language,String tone){String t=tone==null?"excited":tone; String accent=switch(language.toLowerCase(Locale.ROOT)){case "hindi"->"Hindi accent";case "telugu"->"Telugu accent";case "tamil"->"Tamil accent";case "kannada"->"Kannada accent";case "bengali"->"Bengali accent";case "punjabi"->"Punjabi accent";case "indian english","english"->"Indian English accent";default->language+" speech";}; return t+", "+accent+", natural conversational comedy delivery, expressive but clear, consistent voice identity, precise pronunciation, natural pauses, do not read bracketed sound-effect markers";}
+ private Path findCharacterReference(UUID id)throws IOException{
+   FunnySkitJob job=jobs.get(id);
+   if(job==null || job.getCharacterReferencePath()==null || job.getCharacterReferencePath().isBlank()) throw new IllegalStateException("Character reference is not available for this skit.");
+   Path p=Path.of(job.getCharacterReferencePath());
+   if(!Files.exists(p)) throw new IllegalStateException("Character reference file is missing: "+p);
+   return p;
+ }
+
+ private com.fasterxml.jackson.databind.JsonNode parseSkitJsonWithRepair(String raw, String language, String tone, String idea) throws Exception {
+   try { return objectMapper.readTree(raw); }
+   catch(Exception first) {
+     String repairPrompt="Return ONLY one valid JSON object. No Markdown fences, no commentary, no backticks. Required keys: part1VisualPrompt, part1Dialogue, part2VisualPrompt, part2Dialogue, part3VisualPrompt, part3Dialogue, tone, soundscape. Language: "+language+". Tone: "+(tone==null?"viral reel comedy":tone)+". Idea: "+idea+". Keep each dialogue short enough for 5 seconds and make parts continuous.";
+     String repaired=gateway.llm().generateStructured("You are a strict JSON repair engine. Output raw JSON only.", repairPrompt);
+     return objectMapper.readTree(repaired);
+   }
+ }
  private void sliceAudio(Path in,Path out,double start,double dur)throws Exception{
    Process p=new ProcessBuilder("ffmpeg","-y","-ss",String.valueOf(start),"-i",in.toString(),"-t",String.valueOf(dur),"-ar","24000","-ac","1",out.toString()).redirectErrorStream(true).start();
    p.getInputStream().transferTo(java.io.OutputStream.nullOutputStream());
@@ -134,7 +172,7 @@ public class FunnySkitService {
  private void cleanup(Path...paths){for(Path p:paths)try{Files.deleteIfExists(p);}catch(Exception ignored){}}
  private void cleanup(Path a,Path b,Path c,Path d,List<Path> clips){cleanup(a,b,c,d);clips.forEach(this::deleteQuiet);}
  private void deleteQuiet(Path p){try{Files.deleteIfExists(p);}catch(Exception ignored){}}
- public JobView status(UUID id){var j=jobs.get(id); if(j==null)throw new IllegalArgumentException("Skit job not found"); String[] urls=new String[3]; String[] p=j.getImagePaths(); for(int i=0;i<3;i++) urls[i]=(p!=null&&p[i]!=null)?"/api/funny-skits/jobs/"+id+"/images/"+(i+1):null; return new JobView(j.getId(),j.getStatus(),j.getErrorMessage(),j.getLanguage(),j.getScript(),j.getVisualPrompts(),j.getDialogues(),urls,j.getSoundscape(),j.getResultVideoPath());}
+ public JobView status(UUID id){var j=jobs.get(id); if(j==null)throw new IllegalArgumentException("Skit job not found"); String[] urls=new String[3]; String[] p=j.getImagePaths(); for(int i=0;i<3;i++) urls[i]=(p!=null&&p[i]!=null)?"/api/funny-skits/jobs/"+id+"/images/"+(i+1):null; return new JobView(j.getId(),j.getStatus(),j.getErrorMessage(),j.getLanguage(),j.getScript(),j.getVisualPrompts(),j.getDialogues(),urls,j.getSoundscape(),j.getResultVideoPath(),j.getCharacterId(),j.getCharacterReferenceId());}
  public Path image(UUID id,int scene){var j=jobs.get(id);if(j==null||scene<1||scene>3||j.getImagePaths()[scene-1]==null)throw new IllegalStateException("Storyboard image is not ready.");return Path.of(j.getImagePaths()[scene-1]);}
  public Path result(UUID id){var j=jobs.get(id);if(j==null||j.getStatus()!=FunnySkitJob.Status.SUCCEEDED||j.getResultVideoPath()==null)throw new IllegalStateException("Skit is not ready yet.");return Path.of(j.getResultVideoPath());}
 }

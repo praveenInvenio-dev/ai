@@ -8,13 +8,13 @@ public class FunnySkitJob {
     private final UUID id; private final Instant createdAt;
     private volatile Status status = Status.QUEUED;
     private volatile String errorMessage; private volatile String resultVideoPath;
-    private volatile String language; private volatile String script; private volatile String[] visualPrompts = new String[3]; private volatile String[] dialogues = new String[3]; private volatile String[] imagePaths = new String[3]; private volatile String soundscape;
+    private volatile String language; private volatile String characterId; private volatile String characterReferenceId; private volatile String characterReferencePath; private volatile String script; private volatile String[] visualPrompts = new String[3]; private volatile String[] dialogues = new String[3]; private volatile String[] imagePaths = new String[3]; private volatile String soundscape;
     public FunnySkitJob(UUID id, String language) { this.id=id; this.language=language; this.createdAt=Instant.now(); }
     public UUID getId(){return id;} public Instant getCreatedAt(){return createdAt;}
     public Status getStatus(){return status;} public void setStatus(Status s){status=s;}
     public String getErrorMessage(){return errorMessage;} public void setErrorMessage(String s){errorMessage=s;}
     public String getResultVideoPath(){return resultVideoPath;} public void setResultVideoPath(String s){resultVideoPath=s;}
-    public String getLanguage(){return language;} public String getScript(){return script;} public void setScript(String s){script=s;}
+    public String getLanguage(){return language;} public String getCharacterId(){return characterId;} public void setCharacterId(String s){characterId=s;} public String getCharacterReferenceId(){return characterReferenceId;} public void setCharacterReferenceId(String s){characterReferenceId=s;} public String getCharacterReferencePath(){return characterReferencePath;} public void setCharacterReferencePath(String s){characterReferencePath=s;} public String getScript(){return script;} public void setScript(String s){script=s;}
     public String[] getVisualPrompts(){return visualPrompts;} public void setVisualPrompts(String[] v){visualPrompts=v;}
     public String[] getDialogues(){return dialogues;} public void setDialogues(String[] v){dialogues=v;}
     public String[] getImagePaths(){return imagePaths;} public void setImagePaths(String[] v){imagePaths=v;}

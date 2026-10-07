@@ -432,18 +432,39 @@ public class StoryboardService {
         List<MediaProcessor.SceneClip> clips = new ArrayList<>(ordered.size());
         boolean allNativeH3 = true;
         for (Scene scene : ordered) {
-            // The storyboard UI is narration-driven. Recompute on every render so
-            // editing the text immediately changes the H3 shot length.
+            // The storyboard UI is narration-driven. Generate the actual narration
+            // first and use its measured duration as the authoritative timeline.
+            // A word-count estimate can be shorter than the real TTS output and
+            // would cut the last syllables when the image/video segment is rendered.
+            // Keep a small post-speech end beat so scene changes never clip speech.
+            Path aiVideoPath = null;
+            allNativeH3 = false;
+            Path audioPath = narrate(episode, scene, voice);
             double duration = estimateStoryboardDuration(scene.getNarration(), readVoiceSegments(scene));
-            scene.setImageDurationSeconds(duration);
+            try {
+                double measuredAudio = probeWavDuration(java.nio.file.Files.readAllBytes(audioPath));
+                if (measuredAudio > 0.05) {
+                    duration = clampSceneDuration(measuredAudio + NARRATION_TAIL_SECONDS);
+                    scene.setNarrationSeconds(measuredAudio);
+                    scene.setImageDurationSeconds(duration);
+                    log.info("Scene {} timeline synchronized to measured narration: audio={}s, timeline={}s",
+                            scene.getSceneNumber(), String.format(Locale.ROOT, "%.3f", measuredAudio),
+                            String.format(Locale.ROOT, "%.3f", duration));
+                } else {
+                    scene.setImageDurationSeconds(duration);
+                }
+            } catch (Exception measurementFailure) {
+                // Never fail a valid render solely because the WAV probe could not
+                // be read; retain the safe text-based estimate as a fallback.
+                scene.setImageDurationSeconds(duration);
+                log.warn("Could not measure narration for scene {}: {}; using estimate {}s",
+                        scene.getSceneNumber(), measurementFailure.getMessage(), duration);
+            }
             scenes.save(scene);
 
             // Storyboard assembly is intentionally NOT an AI-video entry point.
             // It remains the lightweight image + narration/2.5D path. MiniMax H3
             // is invoked only from the dedicated Video Generation page.
-            Path aiVideoPath = null;
-            allNativeH3 = false;
-            Path audioPath = narrate(episode, scene, voice);
 
             clips.add(new MediaProcessor.SceneClip(
                     Path.of(images.get(scene.getId()).getFilePath()),

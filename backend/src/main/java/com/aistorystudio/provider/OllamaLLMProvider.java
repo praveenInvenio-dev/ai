@@ -1,6 +1,7 @@
 package com.aistorystudio.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,6 +33,7 @@ public class OllamaLLMProvider implements StoryLLMProvider {
     private final WebClient webClient;
     private final String defaultModel;
     private final Duration timeout;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public OllamaLLMProvider(
             org.springframework.web.reactive.function.client.WebClient.Builder webClientBuilder,
@@ -66,7 +68,7 @@ public class OllamaLLMProvider implements StoryLLMProvider {
         if (jsonFormat) {
             body.put("format", "json");
         }
-        body.put("options", Map.of("temperature", 0.8));
+        body.put("options", Map.of("temperature", jsonFormat ? 0.5 : 0.8));
 
         Map<?, ?> response = webClient.post()
                 .uri("/api/chat")
@@ -81,9 +83,53 @@ public class OllamaLLMProvider implements StoryLLMProvider {
         }
         Object message = response.get("message");
         if (message instanceof Map<?, ?> m && m.get("content") != null) {
-            return m.get("content").toString();
+            String content = m.get("content").toString();
+            return jsonFormat ? sanitizeStructuredJson(content) : content;
         }
         throw new IllegalStateException("Unexpected Ollama response shape: " + response);
+    }
+
+    /**
+     * Ollama's JSON format is a strong constraint, but some local models can
+     * still surround the JSON with Markdown fences or a short preamble. Keep
+     * structured callers resilient by extracting and validating the first JSON
+     * object/array before returning it.
+     */
+    private String sanitizeStructuredJson(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalStateException("Ollama returned an empty structured response");
+        }
+        String s = raw.trim();
+        if (s.startsWith("```")) {
+            s = s.replaceFirst("^```(?:json|JSON)?\\s*", "");
+            int fence = s.lastIndexOf("```");
+            if (fence >= 0) s = s.substring(0, fence);
+            s = s.trim();
+        }
+        try {
+            return objectMapper.readTree(s).toString();
+        } catch (Exception ignored) {
+            int firstObj = s.indexOf('{');
+            int firstArr = s.indexOf('[');
+            int start;
+            if (firstObj < 0) start = firstArr;
+            else if (firstArr < 0) start = firstObj;
+            else start = Math.min(firstObj, firstArr);
+            if (start >= 0) {
+                int endObj = s.lastIndexOf('}');
+                int endArr = s.lastIndexOf(']');
+                int end = Math.max(endObj, endArr);
+                if (end > start) {
+                    String candidate = s.substring(start, end + 1).trim();
+                    try {
+                        return objectMapper.readTree(candidate).toString();
+                    } catch (Exception ignoredAgain) {
+                        // Let @Retryable retry the structured generation.
+                    }
+                }
+            }
+            throw new IllegalStateException("Ollama returned invalid JSON for structured generation");
+        }
     }
 
     @Override

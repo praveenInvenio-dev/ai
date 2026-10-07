@@ -118,7 +118,7 @@ public class VideoSequenceService {
 
     public record SceneInput(String visual, String motion) {}
 
-    public record CreateRequest(String title, String style, List<UUID> characterIds, String engine,
+    public record CreateRequest(String title, String style, List<UUID> characterIds, Map<UUID,UUID> characterReferenceIds, String engine,
                                 Double secondsPerScene, String orientation, Double crossfadeSeconds,
                                 String continuity, Boolean reviewKeyframes, List<SceneInput> scenes) {}
 
@@ -199,6 +199,13 @@ public class VideoSequenceService {
                 characterRepository.findById(cid).orElseThrow(
                         () -> new IllegalArgumentException("Character not found: " + cid));
                 s.characterIds.add(cid);
+                UUID rid = req.characterReferenceIds() == null ? null : req.characterReferenceIds().get(cid);
+                if (rid != null) {
+                    characterReferenceRepository.findById(rid)
+                            .filter(r -> cid.equals(r.getCharacterId()))
+                            .orElseThrow(() -> new IllegalArgumentException("Character reference does not belong to character: " + cid));
+                    s.characterReferenceIds.put(cid, rid);
+                }
             }
         }
         int i = 0;
@@ -581,8 +588,8 @@ public class VideoSequenceService {
         sc.error = null;
         save(s);
         List<Character> chars = orderedCharacters(s);
-        String ref1 = chars.size() > 0 ? referenceImageFor(chars.get(0)) : null;
-        String ref2 = chars.size() > 1 && ref1 != null ? referenceImageFor(chars.get(1)) : null;
+        String ref1 = chars.size() > 0 ? referenceImageFor(s, chars.get(0)) : null;
+        String ref2 = chars.size() > 1 && ref1 != null ? referenceImageFor(s, chars.get(1)) : null;
         String prompt = keyframePrompt(s, sc, chars);
         String negative = negativePromptBuilder.build(
                 chars.stream().map(Character::getNegativeConstraints).filter(x -> x != null && !x.isBlank())
@@ -851,7 +858,7 @@ public class VideoSequenceService {
         List<Character> without = new ArrayList<>();
         for (UUID id : s.characterIds) {
             characterRepository.findById(id).ifPresent(c -> {
-                if (referenceImageFor(c) != null) {
+                if (referenceImageFor(s, c) != null) {
                     withRef.add(c);
                 } else {
                     without.add(c);
@@ -863,15 +870,18 @@ public class VideoSequenceService {
     }
 
     /** Same pick order the story pipeline uses: locked, else primary, else newest. */
-    private String referenceImageFor(Character c) {
+    private String referenceImageFor(VideoSequence s, Character c) {
         List<CharacterReference> refs = characterReferenceRepository.findByCharacterId(c.getId());
         if (refs.isEmpty()) {
             return null;
         }
-        CharacterReference chosen = refs.stream().filter(CharacterReference::isLocked).findFirst()
-                .orElseGet(() -> refs.stream().filter(CharacterReference::isPrimary).findFirst()
-                        .orElseGet(() -> refs.stream()
-                                .max(Comparator.comparing(CharacterReference::getCreatedAt)).orElse(refs.get(0))));
+        UUID selectedId = s.characterReferenceIds == null ? null : s.characterReferenceIds.get(c.getId());
+        CharacterReference chosen = selectedId == null ? null : refs.stream().filter(r -> selectedId.equals(r.getId())).findFirst().orElse(null);
+        if (chosen == null) {
+            chosen = refs.stream().filter(CharacterReference::isLocked).findFirst()
+                    .orElseGet(() -> refs.stream().filter(CharacterReference::isPrimary).findFirst()
+                            .orElseGet(() -> refs.stream().max(Comparator.comparing(CharacterReference::getCreatedAt)).orElse(refs.get(0))));
+        }
         Path path = Path.of(chosen.getImagePath());
         return Files.isRegularFile(path) && path.toFile().length() > 0 ? path.toString() : null;
     }

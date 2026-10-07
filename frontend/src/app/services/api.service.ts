@@ -387,11 +387,15 @@ export class ApiService {
     return this.http.post<{ jobId: string }>(`${this.base}/video-generation/jobs`, form);
   }
 
-  createFunnySkitJob(character: File, idea: string, language: string, tone: string, speaker = 'Ira'): Observable<{jobId: string}> {
-    const form = new FormData(); form.append('character', character, character.name); form.append('idea', idea); form.append('language', language); form.append('tone', tone); form.append('speaker', speaker);
+  createFunnySkitJob(character: File | null, idea: string, language: string, tone: string, speaker = 'Ira', characterId?: string, referenceId?: string): Observable<{jobId: string}> {
+    const form = new FormData();
+    if (character) form.append('character', character, character.name);
+    form.append('idea', idea); form.append('language', language); form.append('tone', tone); form.append('speaker', speaker);
+    if (characterId) form.append('characterId', characterId);
+    if (referenceId) form.append('referenceId', referenceId);
     return this.http.post<{jobId: string}>(`${this.base}/funny-skits/jobs`, form);
   }
-  getFunnySkitJob(jobId: string): Observable<{id:string,status:string,errorMessage:string|null,language:string,script:string|null,visualPrompts:string[],dialogues:string[],imageUrls:(string|null)[],soundscape:string,resultVideoPath:string|null}> {
+  getFunnySkitJob(jobId: string): Observable<{id:string,status:string,errorMessage:string|null,language:string,script:string|null,visualPrompts:string[],dialogues:string[],imageUrls:(string|null)[],soundscape:string,resultVideoPath:string|null,characterId?:string,characterReferenceId?:string}> {
     return this.http.get<any>(`${this.base}/funny-skits/jobs/${jobId}`);
   }
   funnySkitResultUrl(jobId: string): string { return `${this.base}/funny-skits/jobs/${jobId}/video`; }
@@ -753,6 +757,7 @@ export interface SequenceView {
   title: string;
   style: string;
   characterIds: string[];
+  characterReferenceIds?: Record<string,string>;
   engine: string;
   secondsPerScene: number;
   orientation: string;
@@ -775,6 +780,7 @@ export interface CreateSequenceRequest {
   title: string;
   style: string;
   characterIds: string[];
+  characterReferenceIds?: Record<string,string>;
   engine: string;
   secondsPerScene: number;
   orientation: string;

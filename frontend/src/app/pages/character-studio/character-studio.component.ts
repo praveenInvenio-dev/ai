@@ -74,6 +74,12 @@ import { Project, Universe, Character, CharacterReference, VoiceProfile } from '
           </select>
         </div>
 
+        <div class="ref-picker" *ngIf="referenceOptions[c.id]?.length">
+          <label>Saved character reference</label>
+          <select [ngModel]="selectedReferenceId[c.id]" (ngModelChange)="selectReference(c.id, $event)">
+            <option *ngFor="let ref of referenceOptions[c.id]" [value]="ref.id">{{ referenceLabel(ref) }}</option>
+          </select>
+        </div>
         <div class="ref-image" *ngIf="referenceFor(c.id) as ref">
           <img [src]="imageUrl(ref)" [alt]="c.name" />
         </div>
@@ -120,7 +126,7 @@ import { Project, Universe, Character, CharacterReference, VoiceProfile } from '
     .voice-assign { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4em; }
     .voice-assign label { font-size: 0.78rem; color: var(--muted); margin: 0; }
     .voice-assign select { flex: 1; font-size: 0.82rem; padding: 0.25rem 0.4rem; border-radius: 6px; background: var(--surface); color: inherit; border: 1px solid var(--border); }
-    .ref-image {
+    .ref-picker{display:flex;flex-direction:column;gap:.3rem;margin-top:.6em}.ref-picker label{font-size:.75rem;color:var(--muted)}.ref-picker select{width:100%;font-size:.82rem;padding:.3rem .4rem;background:var(--surface);color:inherit;border:1px solid var(--border);border-radius:6px}.ref-image {
       width: 100%; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden;
       background: var(--surface-raised); margin: 0.6em 0;
     }
@@ -144,6 +150,8 @@ export class CharacterStudioComponent implements OnInit {
   newDescription = '';
 
   references: Record<string, CharacterReference> = {};
+  referenceOptions: Record<string, CharacterReference[]> = {};
+  selectedReferenceId: Record<string, string> = {};
   generating: Record<string, boolean> = {};
   genError: Record<string, string> = {};
 
@@ -223,9 +231,9 @@ export class CharacterStudioComponent implements OnInit {
     });
   }
 
-  referenceFor(characterId: string): CharacterReference | null {
-    return this.references[characterId] || null;
-  }
+  referenceFor(characterId: string): CharacterReference | null { return this.references[characterId] || null; }
+  referenceLabel(ref: CharacterReference): string { return `${ref.locked ? '🔒 locked' : (ref.primary ? '★ primary' : 'saved')} · ${new Date(ref.createdAt).toLocaleString()}`; }
+  selectReference(characterId: string, referenceId: string): void { const ref=(this.referenceOptions[characterId]||[]).find(r=>r.id===referenceId); if(ref){ this.selectedReferenceId[characterId]=ref.id; this.references[characterId]=ref; } }
 
   imageUrl(ref: CharacterReference): string {
     return this.api.characterReferenceImageUrl(ref.id);
@@ -234,8 +242,11 @@ export class CharacterStudioComponent implements OnInit {
   private loadLatestReference(characterId: string): void {
     this.api.listCharacterReferences(characterId).subscribe({
       next: refs => {
+        this.referenceOptions[characterId] = refs || [];
         if (refs.length) {
-          this.references[characterId] = refs[refs.length - 1];
+          const preferred = refs.find(r => r.locked) || refs.find(r => r.primary) || refs[refs.length - 1];
+          this.selectedReferenceId[characterId] = preferred.id;
+          this.references[characterId] = preferred;
         }
       },
       error: () => {} // no references yet - fine
@@ -248,7 +259,11 @@ export class CharacterStudioComponent implements OnInit {
     this.api.generateCharacterReference(c.id).subscribe({
       next: ref => {
         this.generating[c.id] = false;
-        this.references[c.id] = ref;
+        this.api.listCharacterReferences(c.id).subscribe({ next: refs => {
+          this.referenceOptions[c.id] = refs || [ref];
+          this.selectedReferenceId[c.id] = ref.id;
+          this.references[c.id] = ref;
+        }, error: () => { this.referenceOptions[c.id] = [ref]; this.selectedReferenceId[c.id] = ref.id; this.references[c.id] = ref; } });
       },
       error: err => {
         this.generating[c.id] = false;

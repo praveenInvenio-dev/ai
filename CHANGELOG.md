@@ -178,3 +178,19 @@ See docs/history/.
 - Added per-scene MP4 download and final merged preview/download.
 - Added 24-hour automatic sequence/media retention (configurable with VIDEO_SEQUENCE_RETENTION_HOURS).
 - Added xfade failure fallback to production-safe hard-cut concat.
+
+## v5 – Rumik voice quality
+- Removed bracketed vocal/SFX markers such as [gasp], [laugh], [chuckle] from Rumik speech input; these remain sound-design concepts for H3 instead of being spoken by Rumik.
+- Reduced Rumik sampling temperature to 0.62 and top_k to 20 for more stable Indian-language pronunciation.
+- Improved Funny Skit Rumik voice description for natural conversational comedy delivery and consistent speaker identity.
+- Added voice mastering to Funny Skit and Classic Story Rumik+H3 mixes: high-pass filtering, gentle compression, limiting/loudness normalization.
+- Reduced H3 soundscape mix level to 15% so speech remains intelligible.
+- Funny Skit mixed audio is now 48 kHz stereo and final concatenated MP4 is explicitly encoded at 48 kHz stereo AAC 192 kbps.
+- Classic Story Rumik+H3 scene audio is now mastered to 48 kHz stereo WAV.
+
+## v6 - narration timeline synchronization
+- Classic Story Production now measures the actual generated narration WAV before setting each scene's visual duration.
+- Storyboard assembly no longer relies on word-count duration estimates when real narration audio is available.
+- Final scene timelines include a small post-speech end beat so the last syllables are never cut by the next scene.
+- Production pipeline re-synchronizes scene duration from the actual Rumik/H3 mixed audio immediately before FFmpeg assembly, protecting against stale database/story-engine duration values.
+- Existing image-based Classic Story architecture is unchanged; H3 remains the audio/soundscape engine and standalone H3 video generation remains separate.

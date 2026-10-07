@@ -77,6 +77,9 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
             <label class="char" *ngFor="let c of characters">
               <input type="checkbox" [checked]="selectedChars.has(c.id)" (change)="toggleChar(c.id)">
               <span>{{ c.name }}</span>
+              <select *ngIf="selectedChars.has(c.id) && (referenceOptions[c.id]?.length || 0)" [ngModel]="selectedReferenceIds[c.id]" (ngModelChange)="selectedReferenceIds[c.id]=$event" (click)="$event.stopPropagation()">
+                <option *ngFor="let r of referenceOptions[c.id]" [value]="r.id">{{ referenceLabel(r) }}</option>
+              </select>
               <span class="tag" [class.tag-green]="hasRef[c.id]" [class.tag-amber]="hasRef[c.id] === false">
                 {{ hasRef[c.id] === undefined ? '...' : (hasRef[c.id] ? 'reference ready' : 'no reference yet') }}
               </span>
@@ -299,6 +302,7 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
     .chars { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .4rem; }
     .char { display: flex; align-items: center; gap: .5rem; padding: .35rem .7rem; border: 1px solid var(--border);
             border-radius: 999px; background: var(--surface); cursor: pointer; }
+    .char select { max-width: 210px; font-size: .72rem; padding: .18rem .3rem; }
     .check { display: flex; gap: .5rem; align-items: center; }
     .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
     .row.between { justify-content: space-between; align-items: flex-start; }
@@ -364,6 +368,8 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
   universeId?: string;
   selectedChars = new Set<string>();
   hasRef: Record<string, boolean | undefined> = {};
+  referenceOptions: Record<string, CharacterReference[]> = {};
+  selectedReferenceIds: Record<string, string> = {};
 
   creating = false;
   error = '';
@@ -432,7 +438,7 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
         this.characters = chars;
         chars.forEach(c => {
           this.api.listCharacterReferences(c.id).subscribe({
-            next: refs => { this.hasRef[c.id] = refs.some((r: CharacterReference) => !!r); },
+            next: refs => { const list=refs||[]; this.referenceOptions[c.id]=list; this.hasRef[c.id]=list.length>0; const preferred=list.find((r:CharacterReference)=>!!r.locked)||list.find((r:CharacterReference)=>!!r.primary)||list[0]; if(preferred) this.selectedReferenceIds[c.id]=preferred.id; },
             error: () => { this.hasRef[c.id] = false; }
           });
         });
@@ -461,7 +467,7 @@ export class VideoSequenceComponent implements OnInit, OnDestroy {
   create(): void {
     this.creating = true; this.error = '';
     this.api.createSequence({
-      title: this.title.trim(), style: this.style.trim(), characterIds: [...this.selectedChars],
+      title: this.title.trim(), style: this.style.trim(), characterIds: [...this.selectedChars], characterReferenceIds: Object.fromEntries([...this.selectedChars].filter(id=>!!this.selectedReferenceIds[id]).map(id=>[id,this.selectedReferenceIds[id]])),
       engine: this.engine, secondsPerScene: this.secondsPerScene, orientation: this.orientation,
       crossfadeSeconds: this.crossfade, continuity: this.continuity, reviewKeyframes: this.review,
       scenes: this.parsedScenes()
