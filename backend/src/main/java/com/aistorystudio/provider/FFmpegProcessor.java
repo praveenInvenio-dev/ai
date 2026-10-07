@@ -1578,6 +1578,69 @@ public class FFmpegProcessor implements MediaProcessor {
     }
 
     @Override
+    public byte[] fitAudioDuration(byte[] audioBytes, double durationSeconds) {
+        Path in = null, out = null;
+        try {
+            in = Files.createTempFile("fit-audio-", ".wav");
+            out = Files.createTempFile("fit-audio-out-", ".wav");
+            Files.write(in, audioBytes);
+            List<String> args = new ArrayList<>();
+            args.add(ffmpegBin); args.add("-y"); args.add("-i"); args.add(in.toAbsolutePath().toString());
+            args.add("-af"); args.add("apad"); args.add("-t"); args.add(fmt(durationSeconds));
+            args.add("-ar"); args.add("24000"); args.add("-ac"); args.add("1");
+            args.add(out.toAbsolutePath().toString());
+            run(args);
+            return Files.readAllBytes(out);
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not fit audio to " + durationSeconds + "s", e);
+        } finally {
+            try { if (in != null) Files.deleteIfExists(in); } catch (IOException ignored) { }
+            try { if (out != null) Files.deleteIfExists(out); } catch (IOException ignored) { }
+        }
+    }
+
+    @Override
+    public byte[] mixAudioTracks(byte[] voiceBytes, byte[] soundscapeBytes, double durationSeconds) {
+        Path voice = null, sound = null, out = null;
+        try {
+            voice = Files.createTempFile("skit-voice-", ".wav"); sound = Files.createTempFile("skit-sound-", ".wav"); out = Files.createTempFile("skit-mix-", ".wav");
+            Files.write(voice, voiceBytes); Files.write(sound, soundscapeBytes);
+            List<String> args = new ArrayList<>(List.of(ffmpegBin,"-y","-i",voice.toString(),"-i",sound.toString(),"-filter_complex",
+                "[0:a]volume=1.0,aresample=24000[v];[1:a]volume=0.32,aresample=24000[s];[v][s]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]",
+                "-map","[a]","-t",fmt(durationSeconds),"-ar","24000","-ac","1",out.toString()));
+            run(args); return Files.readAllBytes(out);
+        } catch(Exception e){ throw new IllegalStateException("Could not mix voice and soundscape",e); }
+        finally { try{if(voice!=null)Files.deleteIfExists(voice);}catch(Exception ignored){} try{if(sound!=null)Files.deleteIfExists(sound);}catch(Exception ignored){} try{if(out!=null)Files.deleteIfExists(out);}catch(Exception ignored){} }
+    }
+
+    @Override
+    public Path concatVideos(List<Path> videoPaths, Path outputPath) {
+        if (videoPaths == null || videoPaths.isEmpty()) throw new IllegalArgumentException("No video clips to concatenate");
+        Path list = null;
+        try {
+            list = Files.createTempFile("video-concat-", ".txt");
+            StringBuilder b = new StringBuilder();
+            for (Path p : videoPaths) {
+                b.append("file '").append(p.toAbsolutePath().toString().replace("'", "'\''")).append("'\n");
+            }
+            Files.writeString(list, b.toString(), StandardCharsets.UTF_8);
+            List<String> args = new ArrayList<>();
+            args.add(ffmpegBin); args.add("-y"); args.add("-f"); args.add("concat"); args.add("-safe"); args.add("0");
+            args.add("-i"); args.add(list.toAbsolutePath().toString());
+            args.add("-map"); args.add("0:v:0"); args.add("-map"); args.add("0:a:0?");
+            args.add("-c:v"); args.add("libx264"); args.add("-preset"); args.add("veryfast"); args.add("-crf"); args.add("18");
+            args.add("-pix_fmt"); args.add("yuv420p"); args.add("-c:a"); args.add("aac"); args.add("-b:a"); args.add("192k");
+            args.add("-movflags"); args.add("+faststart"); args.add(outputPath.toAbsolutePath().toString());
+            run(args);
+            return outputPath;
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not concatenate video clips", e);
+        } finally {
+            try { if (list != null) Files.deleteIfExists(list); } catch (IOException ignored) { }
+        }
+    }
+
+    @Override
     public Path renderShort(Path sourceVideo, double startSeconds, double endSeconds, Path outputPath) {
         try {
             Files.createDirectories(outputPath.getParent());

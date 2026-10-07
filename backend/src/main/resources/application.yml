@@ -167,6 +167,16 @@ studio:
     retention-hours: ${VIDEO_SEQUENCE_RETENTION_HOURS:24}
   video-generation:
     retention-hours: ${VIDEO_GENERATION_RETENTION_HOURS:24}
+  audio:
+    h3:
+      # Classic Story Production is image-only; H3 supplies the soundtrack.
+      enabled-in-story-pipeline: ${LOCAL_AI_AUDIO_H3_ENABLED_IN_STORY_PIPELINE:true}
+      turbo: ${LOCAL_AI_AUDIO_H3_TURBO:true}
+      max-duration-seconds: ${LOCAL_AI_AUDIO_H3_MAX_DURATION_SECONDS:10.0}
+    rumik:
+      enabled: ${RUMIK_SPEECH_ENABLED:true}
+      base-url: ${RUMIK_TTS_BASE_URL:http://tts-rumik:5006}
+      voice: ${RUMIK_SPEAKER:Ira}
   animation:
     # Priority for animating a story scene: local AI I2V, then cloud I2V,
     # then the always-available 2.5D engine (FFmpeg camera motion + parallax
@@ -181,13 +191,12 @@ studio:
       # tier honestly "unavailable" (see ComfyUIVideoProvider.unavailableReason)
       # rather than half-configuring a workflow that would fail at render time.
       enabled: ${LOCAL_AI_ANIMATION_ENABLED:false}
-      # Story pipeline vs standalone Video Generation page are gated separately.
-      # H3 is designed to be the image-first story renderer on the dedicated
-      # 16GB deployment; individual scene failures still fall back to 2.5D.
+      # Standalone Video Generation / Video Sequence may use H3 as a visual model.
+      # Classic Story Production does NOT use this visual gate; it uses the separate
+      # studio.audio.h3 switch below for H3 audio-only generation.
       enabled-in-story-pipeline: ${LOCAL_AI_ANIMATION_ENABLED_IN_STORY_PIPELINE:false}
-      # When true, every eligible story scene uses MiniMax H3 I2V instead of
-      # only IMPORTANT/HERO scenes. This is the recommended mode for the
-      # image-first storyboard workflow on the 16GB H3 server.
+      # Legacy story-visual flags retained for compatibility; Classic Story Production
+      # ignores them and remains image-based.
       h3-for-all-scenes: ${LOCAL_AI_ANIMATION_H3_FOR_ALL_SCENES:false}
       workflow: ${LOCAL_AI_ANIMATION_WORKFLOW:minimax-h3-image-to-video}
       # Separate native ComfyUI MiniMax H3 workflow. Set this to an API-format workflow exported from ComfyUI.

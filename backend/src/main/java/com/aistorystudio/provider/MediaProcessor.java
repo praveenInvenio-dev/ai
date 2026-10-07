@@ -24,6 +24,15 @@ public interface MediaProcessor {
      */
     Path addAudioTrack(Path videoPath, byte[] audioBytes, Path outputPath);
 
+    /** Fit an audio byte stream to an exact duration by trimming or padding with silence. */
+    byte[] fitAudioDuration(byte[] audioBytes, double durationSeconds);
+
+    /** Concatenate complete video clips while preserving video/audio streams. */
+    Path concatVideos(java.util.List<Path> videoPaths, Path outputPath);
+
+    /** Mix a voice track with a soundscape track at a fixed duration. */
+    byte[] mixAudioTracks(byte[] voiceBytes, byte[] soundscapeBytes, double durationSeconds);
+
     /** Produce a vertical short (9:16) from a sub-range of scenes. */
     Path renderShort(Path sourceVideo, double startSeconds, double endSeconds, Path outputPath);
 

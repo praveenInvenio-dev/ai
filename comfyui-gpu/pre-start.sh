@@ -73,6 +73,8 @@ fi
 # -----------------------------------------------------------------------------
 # MiniMax H3 16GB + official Turbo assets
 # -----------------------------------------------------------------------------
+# Classic Story Production also uses the native H3 audio-only graph. It uses
+# the same H3 text encoder/video VAE/audio VAE assets downloaded below.
 H3_DIR=/root/ComfyUI/models
 if [ "${DOWNLOAD_H3_MODELS:-true}" = "true" ]; then
   mkdir -p "$H3_DIR/diffusion_models" "$H3_DIR/text_encoders" "$H3_DIR/vae" "$H3_DIR/loras"

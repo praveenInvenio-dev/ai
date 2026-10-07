@@ -17,6 +17,7 @@ export const routes: Routes = [
   // Kept so existing links and the ?episodeId= deep link do not 404.
   { path: 'storyboard', redirectTo: 'build-story', pathMatch: 'full' },
   { path: 'video-editor', loadComponent: () => import('./pages/video-editor/video-editor.component').then(m => m.VideoEditorComponent) },
+  { path: 'funny-skits', loadComponent: () => import('./pages/funny-skit/funny-skit.component').then(m => m.FunnySkitComponent) },
   { path: 'video-generation', loadComponent: () => import('./pages/video-generation/video-generation.component').then(m => m.VideoGenerationComponent) },
   { path: 'video-sequence', loadComponent: () => import('./pages/video-sequence/video-sequence.component').then(m => m.VideoSequenceComponent) },
   { path: 'wan-workflow', data: { workflow: 'WAN_2_2' }, loadComponent: () => import('./pages/video-workflow/video-workflow.component').then(m => m.VideoWorkflowComponent) },

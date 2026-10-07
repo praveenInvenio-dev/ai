@@ -1,0 +1,11 @@
+package com.aistorystudio.skit;
+import org.springframework.core.io.FileSystemResource; import org.springframework.http.MediaType; import org.springframework.http.ResponseEntity; import org.springframework.web.bind.annotation.*; import org.springframework.web.multipart.MultipartFile; import java.nio.file.Path; import java.util.Map; import java.util.UUID;
+@RestController @RequestMapping("/api/funny-skits")
+public class FunnySkitController { private final FunnySkitService service; public FunnySkitController(FunnySkitService s){service=s;}
+ @PostMapping("/jobs") public ResponseEntity<Map<String,UUID>> create(@RequestParam("character") MultipartFile character,@RequestParam("idea") String idea,@RequestParam("language") String language,@RequestParam(value="tone",required=false,defaultValue="absurd comedy") String tone,@RequestParam(value="speaker",required=false,defaultValue="Ira") String speaker){var j=service.createJob(character,idea,language);service.generateAsync(j.getId(),idea,language,tone,speaker);return ResponseEntity.accepted().body(Map.of("jobId",j.getId()));}
+ @GetMapping("/jobs/{id}") public FunnySkitService.JobView status(@PathVariable UUID id){return service.status(id);}
+ @PostMapping("/jobs/{id}/images/{scene}/regenerate") public ResponseEntity<Map<String,String>> regenerateImage(@PathVariable UUID id,@PathVariable int scene){service.regenerateImage(id,scene);return ResponseEntity.ok(Map.of("status","ok"));}
+ @PostMapping("/jobs/{id}/render") public ResponseEntity<Map<String,String>> render(@PathVariable UUID id,@RequestParam(value="tone",required=false,defaultValue="viral reel comedy") String tone,@RequestParam(value="speaker",required=false,defaultValue="Ira") String speaker){service.renderApprovedAsync(id,tone,speaker);return ResponseEntity.accepted().body(Map.of("status","started"));}
+ @GetMapping("/jobs/{id}/images/{scene}") public ResponseEntity<FileSystemResource> image(@PathVariable UUID id,@PathVariable int scene){Path p=service.image(id,scene);return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(new FileSystemResource(p));}
+ @GetMapping("/jobs/{id}/video") public ResponseEntity<FileSystemResource> video(@PathVariable UUID id){Path p=service.result(id);return ResponseEntity.ok().contentType(MediaType.parseMediaType("video/mp4")).body(new FileSystemResource(p));}
+}

@@ -453,6 +453,23 @@ public class StoryEngineService {
             fictionalized escalation, roast side A, roast side B, ordinary-person perspective, escalating absurdity,
             then a balanced punchline that exposes the underlying contradiction. The audience should understand
             that it is satire, not breaking news.
+
+            CREATIVE FORMAT MODE:
+            A creative format is optional and independent of the topic. If the user selects a format such as RAP,
+            SONG, COMEDY, MUSICAL, MYSTERY, DETECTIVE, ACTION, OFFICE, BEDTIME, ABSURD, CINEMATIC or SATIRE,
+            preserve the requested topic/goal while expressing the story in that format. Do not assume every topic
+            is political or educational. A rap can be about software, a mystery can explain DNS, a comedy can teach
+            Azure, a song can tell a children's adventure, and a cinematic story can explain science. Never replace
+            factual explanation with style when the user asks to learn/explain something.
+            RAP FORMAT: use natural rhythmic verses, a hook/refrain and memorable lines; keep factual content correct.
+            SONG/MUSICAL FORMAT: write singable lyrics or musical dialogue with a clear hook while preserving story
+            progression and factual accuracy when relevant.
+            MYSTERY/DETECTIVE FORMAT: reveal the requested concept through clues, investigation and a final clear
+            explanation.
+            COMEDY/OFFICE/ABSURD FORMAT: use character reactions, escalating situations and punchlines without
+            losing the actual requested topic.
+            SATIRE FORMAT: make the fictional/satirical nature obvious and avoid presenting invented claims as facts.
+
             For younger children, keep tension exciting but emotionally safe and resolve frightening moments
             with reassurance. Follow this structure flexibly: Hook, Setup, Curiosity Gap, Escalation,
             Discovery, Complication, Climax, Emotional Payoff, Memorable Ending.
@@ -624,13 +641,31 @@ public class StoryEngineService {
         String idea = episode.getUserPrompt() == null ? "" : episode.getUserPrompt().toLowerCase(Locale.ROOT);
         boolean satireMode = genre.contains("satire") || genre.contains("parody") || genre.contains("commentary")
                 || genre.contains("political") || idea.contains("satire") || idea.contains("roast everyone")
-                || idea.contains("current affairs") || idea.contains("news parody");
-        boolean learningMode = genre.contains("entertainment learning") || idea.contains("[entertainment_learning]") || idea.contains("teach") && (genre.contains("educational") || genre.contains("learning"));
+                || idea.contains("current affairs") || idea.contains("news parody")
+                || idea.contains("[creative_format=political_satire]") || idea.contains("[creative_format=current_affairs_satire]")
+                || idea.contains("[creative_format=news_parody]") || idea.contains("[creative_format=tech_satire]");
+        boolean learningMode = idea.contains("[story_mode=learning]") || genre.contains("entertainment learning")
+                || idea.contains("[entertainment_learning]") || (idea.contains("teach") && (genre.contains("educational") || genre.contains("learning")))
+                || (idea.contains("explain") && (genre.contains("educational") || genre.contains("learning")));
+        String creativeFormat = extractTagValue(idea, "creative_format");
+        if (!creativeFormat.isBlank()) {
+            sb.append("CREATIVE FORMAT MODE: ").append(creativeFormat.toUpperCase(Locale.ROOT)).append(". Keep the user's actual topic and intent; the format changes presentation, not the subject.\n");
+            switch (creativeFormat) {
+                case "RAP" -> sb.append("Write with a strong hook, rhythmic verses and a memorable refrain. It must still sound natural when spoken, not like forced rhymes.\n");
+                case "SONG", "MUSICAL" -> sb.append("Use singable lines, a recurring hook and musical storytelling while keeping the narrative coherent.\n");
+                case "MYSTERY", "DETECTIVE" -> sb.append("Reveal the topic through clues and investigation, then clearly resolve the case and explain the underlying concept.\n");
+                case "COMEDY", "OFFICE", "ABSURD" -> sb.append("Use escalating situations, character reactions and punchlines while preserving the requested topic.\n");
+                case "ACTION", "CINEMATIC" -> sb.append("Use visual action and cinematic pacing, but do not let spectacle replace the requested explanation or story goal.\n");
+                case "BEDTIME" -> sb.append("Use gentle, warm pacing and reassuring imagery.\n");
+                default -> { }
+            }
+        }
         if (learningMode) {
-            sb.append("ENTERTAINMENT LEARNING MODE: Teach the requested topic through an entertaining story, never as a lecture.\n");
+            sb.append("ENTERTAINMENT LEARNING MODE: Teach the requested topic through an entertaining story, never as a lecture, but DO NOT hide the explanation so deeply that the viewer misses it.\n");
+            sb.append("Identify the actual topic the user asked to explain, even when it is a technology, science, finance, law, programming, everyday concept or any other subject.\n");
             sb.append("Open with a concrete conflict, surprise, joke, mystery or absurd situation. Do NOT say 'today we will learn' or begin with a textbook definition.\n");
-            sb.append("The technical/factual explanation must emerge naturally from character actions and dialogue. End with a memorable punchline or reveal that makes the concept stick.\n");
-            sb.append("Use this hidden structure: hook -> entertaining problem -> metaphor/action -> accurate concept reveal -> concrete example -> punchline -> optional 1-2 second takeaway.\n");
+            sb.append("Use the story to create intuition, then explicitly explain the real concept in simple language near the end. Include at least one concrete real-world example and a short memorable takeaway.\n");
+            sb.append("Use this structure flexibly: hook -> entertaining problem -> story/metaphor -> accurate concept reveal -> simple explanation -> concrete example -> punchline/takeaway.\n");
             sb.append("Do not sacrifice factual accuracy for a joke. Never invent formulas, legal provisions, medical facts, programming behaviour, exam rules, dates, statistics or definitions.\n");
             sb.append("For programming topics, explain the actual language/runtime behaviour and include a tiny correct code example naturally in dialogue/visuals when useful.\n");
             sb.append("For medical topics, provide educational information only; do not diagnose, prescribe, or imply that a fictional character's symptoms prove a condition.\n");
@@ -656,6 +691,17 @@ public class StoryEngineService {
         }
         sb.append(continuityContext).append("\n");
         return sb.toString();
+    }
+
+    private String extractTagValue(String text, String tagName) {
+        if (text == null || text.isBlank() || tagName == null || tagName.isBlank()) return "";
+        String marker = "[" + tagName.toLowerCase(Locale.ROOT) + "=";
+        int start = text.toLowerCase(Locale.ROOT).indexOf(marker);
+        if (start < 0) return "";
+        int valueStart = start + marker.length();
+        int end = text.indexOf(']', valueStart);
+        if (end < 0) return "";
+        return text.substring(valueStart, end).trim();
     }
 
     private String enforceVisualStyleJson(JsonNode root, Episode episode) {

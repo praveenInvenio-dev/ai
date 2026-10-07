@@ -49,6 +49,17 @@ public interface VideoGenerationProvider {
 
     VideoGenerationResult generateVideo(VideoGenerationRequest request);
 
+    /** H3 audio-only generation used by the classic image-based Story Production pipeline.
+     * The model still uses its joint audio/video latent internally, but the workflow keeps
+     * the visual latent at 32x32 and saves only the decoded audio track. */
+    record H3AudioRequest(String prompt, double durationSeconds, Long seed, int steps, boolean turbo) {}
+
+    record H3AudioResult(byte[] audioBytes, String fileExtension, long seedUsed, String workflowUsed) {}
+
+    default H3AudioResult generateH3Audio(H3AudioRequest request) {
+        throw new UnsupportedOperationException("H3 audio-only generation is not supported by this video provider");
+    }
+
     /** Real check (configuration + reachability), never hard-coded true -
      *  callers must be able to trust this before spending a HERO-scene
      *  budget on a call that was never going to work. */

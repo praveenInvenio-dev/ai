@@ -1,57 +1,47 @@
-# H3 long-scene + multilingual audio pipeline
+# H3 long-scene and multilingual audio pipeline
 
-## What changed
+## Classic Story Production (V20)
 
-Story production now treats **TTS duration as the authoritative scene timeline**. H3 is only a visual-shot generator.
-
-A 19-second scene is no longer forced into one 5/10-second H3 request. It is rendered as a continuous chain such as:
+Classic Story Production is **image-only for visuals**. MiniMax H3 is used only as the soundtrack engine. It does not generate or animate the story images in this path.
 
 ```text
-19.0s scene
-  -> H3 8s shot
-  -> H3 8s continuation shot (starts from shot 1 last frame)
-  -> H3 3s continuation shot
-  -> concatenate
-  -> exact saved TTS/dialogue track
+Story scene
+  -> generated scene image
+  -> narration + dialogue + audioSpec
+  -> MiniMax H3 audio-only workflow (32x32 disposable visual latent)
+  -> voice + ambience + SFX + background music
+  -> FFmpeg image/video assembly
+  -> final story video
 ```
 
-The same environment is carried between shots using the previous shot's last frame plus a continuity contract that locks:
+The Story Engine remains authoritative for the spoken words and structured audio direction. H3 supplies the performance and synchronized soundscape. Existing TTS remains a per-scene fallback if H3 audio cannot run.
 
-- character identity, face, hair and clothing
-- props and their positions
-- architecture / road / landscape layout
-- weather and time of day
-- lighting direction and shadows
-- palette and atmosphere
-- camera/action continuity
+### Long scenes
 
-## Audio / pronunciation
+H3 audio requests are split by the Story Studio voice segments when a scene is longer than the configured H3 audio window. Each chunk contains only its own dialogue/narration, then the resulting audio segments are concatenated before the image video is assembled. This prevents a long scene from repeating the same dialogue across multiple H3 calls.
 
-H3 native speech is **not used for story narration**. The story's generated TTS WAV is the authoritative audio track.
+### Audio ownership
 
-This avoids H3 pronunciation errors in Hindi, Kannada, Tamil, Telugu and other Indian languages and guarantees that every word in the saved dialogue is retained.
+When H3 audio mode is enabled, the classic renderer does not add the old automatic music bed on top of H3's soundtrack. H3 is responsible for:
 
-For stories without an explicitly assigned character voice profile, the backend prefers language-matched local Edge neural voices for supported Indian languages. IndicF5 references are also available when the `indic` compose profile is enabled.
+- narration
+- character dialogue
+- ambience
+- sound effects
+- background music
 
-For Hinglish, story generation now prefers **Devanagari for Hindi words and Latin script for English/technical terms**, which produces substantially more reliable Hindi pronunciation than Romanized Hindi.
+The subtitle track is still generated from the Story Studio scene text.
 
-## Scene timing
+## Standalone H3 video
 
-The scene-duration estimator is no longer capped at 10 seconds. Actual TTS synthesis updates:
+The separate **Video Generation** and **Video Sequence** flows continue to use MiniMax H3 for actual video generation with native audio. That is intentionally separate from Classic Story Production.
+
+## Configuration
 
 ```text
-scene.narrationSeconds = measured WAV duration
-scene.imageDurationSeconds = narration duration + natural tail
+LOCAL_AI_AUDIO_H3_ENABLED_IN_STORY_PIPELINE=true
+LOCAL_AI_AUDIO_H3_TURBO=true
+LOCAL_AI_AUDIO_H3_MAX_DURATION_SECONDS=10
 ```
 
-The H3 shot cap is configured separately:
-
-```text
-LOCAL_AI_ANIMATION_MINIMAX_H3_SHOT_SECONDS=8.0
-```
-
-This is a **shot** limit, not a story-scene limit.
-
-## Existing stories
-
-Existing audio assets are intentionally reused by the idempotent production pipeline. If an old story was generated with poor Roman-Hindi pronunciation or an English-only voice, regenerate that scene's narration once after deploying this build; the new H3 rendering will then use the corrected WAV.
+The existing H3 model stack is reused: diffusion model, Qwen3-VL text encoder, video VAE and audio VAE. No second TTS model is required for the preferred classic path.

@@ -25,6 +25,7 @@ import { ApiService } from './services/api.service';
           <a routerLink="/voice-lab" routerLinkActive="active"><span>♫</span>Voice lab</a>
           <div class="nav-label">PRODUCTION</div>
           <a routerLink="/video-editor" routerLinkActive="active"><span>◫</span>AI video editor</a>
+          <a routerLink="/funny-skits" routerLinkActive="active"><span>😂</span>Funny skits</a>
           <a routerLink="/video-generation" routerLinkActive="active"><span>▶</span>Video generation</a>
           <a routerLink="/video-sequence" routerLinkActive="active"><span>▤</span>Story video production</a>
           <a routerLink="/wan-workflow" routerLinkActive="active"><span>◈</span>Wan 2.2 workflow</a>

@@ -1,3 +1,20 @@
+## V20 H3 Classic Story Audio
+
+- Classic Story Production is now strictly image-based; H3 video generation is not used by this path.
+- Added a MiniMax H3 audio-only ComfyUI workflow using a disposable 32x32 visual latent and the existing H3 audio VAE.
+- H3 audio is the preferred classic soundtrack engine: narration/dialogue + ambience + SFX + background music are generated together.
+- Existing TTS remains an automatic per-scene fallback if H3 audio generation fails.
+- Existing standalone H3 Video Generation and Video Sequence H3 flows are unchanged.
+- Classic production no longer adds a second automatic music bed when H3 owns the soundtrack.
+
+## v20.1 — Optional Story Modes & Creative Formats
+- Normal Story is now the default; creating a classic story no longer injects Entertainment Learning instructions.
+- Entertainment Learning is opt-in and can explain any user-requested topic with an explicit simple explanation and concrete example, not just a story metaphor.
+- Creative Format is optional and independent of the topic: Rap, Song, Musical, Comedy, Mystery, Detective, Action, Office Comedy, Bedtime, Absurd, Cinematic and multiple satire formats.
+- Learning and Creative Format can be combined (for example, explain Azure as a rap or explain DNS as a detective mystery).
+- Satire presets are now optional rather than the primary story-creation path.
+- Backend prompt handling now recognizes explicit story-mode and creative-format tags while preserving the existing legacy Entertainment Learning tag for compatibility.
+
 ## v18.26 — Entertainment Learning Engine
 - Added Entertainment Learning mode for programming, technology/AI, medical/biology, construction/civil, law/Constitution, UPSC, NEET, JEE, science, finance/economics and general knowledge.
 - Added 30/60/90-second and 3-minute learning durations, difficulty levels and story-based teaching styles.

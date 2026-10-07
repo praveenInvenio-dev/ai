@@ -3,7 +3,6 @@ package com.aistorystudio.service;
 import com.aistorystudio.config.ProviderGateway;
 import com.aistorystudio.domain.*;
 import com.aistorystudio.domain.Character;
-import com.aistorystudio.domain.CharacterReference;
 import com.aistorystudio.domain.enums.AssetType;
 import com.aistorystudio.domain.enums.EpisodeStatus;
 import com.aistorystudio.domain.enums.JobStatus;
@@ -12,9 +11,7 @@ import com.aistorystudio.provider.ImageGenerationProvider;
 import com.aistorystudio.provider.MediaProcessor;
 import com.aistorystudio.provider.StorageProvider;
 import com.aistorystudio.provider.TextToSpeechProvider;
-import com.aistorystudio.provider.VideoGenerationProvider;
 import com.aistorystudio.provider.VisionProvider;
-import com.aistorystudio.sequence.ClipMerger;
 import com.aistorystudio.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -46,6 +43,7 @@ public class ProductionPipelineService {
     private final AssetRepository assetRepository;
     private final StoryBibleRepository storyBibleRepository;
     private final CharacterRepository characterRepository;
+    private final CharacterReferenceRepository characterReferenceRepository;
     private final com.aistorystudio.repository.VoiceProfileRepository voiceProfileRepository;
     private final JobService jobService;
     private final ProviderGateway providerGateway;
@@ -53,52 +51,26 @@ public class ProductionPipelineService {
     private final MediaProcessor mediaProcessor;
     private final SubtitleService subtitleService;
     private final EpisodeMemoryService episodeMemoryService;
-    private final CharacterReferenceRepository characterReferenceRepository;
-    private final com.aistorystudio.animation.AnimationDecisionService animationDecisionService;
     private final ImagePromptAssembler imagePromptAssembler = new ImagePromptAssembler();
     private final ObjectMapper mapper = new ObjectMapper();
     private final H3StoryboardPromptBuilder h3PromptBuilder = new H3StoryboardPromptBuilder(mapper);
 
-    @Value("${studio.animation.local-ai.enabled-in-story-pipeline:false}")
-    private boolean storyPipelineAiVideoEnabled;
-    @Value("${studio.animation.local-ai.h3-for-all-scenes:false}")
-    private boolean h3ForAllScenes;
-    /** Maximum duration of one H3 visual shot. Long narration scenes are split into
-     *  several visually-continuous shots instead of being truncated to H3's per-shot cap. */
-    @Value("${studio.animation.local-ai.minimax-h3-shot-seconds:8.0}")
-    private double h3ShotSeconds;
+    /** Classic Story Production is deliberately image-based. MiniMax H3 is used here only
+     * as the soundtrack engine; standalone/video-sequence H3 remains available elsewhere. */
+    @Value("${studio.audio.h3.enabled-in-story-pipeline:true}")
+    private boolean h3AudioEnabledInStoryPipeline;
+    @Value("${studio.audio.h3.turbo:true}")
+    private boolean h3AudioTurbo;
+    @Value("${studio.audio.h3.max-duration-seconds:10.0}")
+    private double h3AudioMaxDurationSeconds;
+    @Value("${studio.audio.rumik.enabled:true}")
+    private boolean rumikSpeechEnabled;
+    @Value("${studio.audio.rumik.voice:Ira}")
+    private String rumikVoice;
+    @Value("${studio.audio.rumik.base-url:http://tts-rumik:5006}")
+    private String rumikBaseUrl;
     /** vertical (default, 1080x1920, Shorts/Reels native) or horizontal (1920x1080). */
     @Value("${studio.video.orientation:vertical}") private String videoOrientation;
-
-    private List<String> sceneCharacterNames(Scene scene) {
-        List<String> names = new ArrayList<>();
-        try {
-            if (scene.getCharactersJson() != null && !scene.getCharactersJson().isBlank()) {
-                JsonNode arr = mapper.readTree(scene.getCharactersJson());
-                if (arr.isArray()) for (JsonNode n : arr) {
-                    String name = n.isTextual() ? n.asText() : n.path("name").asText("");
-                    if (!name.isBlank()) names.add(name.trim());
-                }
-            }
-        } catch (Exception ignored) {}
-        return names;
-    }
-
-    private Path resolveCharacterReference(Episode episode, Scene scene) {
-        List<String> names = sceneCharacterNames(scene);
-        if (names.isEmpty()) return null;
-        List<Character> chars = characterRepository.findByEpisodeId(episode.getId());
-        if (chars.isEmpty() && episode.getUniverseId() != null) chars = characterRepository.findByUniverseId(episode.getUniverseId());
-        for (String name : names) {
-            Character c = chars.stream().filter(x -> x.getName() != null && x.getName().equalsIgnoreCase(name)).findFirst().orElse(null);
-            if (c == null) continue;
-            List<CharacterReference> refs = characterReferenceRepository.findByCharacterId(c.getId());
-            CharacterReference ref = refs.stream().filter(CharacterReference::isLocked).findFirst()
-                    .orElseGet(() -> refs.stream().filter(CharacterReference::isPrimary).findFirst().orElse(null));
-            if (ref != null && ref.getImagePath() != null && java.nio.file.Files.isRegularFile(Path.of(ref.getImagePath()))) return Path.of(ref.getImagePath());
-        }
-        return null;
-    }
 
     private boolean horizontalVideo() {
         return "horizontal".equalsIgnoreCase(videoOrientation) || "landscape".equalsIgnoreCase(videoOrientation);
@@ -121,9 +93,8 @@ public class ProductionPipelineService {
                                       ProviderGateway providerGateway, StorageProvider storageProvider,
                                       MediaProcessor mediaProcessor, SubtitleService subtitleService,
                                       EpisodeMemoryService episodeMemoryService,
-                                      CharacterReferenceRepository characterReferenceRepository,
                                       com.aistorystudio.repository.VoiceProfileRepository voiceProfileRepository,
-                                      com.aistorystudio.animation.AnimationDecisionService animationDecisionService) {
+                                      CharacterReferenceRepository characterReferenceRepository) {
         this.episodeRepository = episodeRepository;
         this.sceneRepository = sceneRepository;
         this.assetRepository = assetRepository;
@@ -136,7 +107,6 @@ public class ProductionPipelineService {
         this.subtitleService = subtitleService;
         this.voiceProfileRepository = voiceProfileRepository;
         this.characterReferenceRepository = characterReferenceRepository;
-        this.animationDecisionService = animationDecisionService;
         this.episodeMemoryService = episodeMemoryService;
     }
 
@@ -374,6 +344,7 @@ public class ProductionPipelineService {
     private Path activeImagePathFor(UUID episodeId, UUID sceneId) {
         return assetRepository.findByEpisodeIdAndAssetType(episodeId, AssetType.IMAGE).stream()
                 .filter(a -> sceneId.equals(a.getSceneId()) && a.isActive())
+                
                 .findFirst()
                 .map(a -> Path.of(a.getFilePath()))
                 .filter(p -> p.toFile().exists() && p.toFile().length() > 0)
@@ -392,63 +363,66 @@ public class ProductionPipelineService {
         Map<UUID, Path> result = new LinkedHashMap<>();
         List<String> failures = new ArrayList<>();
         for (Scene scene : scenes) {
-            // Idempotent skip, same reasoning as generateSceneImages: a scene
-            // that already has a successful narration asset (e.g. from an
-            // earlier run that partially failed) is not re-synthesised.
-            Path existing = activeAudioPathFor(episode.getId(), scene.getId());
+            Path existing = activeAudioPathFor(episode.getId(), scene.getId(), h3AudioEnabledInStoryPipeline);
             if (existing != null) {
-                // Do not trust an old/default scene duration (often 5s). The
-                // narration WAV is the source of truth every time production
-                // starts. This is especially important for stories created
-                // before the long-scene/H3 pipeline was enabled.
-                double existingDuration = probeWavFileDuration(existing);
+                double existingDuration = probeAudioFileDuration(existing);
                 if (existingDuration > 0) {
                     scene.setNarrationSeconds(existingDuration);
                     scene.setImageDurationSeconds(existingDuration + 0.6);
                     sceneRepository.save(scene);
-                    log.info("Scene {} duration synchronized from existing TTS WAV: narration={}s, timeline={}s",
-                            scene.getSceneNumber(), fmt(existingDuration), fmt(existingDuration + 0.6));
+                    log.info("Scene {} duration synchronized from existing {} audio: narration={}s, timeline={}s",
+                            scene.getSceneNumber(), h3AudioEnabledInStoryPipeline ? "H3" : "TTS", fmt(existingDuration), fmt(existingDuration + 0.6));
                 }
                 result.put(scene.getId(), existing);
                 continue;
             }
-            var step = jobService.startStep(jobId, scene.getId(), "GENERATE_NARRATION", "tts", null);
+            var step = jobService.startStep(jobId, scene.getId(), "GENERATE_NARRATION", h3AudioEnabledInStoryPipeline ? "h3-audio" : "tts", null);
             long start = System.currentTimeMillis();
             try {
-                List<VoiceSegment> segments = readVoiceSegments(scene);
-                if (segments.isEmpty()) segments = List.of(new VoiceSegment("Narrator", scene.getNarration(), "", 1.0, 1.0, scene.getEmotion(), 0, 0, null, null, List.of(), false, null, null));
-                List<byte[]> parts = new ArrayList<>();
-                List<String> ttsWarnings = new ArrayList<>();
-                for (VoiceSegment seg : segments) {
-                    if (seg.text() == null || seg.text().isBlank()) continue;
-                    double pauseScale = lookupEmotionProsody(seg.emotion()).pauseScale();
-                    maybeInsertBreath(parts, seg.pauseBeforeMs(), seg.breath());
-                    appendSilence(parts, scaledPause(seg.pauseBeforeMs(), pauseScale));
-                    // One synthesis call per voice segment keeps the same voice and
-                    // prosody context across the sentence. Punctuation remains inside
-                    // the request; explicit pauses are added outside it.
-                    Prosody p = prosody(seg);
-                    var tts = synthesizeSegment(episode, seg, p);
-                    if (tts.providerWarning() != null) ttsWarnings.add(tts.providerWarning());
-                    parts.add(tts.audioBytes());
-                    appendSilence(parts, scaledPause(seg.pauseAfterMs(), pauseScale));
+                Path path;
+                String provider;
+                if (h3AudioEnabledInStoryPipeline && rumikSpeechEnabled) {
+                    path = generateRumikH3SceneAudio(episode, scene);
+                    provider = "rumik-oss-1+h3-soundscape";
+                } else if (h3AudioEnabledInStoryPipeline) {
+                    path = generateH3SceneAudio(episode, scene);
+                    provider = "h3-audio";
+                } else {
+                    path = generateTtsSceneAudio(episode, scene);
+                    provider = "tts-multi-voice";
                 }
-                if (parts.isEmpty()) throw new IllegalStateException("Scene " + scene.getSceneNumber() + " has no spoken text.");
-                byte[] combined = concatenateWav(parts);
-                combined = mediaProcessor.humanizeVoice(combined);
-                Path path = storageProvider.store(assetRelativePath(episode, String.format("audio/scene-%03d.wav", scene.getSceneNumber())), combined);
-                saveAsset(episode.getId(), scene.getId(), AssetType.AUDIO_NARRATION, path, "tts-multi-voice", null, null);
+                saveAsset(episode.getId(), scene.getId(), AssetType.AUDIO_NARRATION, path, provider, null, null);
                 result.put(scene.getId(), path);
-                double duration = probeWavDuration(combined);
-                if (duration > 0) { scene.setNarrationSeconds(duration); scene.setImageDurationSeconds(duration + 0.6); sceneRepository.save(scene); }
-                if (!ttsWarnings.isEmpty()) {
-                    jobService.setStepWarning(step.getId(), String.join(" | ", new java.util.LinkedHashSet<>(ttsWarnings)));
+                double duration = probeAudioFileDuration(path);
+                if (duration > 0) {
+                    scene.setNarrationSeconds(duration);
+                    scene.setImageDurationSeconds(duration + 0.6);
+                    sceneRepository.save(scene);
                 }
                 jobService.completeStep(step.getId(), System.currentTimeMillis() - start);
             } catch (Exception e) {
-                // Isolated per scene, same as generateSceneImages: one scene's
-                // TTS failure (a bad voice id, a provider timeout) no longer
-                // silently prevents every later scene from being attempted.
+                if (h3AudioEnabledInStoryPipeline) {
+                    // H3 is the preferred classic-story audio engine, but a GPU/model outage
+                    // must not destroy an otherwise valid story. Fall back to the existing TTS
+                    // implementation for this scene and leave the warning visible in the job log.
+                    try {
+                        log.warn("H3 audio failed for scene {}: {}. Falling back to existing TTS.", scene.getSceneNumber(), e.getMessage());
+                        Path fallback = generateTtsSceneAudio(episode, scene);
+                        saveAsset(episode.getId(), scene.getId(), AssetType.AUDIO_NARRATION, fallback, "tts-fallback-after-h3", null, null);
+                        result.put(scene.getId(), fallback);
+                        double duration = probeAudioFileDuration(fallback);
+                        if (duration > 0) {
+                            scene.setNarrationSeconds(duration);
+                            scene.setImageDurationSeconds(duration + 0.6);
+                            sceneRepository.save(scene);
+                        }
+                        jobService.setStepWarning(step.getId(), "H3 audio failed; fell back to existing TTS: " + e.getMessage());
+                        jobService.completeStep(step.getId(), System.currentTimeMillis() - start);
+                        continue;
+                    } catch (Exception fallbackError) {
+                        e = fallbackError;
+                    }
+                }
                 log.warn("Narration generation failed for scene {} of episode {}: {}",
                         scene.getSceneNumber(), episode.getId(), e.getMessage());
                 jobService.failStep(step.getId(), e.getMessage(), 0);
@@ -456,16 +430,267 @@ public class ProductionPipelineService {
             }
         }
         if (!failures.isEmpty()) {
-            throw new IllegalStateException(
-                    "Narration generation failed for " + failures.size() + " of " + scenes.size()
-                            + " scene(s): " + String.join("; ", failures)
-                            + ". The other scenes' narration was generated successfully; run this step again to retry only the failed ones.");
+            throw new IllegalStateException("Narration generation failed for " + failures.size() + " of " + scenes.size()
+                    + " scene(s): " + String.join("; ", failures));
         }
         return result;
     }
 
+    /** Indian-language production path: Rumik OSS-1 owns speech performance; H3 owns
+     * ambience/SFX/music. The two tracks are mixed after generation so H3 never has to
+     * synthesize uncertain Indian-language dialogue. */
+    private Path generateRumikH3SceneAudio(Episode episode, Scene scene) {
+        List<VoiceSegment> sourceSegments = readVoiceSegments(scene);
+        if (sourceSegments.isEmpty()) {
+            sourceSegments = List.of(new VoiceSegment("Narrator", scene.getNarration(), "", 1.0, 1.0,
+                    scene.getEmotion(), 0, 0, null, null, List.of(), false, null, null));
+        }
+        Path work = null;
+        try {
+            work = Files.createTempDirectory("rumik-h3-scene-" + scene.getSceneNumber() + "-");
+            List<Path> speechParts = new ArrayList<>();
+            for (int i = 0; i < sourceSegments.size(); i++) {
+                VoiceSegment seg = sourceSegments.get(i);
+                if (seg == null || seg.text() == null || seg.text().isBlank()) continue;
+                Prosody p = prosody(seg);
+                String description = rumikDescription(p, episode.getLanguage());
+                byte[] wav = generateRumikSpeech(seg.text().trim(), episode.getLanguage(), description);
+                Path raw = work.resolve(String.format(Locale.ROOT, "speech-%03d.wav", i));
+                Files.write(raw, wav);
+                speechParts.add(raw);
+            }
+            if (speechParts.isEmpty()) throw new IllegalStateException("Rumik produced no speech for scene " + scene.getSceneNumber());
+
+            Path speech = work.resolve("speech.wav");
+            concatenateAudioWithPauses(speechParts, sourceSegments, speech);
+            double speechDuration = probeAudioFileDuration(speech);
+            if (speechDuration <= 0.2) throw new IllegalStateException("Rumik produced unusable speech for scene " + scene.getSceneNumber());
+
+            Path soundscape = generateH3Soundscape(episode, scene, speechDuration, work);
+            Path mixed = work.resolve("scene-mixed.wav");
+            mixSpeechAndSoundscape(speech, soundscape, mixed);
+            Path stored = storageProvider.store(assetRelativePath(episode,
+                    String.format("audio/scene-%03d-rumik-h3.wav", scene.getSceneNumber())), Files.readAllBytes(mixed));
+            return stored;
+        } catch (Exception e) {
+            throw new IllegalStateException("Rumik + H3 audio generation failed for scene " + scene.getSceneNumber() + ": " + e.getMessage(), e);
+        } finally {
+            if (work != null) {
+                try (var walk = Files.walk(work)) {
+                    walk.sorted(Comparator.reverseOrder()).forEach(x -> { try { Files.deleteIfExists(x); } catch (Exception ignored) {} });
+                } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private byte[] generateRumikSpeech(String text, String language, String description) {
+        try {
+            var body = mapper.createObjectNode();
+            body.put("speaker", rumikVoice == null || rumikVoice.isBlank() ? "Ira" : rumikVoice);
+            body.put("input", text);
+            body.put("description", description == null ? "" : description);
+            body.put("temperature", 0.8);
+            body.put("top_k", 30);
+            body.put("max_new_tokens", 4096);
+            String json = mapper.writeValueAsString(body);
+            var client = org.springframework.web.reactive.function.client.WebClient.builder().baseUrl(rumikBaseUrl).build();
+            byte[] wav = client.post().uri("/v1/audio/speech")
+                    .header("Content-Type", "application/json")
+                    .bodyValue(json).retrieve().bodyToMono(byte[].class)
+                    .block(java.time.Duration.ofSeconds(180));
+            if (wav == null || wav.length < 1000) throw new IllegalStateException("Rumik returned empty audio");
+            return wav;
+        } catch (Exception e) {
+            throw new IllegalStateException("Rumik TTS unavailable at " + rumikBaseUrl + ": " + e.getMessage(), e);
+        }
+    }
+
+    private String rumikDescription(Prosody p, String language) {
+        String lang = language == null ? "" : language.toLowerCase(Locale.ROOT);
+        String accent = lang.contains("hindi") || lang.contains("hinglish") ? "Hindi accent"
+                : lang.contains("telugu") ? "Telugu accent"
+                : lang.contains("tamil") ? "Tamil accent"
+                : lang.contains("kannada") ? "Kannada accent"
+                : lang.contains("bengali") ? "Bengali accent"
+                : lang.contains("punjabi") ? "Punjabi accent"
+                : lang.contains("english") ? "Indian English accent" : "natural accent";
+        String tone = p.emotion() == null || p.emotion().isBlank() ? "natural" : p.emotion();
+        String pace = p.speed() >= 1.10 ? "fast" : p.speed() <= 0.92 ? "slow" : "steady pace";
+        return tone + ", " + accent + ", " + pace;
+    }
+
+    private Path generateH3Soundscape(Episode episode, Scene scene, double speechDuration, Path work) throws Exception {
+        List<Path> parts = new ArrayList<>();
+        double remaining = speechDuration;
+        int part = 0;
+        while (remaining > 0.15) {
+            double target = Math.min(h3AudioMaxDurationSeconds, Math.max(3.0, remaining));
+            String prompt = h3PromptBuilder.buildSoundscapeOnly("", scene.getAudioSpecJson(), episode.getLanguage(), scene.getEmotion(), target);
+            var request = new com.aistorystudio.provider.VideoGenerationProvider.H3AudioRequest(
+                    prompt, target, ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE),
+                    h3AudioTurbo ? 8 : 20, h3AudioTurbo);
+            var generated = providerGateway.generateH3Audio(request);
+            Path raw = work.resolve(String.format(Locale.ROOT, "sound-%03d.%s", part++, generated.fileExtension()));
+            Files.write(raw, generated.audioBytes());
+            if (probeAudioFileDuration(raw) <= 0.2) throw new IllegalStateException("H3 returned unusable soundscape audio");
+            parts.add(raw);
+            remaining -= target;
+        }
+        Path out = work.resolve("soundscape.flac");
+        if (parts.size() == 1) Files.copy(parts.get(0), out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        else mergeAudioParts(parts, out);
+        return out;
+    }
+
+    private void mixSpeechAndSoundscape(Path speech, Path soundscape, Path output) throws Exception {
+        Process proc = new ProcessBuilder("ffmpeg", "-nostdin", "-y",
+                "-i", speech.toString(), "-i", soundscape.toString(),
+                "-filter_complex", "[0:a]volume=1.0[voice];[1:a]volume=0.30[bed];[voice][bed]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,aresample=24000[a]",
+                "-map", "[a]", "-c:a", "pcm_s16le", output.toString()).redirectErrorStream(true).start();
+        String logText = new String(proc.getInputStream().readAllBytes());
+        if (proc.waitFor() != 0) throw new IllegalStateException("FFmpeg speech/soundscape mix failed: " + logText);
+    }
+
+    private void concatenateAudioWithPauses(List<Path> parts, List<VoiceSegment> segments, Path output) throws Exception {
+        List<String> args = new ArrayList<>(List.of("ffmpeg", "-nostdin", "-y"));
+        List<String> inputs = new ArrayList<>();
+        for (Path p : parts) { args.add("-i"); args.add(p.toString()); inputs.add("[" + (inputs.size()) + ":a]"); }
+        StringBuilder filter = new StringBuilder();
+        int n = parts.size();
+        for (int i = 0; i < n; i++) filter.append("[").append(i).append(":a]aresample=24000[a").append(i).append("];" );
+        for (int i = 0; i < n; i++) { filter.append("[a").append(i).append("]"); }
+        filter.append("concat=n=").append(n).append(":v=0:a=1[a]");
+        args.add("-filter_complex"); args.add(filter.toString()); args.add("-map"); args.add("[a]"); args.add("-c:a"); args.add("pcm_s16le"); args.add(output.toString());
+        Process proc = new ProcessBuilder(args).redirectErrorStream(true).start();
+        String logText = new String(proc.getInputStream().readAllBytes());
+        if (proc.waitFor() != 0) throw new IllegalStateException("FFmpeg speech concat failed: " + logText);
+    }
+
+    private Path generateH3SceneAudio(Episode episode, Scene scene) {
+        List<VoiceSegment> sourceSegments = readVoiceSegments(scene);
+        if (sourceSegments.isEmpty()) {
+            sourceSegments = List.of(new VoiceSegment("Narrator", scene.getNarration(), "", 1.0, 1.0,
+                    scene.getEmotion(), 0, 0, null, null, List.of(), false, null, null));
+        }
+        List<List<VoiceSegment>> chunks = splitVoiceSegmentsForH3(sourceSegments);
+        Path work = null;
+        try {
+            work = Files.createTempDirectory("h3-audio-scene-" + scene.getSceneNumber() + "-");
+            List<Path> parts = new ArrayList<>();
+            for (int part = 0; part < chunks.size(); part++) {
+                List<VoiceSegment> chunk = chunks.get(part);
+                int words = chunk.stream().map(VoiceSegment::text).filter(Objects::nonNull)
+                        .mapToInt(x -> x.trim().isEmpty() ? 0 : x.trim().split("\\s+").length).sum();
+                double target = Math.max(3.0, Math.min(h3AudioMaxDurationSeconds, words / 2.4 + 0.8));
+                String chunkJson = mapper.writeValueAsString(chunk);
+                String prompt = h3PromptBuilder.buildAudioOnly("", chunkJson, scene.getAudioSpecJson(),
+                        episode.getLanguage(), scene.getEmotion(), target);
+                var request = new com.aistorystudio.provider.VideoGenerationProvider.H3AudioRequest(
+                        prompt, target, ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE),
+                        h3AudioTurbo ? 8 : 20, h3AudioTurbo);
+                var generated = providerGateway.generateH3Audio(request);
+                Path raw = work.resolve(String.format(Locale.ROOT, "part-%03d.%s", part, generated.fileExtension()));
+                Files.write(raw, generated.audioBytes());
+                double actual = com.aistorystudio.sequence.ClipMerger.probeDuration(raw);
+                if (actual <= 0.2) throw new IllegalStateException("H3 returned an unusable audio segment for scene " + scene.getSceneNumber());
+                parts.add(raw);
+            }
+            if (parts.isEmpty()) throw new IllegalStateException("H3 produced no audio for scene " + scene.getSceneNumber());
+            Path merged = work.resolve("scene-audio.flac");
+            if (parts.size() == 1) Files.copy(parts.get(0), merged, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            else mergeAudioParts(parts, merged);
+            Path stored = storageProvider.store(assetRelativePath(episode,
+                    String.format("audio/scene-%03d-h3.flac", scene.getSceneNumber())), Files.readAllBytes(merged));
+            return stored;
+        } catch (Exception e) {
+            throw new IllegalStateException("H3 audio generation failed for scene " + scene.getSceneNumber() + ": " + e.getMessage(), e);
+        } finally {
+            if (work != null) {
+                try (var walk = Files.walk(work)) {
+                    walk.sorted(Comparator.reverseOrder()).forEach(x -> { try { Files.deleteIfExists(x); } catch (Exception ignored) {} });
+                } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private List<List<VoiceSegment>> splitVoiceSegmentsForH3(List<VoiceSegment> source) {
+        int maxWords = Math.max(8, (int) Math.floor(Math.max(3.0, h3AudioMaxDurationSeconds - 0.8) * 2.4));
+        List<List<VoiceSegment>> chunks = new ArrayList<>();
+        List<VoiceSegment> current = new ArrayList<>();
+        int currentWords = 0;
+        for (VoiceSegment segment : source) {
+            if (segment == null || segment.text() == null || segment.text().isBlank()) continue;
+            String[] words = segment.text().trim().split("\\s+");
+            if (words.length <= maxWords) {
+                if (!current.isEmpty() && currentWords + words.length > maxWords) {
+                    chunks.add(current); current = new ArrayList<>(); currentWords = 0;
+                }
+                current.add(segment);
+                currentWords += words.length;
+                continue;
+            }
+            for (int i = 0; i < words.length; i += maxWords) {
+                int end = Math.min(words.length, i + maxWords);
+                String text = String.join(" ", Arrays.copyOfRange(words, i, end));
+                VoiceSegment split = new VoiceSegment(segment.character(), text, segment.voice(), segment.speed(), segment.pitch(),
+                        segment.emotion(), i == 0 ? segment.pauseBeforeMs() : 0,
+                        end == words.length ? segment.pauseAfterMs() : 0, segment.emotionIntensity(), segment.delivery(),
+                        segment.emphasis(), segment.breath(), segment.paralinguisticEvent(), segment.actingDirection());
+                if (!current.isEmpty()) { chunks.add(current); current = new ArrayList<>(); currentWords = 0; }
+                chunks.add(new ArrayList<>(List.of(split)));
+            }
+        }
+        if (!current.isEmpty()) chunks.add(current);
+        if (chunks.isEmpty()) chunks.add(List.of(new VoiceSegment("Narrator", "", "", 1.0, 1.0, "neutral", 0, 0, null, null, List.of(), false, null, null)));
+        return chunks;
+    }
+
+    private double estimatedAudioDuration(Scene scene) {
+        if (scene.getNarrationSeconds() != null && scene.getNarrationSeconds() > 0) return scene.getNarrationSeconds();
+        String text = scene.getNarration() == null ? "" : scene.getNarration().trim();
+        try {
+            List<VoiceSegment> segments = readVoiceSegments(scene);
+            if (!segments.isEmpty()) text = segments.stream().map(VoiceSegment::text).filter(Objects::nonNull).reduce("", (a,b) -> a + " " + b).trim();
+        } catch (Exception ignored) {}
+        int words = text.isBlank() ? 12 : text.split("\\s+").length;
+        return Math.max(3.0, Math.min(60.0, words / 2.4 + 0.8));
+    }
+
+    private void mergeAudioParts(List<Path> parts, Path output) {
+        try {
+            Path list = Files.createTempFile("h3-audio-concat-", ".txt");
+            try {
+                StringBuilder b = new StringBuilder();
+                for (Path part : parts) b.append("file '").append(part.toAbsolutePath().toString().replace("'", "'\\''")).append("'\\n");
+                Files.writeString(list, b.toString());
+                Process proc = new ProcessBuilder("ffmpeg", "-nostdin", "-y", "-f", "concat", "-safe", "0", "-i", list.toString(), "-c:a", "flac", output.toString())
+                        .redirectErrorStream(true).start();
+                String logText = new String(proc.getInputStream().readAllBytes());
+                if (proc.waitFor() != 0) throw new IllegalStateException("FFmpeg audio concat failed: " + logText);
+            } finally { Files.deleteIfExists(list); }
+        } catch (Exception e) { throw new IllegalStateException("Could not merge H3 audio segments", e); }
+    }
+
+    private Path generateTtsSceneAudio(Episode episode, Scene scene) {
+        List<VoiceSegment> segments = readVoiceSegments(scene);
+        if (segments.isEmpty()) segments = List.of(new VoiceSegment("Narrator", scene.getNarration(), "", 1.0, 1.0, scene.getEmotion(), 0, 0, null, null, List.of(), false, null, null));
+        List<byte[]> parts = new ArrayList<>();
+        for (VoiceSegment seg : segments) {
+            if (seg.text() == null || seg.text().isBlank()) continue;
+            double pauseScale = lookupEmotionProsody(seg.emotion()).pauseScale();
+            maybeInsertBreath(parts, seg.pauseBeforeMs(), seg.breath());
+            appendSilence(parts, scaledPause(seg.pauseBeforeMs(), pauseScale));
+            Prosody p = prosody(seg);
+            parts.add(synthesizeSegment(episode, seg, p).audioBytes());
+            appendSilence(parts, scaledPause(seg.pauseAfterMs(), pauseScale));
+        }
+        if (parts.isEmpty()) throw new IllegalStateException("Scene " + scene.getSceneNumber() + " has no spoken text.");
+        byte[] combined = mediaProcessor.humanizeVoice(concatenateWav(parts));
+        return storageProvider.store(assetRelativePath(episode, String.format("audio/scene-%03d.wav", scene.getSceneNumber())), combined);
+    }
+
     /** The current active AUDIO_NARRATION asset's file, if this scene already has one. */
-    private Path activeAudioPathFor(UUID episodeId, UUID sceneId) {
+    private Path activeAudioPathFor(UUID episodeId, UUID sceneId, boolean h3Preferred) {
         return assetRepository.findByEpisodeIdAndAssetType(episodeId, AssetType.AUDIO_NARRATION).stream()
                 .filter(a -> sceneId.equals(a.getSceneId()) && a.isActive())
                 .findFirst()
@@ -818,6 +1043,12 @@ public class ProductionPipelineService {
         catch (Exception e) { return -1; }
     }
 
+    private double probeAudioFileDuration(Path audio) {
+        if (audio == null || !Files.isRegularFile(audio)) return -1;
+        try { return com.aistorystudio.sequence.ClipMerger.probeDuration(audio); }
+        catch (Exception e) { return probeWavFileDuration(audio); }
+    }
+
     private double probeWavFileDuration(Path wav) {
         if (wav == null || !Files.isRegularFile(wav)) return -1;
         try (var ais = javax.sound.sampled.AudioSystem.getAudioInputStream(wav.toFile())) {
@@ -831,65 +1062,38 @@ public class ProductionPipelineService {
     private Path assembleVideo(Episode episode, List<Scene> scenes, Map<UUID, Path> images, Map<UUID, Path> audio) {
         List<MediaProcessor.SceneClip> clips = new ArrayList<>();
         for (Scene scene : scenes) {
-            var decision = animationDecisionService.decide(scene);
             double duration = scene.getImageDurationSeconds() != null && scene.getImageDurationSeconds() > 0
                     ? scene.getImageDurationSeconds()
                     : (scene.getNarrationSeconds() != null && scene.getNarrationSeconds() > 0
                         ? scene.getNarrationSeconds() + 0.6
                         : durationFromSceneAudio(audio.get(scene.getId())));
-            if (duration <= 0) {
-                // 5s is only an emergency fallback for a scene with genuinely
-                // no narration/audio metadata. It must never override a TTS
-                // duration or be used as the H3 scene duration.
-                duration = 5.0;
+            if (duration <= 0) duration = 5.0;
+            if (images.get(scene.getId()) == null || audio.get(scene.getId()) == null) {
+                throw new IllegalStateException("Scene " + scene.getSceneNumber() + " is missing its image or narration audio.");
             }
-            AiVideoResult aiVideo = null;
-            // Both AI tiers still correctly report unavailable unless
-            // genuinely configured (see LocalAIAnimationProvider /
-            // CloudAIAnimationProvider) - this only ever fires on hardware
-            // where it's actually been set up, exactly as the decision
-            // service's own priority table intends. Any failure INSIDE
-            // tryGenerateAiVideo() falls back to 2.5D - but a real gap
-            // remained: FFmpegProcessor's duration-tolerance check runs
-            // AFTER a successful-but-slightly-short Wan clip and throws a
-            // hard failure nothing here catches, taking down the WHOLE
-            // episode over one scene. storyPipelineAiVideoEnabled defaults
-            // false for exactly that reason - the standalone Video
-            // Generation page is unaffected, it calls the same provider
-            // directly, one clip at a time, where a single failure only
-            // costs that one clip.
-            if (storyPipelineAiVideoEnabled && "local-ai".equals(decision.providerId()) && providerGateway.isLocalAiVideoAvailable()) {
-                aiVideo = tryGenerateAiVideo(episode, scene, images.get(scene.getId()), duration);
-            }
-            Path clipAudio = aiVideo != null && aiVideo.nativeAudio() ? null : audio.get(scene.getId());
-            clips.add(new MediaProcessor.SceneClip(images.get(scene.getId()), clipAudio, duration,
+            // Classic Story Production is always image-based. H3 supplies only
+            // the soundtrack; the existing 2.5D renderer remains responsible for
+            // camera/parallax/particle motion on the generated still image.
+            clips.add(new MediaProcessor.SceneClip(images.get(scene.getId()), audio.get(scene.getId()), duration,
                     scene.getCameraMovement(), scene.getTransitionIn(), scene.getEmotion(),
                     scene.getLighting(), scene.getAction(), scene.getLocation(), scene.getImportance(),
-                    scene.getAnimationMode(), aiVideo == null ? null : aiVideo.path()));
+                    scene.getAnimationMode(), null));
             MediaProcessor.SceneClip built = clips.get(clips.size() - 1);
-            // Spec section 12/55: log the full motion profile alongside the
-            // tier decision, not just the tier - "why this animation" should
-            // be inspectable down to the actual camera/parallax/character/
-            // environment values, not just "which provider".
-            log.info("Scene {} motion profile: {}", scene.getSceneNumber(),
-                    aiVideo != null ? "{\"note\":\"AI video - 2.5D motion profile not applicable\",\"nativeAudio\":" + aiVideo.nativeAudio() + "}"
-                            : mediaProcessor.buildMotionProfileJson(built));
+            log.info("Scene {} classic image-only motion profile: {}", scene.getSceneNumber(),
+                    mediaProcessor.buildMotionProfileJson(built));
         }
         Path outputPath = storageProvider.resolve(assetRelativePath(episode, "video/final.mp4"));
-        boolean allNativeH3 = !clips.isEmpty() && clips.stream().allMatch(c -> c.audioPath() == null && c.aiVideoPath() != null);
-        Path musicPath = allNativeH3 ? null : resolveMusicPath(episode, scenes);
-        // Final video matches the scene images: vertical 1080x1920 by default.
-        // (Was hard-coded 1920x1080 while images are 9:16, so every frame was
-        // cropped to its middle third - the "everything is too zoomed" bug.)
+        // H3 audio mode already contains narration/dialogue + ambience + SFX +
+        // background music. Adding the old music bed would double the soundtrack.
+        Path musicPath = h3AudioEnabledInStoryPipeline ? null : resolveMusicPath(episode, scenes);
         Path video = mediaProcessor.assembleVideo(new MediaProcessor.VideoAssemblyRequest(clips, musicPath, outputPath,
                 horizontalVideo() ? 1920 : 1080, horizontalVideo() ? 1080 : 1920));
         saveAsset(episode.getId(), null, AssetType.VIDEO, video, "ffmpeg", null, null);
         return video;
     }
 
-
     private double durationFromSceneAudio(Path audioPath) {
-        double audioDuration = probeWavFileDuration(audioPath);
+        double audioDuration = probeAudioFileDuration(audioPath);
         return audioDuration > 0 ? audioDuration + 0.6 : -1;
     }
 
@@ -905,178 +1109,6 @@ public class ProductionPipelineService {
      * working 2.5D fallback, and a slow/broken video model should degrade
      * the scene's look, not break the whole episode's generation.
      */
-    private record AiVideoResult(Path path, boolean nativeAudio) {}
-
-    private AiVideoResult tryGenerateAiVideo(Episode episode, Scene scene, Path sceneImage, double duration) {
-        if (sceneImage == null) {
-            return null;
-        }
-        try {
-            boolean h3 = h3ForAllScenes;
-            String negativePrompt = scene.getMotionNegativePrompt() != null && !scene.getMotionNegativePrompt().isBlank()
-                    ? scene.getMotionNegativePrompt()
-                    : "static, blurry, distorted, extra limbs, identity drift, duplicate subject, "
-                    + "new background, changed location, changed weather, changed time of day, "
-                    + "new clothing, new props, text artifacts";
-
-            if (h3) {
-                return generateContinuousH3Scene(episode, scene, sceneImage, duration, negativePrompt);
-            }
-
-            String prompt = scene.getMotionPrompt();
-            if (prompt == null || prompt.isBlank()) {
-                prompt = (scene.getAction() == null ? "" : scene.getAction() + ". ")
-                        + (scene.getCameraMovement() == null ? "" : "Camera: " + scene.getCameraMovement() + ". ")
-                        + (scene.getEmotion() == null ? "" : "Mood: " + scene.getEmotion());
-            }
-            double requestedDuration = Math.max(3.0, Math.min(10.0, duration));
-            var request = new VideoGenerationProvider.VideoGenerationRequest(
-                    sceneImage.toString(), prompt, negativePrompt,
-                    requestedDuration, 0, 0, null, null, null, null, 10);
-            long start = System.currentTimeMillis();
-            var result = providerGateway.generateVideo(request);
-            Path path = storageProvider.store(
-                    assetRelativePath(episode, String.format("video/scene-%03d-ai.%s", scene.getSceneNumber(), result.fileExtension())),
-                    result.videoBytes());
-            log.info("AI video generated for scene {} in {}s ({} bytes, workflow={})",
-                    scene.getSceneNumber(), (System.currentTimeMillis() - start) / 1000, result.videoBytes().length, result.workflowUsed());
-            return new AiVideoResult(path, false);
-        } catch (Exception e) {
-            log.warn("AI video generation failed for scene {}, falling back to 2.5D: {}",
-                    scene.getSceneNumber(), e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * H3 is treated as a visual-shot generator, not the source of truth for speech.
-     * A scene may be 20+ seconds while one H3 run is only 8-10 seconds on the 16 GB
-     * profile. Generate 8-second-ish continuation shots, feed the previous shot's
-     * last frame into the next shot, then concatenate the shots. The final scene
-     * keeps the exact TTS duration; FFmpeg later places the already-generated TTS
-     * narration/dialogue over the visual. This also avoids H3's native multilingual
-     * pronunciation problems and makes the user's selected TTS voice authoritative.
-     */
-    private AiVideoResult generateContinuousH3Scene(Episode episode, Scene scene, Path firstImage,
-                                                     double duration, String negativePrompt) {
-        Path work = null;
-        try {
-            double providerMax = providerGateway.maxVideoDurationSecondsFor("minimax-h3-image-to-video");
-            double maxShot = h3ShotSeconds > 0 ? h3ShotSeconds : 8.0;
-            if (providerMax > 0) maxShot = Math.min(maxShot, providerMax);
-            maxShot = Math.max(3.0, maxShot);
-
-            Path characterReference = resolveCharacterReference(episode, scene);
-            List<String> characterNames = sceneCharacterNames(scene);
-            List<Path> shots = new ArrayList<>();
-            work = java.nio.file.Files.createTempDirectory("h3-scene-" + scene.getSceneNumber() + "-");
-            Path currentImage = sceneImageCopy(firstImage, work.resolve("shot-000-start.png"));
-            double remaining = Math.max(0.5, duration);
-            int shotIndex = 0;
-            long started = System.currentTimeMillis();
-
-            while (remaining > 0.20 && shotIndex < 64) {
-                double requested = Math.min(maxShot, remaining);
-                String basePrompt = h3PromptBuilder.build(
-                        scene.getAction(), scene.getLocation(), scene.getEmotion(), "", null,
-                        scene.getAudioSpecJson(), episode.getLanguage(), episode.getVisualStyle(), requested,
-                        characterNames, characterReference != null);
-                String continuity = "\n\nCONTINUITY SHOT " + (shotIndex + 1) + ": "
-                        + "This is a continuation of the same scene, not a new scene. "
-                        + "The supplied first frame is the exact previous shot's final frame. "
-                        + "Preserve the exact characters, faces, hair, clothing, colors, props, architecture, "
-                        + "street/landscape layout, weather, time of day, lighting direction, shadows, "
-                        + "background palette and atmosphere. Do not introduce a new location, reset the set, "
-                        + "teleport objects, change costumes, or restyle the image. Continue the existing action "
-                        + "smoothly from the starting frame. Use only subtle physically plausible camera motion. "
-                        + "Do not create speech, subtitles, captions, lyrics or invented dialogue; final speech/audio "
-                        + "is supplied separately by the story's TTS track. "
-                        + "Keep background ambience and visible environmental effects coherent with the same location.";
-                String prompt = basePrompt + continuity;
-
-                VideoGenerationProvider.VideoGenerationResult result;
-                try {
-                    result = providerGateway.generateVideo(new VideoGenerationProvider.VideoGenerationRequest(
-                            currentImage.toString(), prompt, negativePrompt,
-                            requested, 0, 0,
-                            characterReference != null ? "minimax-h3-reference-to-video" : "minimax-h3-image-to-video",
-                            null, characterReference == null ? null : characterReference.toString(), null,
-                            "QUALITY".equalsIgnoreCase(episode.getQualityProfile()) ? 20 : 8));
-                } catch (RuntimeException e) {
-                    if (requested > 5.0 && looksLikeOutOfMemory(e)) {
-                        log.warn("Scene {} H3 shot {} OOM at {}s; retrying this visual shot at 5s.",
-                                scene.getSceneNumber(), shotIndex + 1, requested);
-                        result = providerGateway.generateVideo(new VideoGenerationProvider.VideoGenerationRequest(
-                                currentImage.toString(), prompt, negativePrompt,
-                                5.0, 0, 0,
-                                characterReference != null ? "minimax-h3-reference-to-video" : "minimax-h3-image-to-video",
-                                null, characterReference == null ? null : characterReference.toString(), null, 8));
-                    } else {
-                        throw e;
-                    }
-                }
-
-                Path raw = work.resolve(String.format(Locale.ROOT, "shot-%03d.%s", shotIndex, result.fileExtension()));
-                Files.write(raw, result.videoBytes());
-                double actual = ClipMerger.probeDuration(raw);
-                if (actual <= 0.2) throw new IllegalStateException("H3 returned an unusable visual shot.");
-                shots.add(raw);
-                remaining -= actual;
-                log.info("H3 scene {} shot {}: requested={}s actual={}s remaining={}s",
-                        scene.getSceneNumber(), shotIndex + 1, fmt(requested), fmt(actual), fmt(Math.max(0, remaining)));
-
-                if (remaining > 0.20) {
-                    currentImage = ClipMerger.extractLastFrame(raw, work.resolve(String.format(Locale.ROOT, "continuation-%03d.png", shotIndex)));
-                }
-                shotIndex++;
-            }
-
-            if (shots.isEmpty()) throw new IllegalStateException("H3 produced no visual shots.");
-            Path merged = work.resolve("scene-visual.mp4");
-            ClipMerger.merge(shots, merged, horizontalVideo() ? 1920 : 1080, horizontalVideo() ? 1080 : 1920, 0);
-            Path stored = storageProvider.store(
-                    assetRelativePath(episode, String.format("video/scene-%03d-ai.%s", scene.getSceneNumber(), "mp4")),
-                    Files.readAllBytes(merged));
-            double finalDuration = ClipMerger.probeDuration(stored);
-            if (finalDuration + 0.35 < duration) {
-                throw new IllegalStateException(String.format("H3 visual timeline ended at %.2fs; %.2fs required.", finalDuration, duration));
-            }
-            log.info("H3 continuous scene {} generated as {} visual shots in {}s, visualDuration={}s, targetScene={}s",
-                    scene.getSceneNumber(), shots.size(), (System.currentTimeMillis() - started) / 1000, fmt(finalDuration), fmt(duration));
-            // Native H3 audio is intentionally discarded. The production pipeline's exact
-            // multilingual TTS track is muxed by FFmpeg, so Hindi/Kannada/etc. pronunciation
-            // comes from the selected voice engine rather than H3's native speech synthesizer.
-            return new AiVideoResult(stored, false);
-        } catch (Exception e) {
-            log.warn("Continuous H3 scene {} failed: {}", scene.getSceneNumber(), e.getMessage());
-            return null;
-        } finally {
-            if (work != null) {
-                try (var walk = Files.walk(work)) {
-                    walk.sorted(Comparator.reverseOrder()).forEach(path -> {
-                        try { Files.deleteIfExists(path); } catch (Exception ignored) { }
-                    });
-                } catch (Exception ignored) { }
-            }
-        }
-    }
-
-    private Path sceneImageCopy(Path source, Path target) throws java.io.IOException {
-        Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        return target;
-    }
-
-    private static boolean looksLikeOutOfMemory(Throwable e) {
-        for (Throwable t = e; t != null; t = t.getCause()) {
-            String m = t.getMessage() == null ? "" : t.getMessage().toLowerCase(Locale.ROOT);
-            if (m.contains("out of memory") || m.contains("oom") || m.contains("cuda error")
-                    || m.contains("allocat") || m.contains("killed")) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private static String fmt(double value) {
         return String.format(Locale.ROOT, "%.2f", value);
     }

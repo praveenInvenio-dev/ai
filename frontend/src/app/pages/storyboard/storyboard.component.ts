@@ -318,7 +318,18 @@ export class StoryboardComponent implements OnInit {
     { value: 'Gujarati', label: 'ગુજરાતી (Gujarati)' },
     { value: 'Odia', label: 'ଓଡ଼ିଆ (Odia)' },
     { value: 'Punjabi', label: 'ਪੰਜਾਬੀ (Punjabi)' },
-    { value: 'Urdu', label: 'اردو (Urdu)' }
+    { value: 'Urdu', label: 'اردو (Urdu)' },
+    { value: 'Assamese', label: 'অসমীয়া (Assamese)' },
+    { value: 'Nepali', label: 'नेपाली (Nepali)' },
+    { value: 'Sanskrit', label: 'संस्कृतम् (Sanskrit)' },
+    { value: 'Maithili', label: 'मैथिली (Maithili)' },
+    { value: 'Manipuri', label: 'মৈতৈলোন্ (Manipuri)' },
+    { value: 'Bodo', label: 'बड़ो (Bodo)' },
+    { value: 'Dogri', label: 'डोगरी (Dogri)' },
+    { value: 'Konkani', label: 'कोंकणी (Konkani)' },
+    { value: 'Santali', label: 'ᱥᱟᱱᱛᱟᱲᱤ (Santali)' },
+    { value: 'Kashmiri', label: 'کٲشُر (Kashmiri)' },
+    { value: 'Auto-detect', label: 'Auto-detect from text' }
   ];
   existingEpisodeId = '';
 

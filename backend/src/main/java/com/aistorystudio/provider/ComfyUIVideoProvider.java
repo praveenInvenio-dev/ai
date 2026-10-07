@@ -282,6 +282,9 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
      *  VRAM floor plus a host-RAM floor (the 16gb profile depends on offload). */
     String h3UnavailableReason() {
         var gpu = resourceMonitor.current();
+        if (!gpu.gpuAvailable()) {
+            return "No GPU detected (" + gpu.gpuUnavailableReason() + ") - MiniMax H3 audio needs real GPU VRAM.";
+        }
         if (gpu.gpuVramTotalMb() != null && gpu.gpuVramTotalMb() < h3MinVramMb) {
             return "MiniMax H3 (" + h3Profile + " profile) needs at least " + h3MinVramMb + "MB VRAM; current GPU has "
                     + gpu.gpuVramTotalMb() + "MB. Use Wan 2.2 TI2V-5B instead.";
@@ -570,6 +573,140 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         } catch (Exception e) {
             return new int[]{w, h};
         }
+    }
+
+    @Override
+    public H3AudioResult generateH3Audio(H3AudioRequest request) {
+        // H3 audio is independently gated from the standalone AI-video switch.
+        // Classic Story Production can therefore use H3 as a soundtrack engine
+        // without enabling H3/Wan visual generation.
+        String h3Reason = h3UnavailableReason();
+        if (h3Reason != null) throw new IllegalStateException(h3Reason);
+        boolean acquired;
+        try {
+            acquired = slot.tryAcquire(queueWait.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting for a free ComfyUI H3 audio slot", e);
+        }
+        if (!acquired) throw new IllegalStateException("Timed out waiting for a free ComfyUI H3 audio slot after " + queueWait.toSeconds() + "s");
+        try {
+            return doGenerateH3Audio(request);
+        } finally {
+            slot.release();
+        }
+    }
+
+    private H3AudioResult doGenerateH3Audio(H3AudioRequest request) {
+        long seed = request.seed() != null ? request.seed() : ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE);
+        double duration = Math.max(1.0, Math.min(h3MaxDurationSeconds, request.durationSeconds()));
+        int rawFrames = (int) Math.round(duration * 24.0);
+        int length = Math.max(5, rawFrames + ((17 - (rawFrames - 5) % 17) % 17));
+        int steps = request.steps() > 0 ? request.steps() : (request.turbo() ? 8 : h3Steps);
+        String workflowName = request.turbo() ? "minimax-h3-audio-turbo" : "minimax-h3-audio";
+        String filenamePrefix = "ai-story-studio-h3-audio-" + UUID.randomUUID();
+        if (h3FreeVramBeforeRun) freeComfyMemory();
+
+        Map<String, String> text = new LinkedHashMap<>();
+        text.put("{{POSITIVE_PROMPT}}", request.prompt() == null ? "" : request.prompt());
+        text.put("{{FILENAME_PREFIX}}", filenamePrefix);
+        text.put("{{H3_DIFFUSION_MODEL}}", h3DiffusionModel);
+        text.put("{{H3_TEXT_ENCODER}}", h3TextEncoder);
+        text.put("{{H3_VIDEO_VAE}}", h3VideoVae);
+        text.put("{{H3_AUDIO_VAE}}", h3AudioVae);
+        Map<String, Number> numeric = new LinkedHashMap<>();
+        numeric.put("{{SEED}}", seed);
+        numeric.put("{{LENGTH}}", length);
+        numeric.put("{{STEPS}}", steps);
+        String workflowJson = WorkflowTemplateFiller.fill(mapper, workflowName, text, numeric);
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        try {
+            payload.put("prompt", mapper.readTree(workflowJson));
+        } catch (Exception e) {
+            throw new IllegalStateException("Invalid ComfyUI H3 audio workflow template '" + workflowName + "'", e);
+        }
+        String clientId = UUID.randomUUID().toString();
+        payload.put("client_id", clientId);
+        log.info("ComfyUI H3 audio submit: workflow={} profile={} 32x32 length={} steps={} seed={}",
+                workflowName, h3Profile, length, steps, seed);
+        JsonNode queueResponse;
+        try {
+            queueResponse = webClient.post().uri("/prompt").bodyValue(payload)
+                    .retrieve().bodyToMono(JsonNode.class).block(Duration.ofSeconds(30));
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+            throw new IllegalStateException("ComfyUI rejected the H3 audio workflow (" + e.getStatusCode() + "): "
+                    + e.getResponseBodyAsString(), e);
+        }
+        if (queueResponse == null || queueResponse.get("prompt_id") == null) {
+            throw new IllegalStateException("ComfyUI did not accept the H3 audio workflow: " + queueResponse);
+        }
+        JsonNode nodeErrors = queueResponse.path("node_errors");
+        if (nodeErrors.isObject() && nodeErrors.size() > 0) {
+            throw new IllegalStateException("ComfyUI reported H3 audio node errors: " + nodeErrors);
+        }
+        String promptId = queueResponse.get("prompt_id").asText();
+        byte[] audioBytes = pollForAudio(promptId);
+        log.info("ComfyUI H3 audio ready ({} bytes, promptId={})", audioBytes.length, promptId);
+        return new H3AudioResult(audioBytes, "flac", seed, workflowName);
+    }
+
+    private byte[] pollForAudio(String promptId) {
+        Instant deadline = Instant.now().plus(timeout);
+        long startedAt = System.currentTimeMillis();
+        long lastLog = startedAt;
+        Instant missingSince = null;
+        while (Instant.now().isBefore(deadline)) {
+            JsonNode history = safeGet("/history/" + promptId);
+            if (history != null && history.has(promptId)) {
+                JsonNode entry = history.get(promptId);
+                String statusStr = entry.path("status").path("status_str").asText("");
+                if ("error".equalsIgnoreCase(statusStr)) {
+                    throw new IllegalStateException("ComfyUI failed to execute the H3 audio workflow: " + describeError(entry));
+                }
+                byte[] bytes = extractFirstAudio(entry.path("outputs"));
+                if (bytes != null) return bytes;
+                if (entry.path("status").path("completed").asBoolean(false)) {
+                    throw new IllegalStateException("ComfyUI finished the H3 audio workflow but produced no audio file (promptId=" + promptId + ")");
+                }
+            } else if (!isQueued(promptId)) {
+                if (missingSince == null) missingSince = Instant.now();
+                else if (Duration.between(missingSince, Instant.now()).getSeconds() > 20) {
+                    throw new IllegalStateException("ComfyUI H3 audio prompt " + promptId + " disappeared before history was recorded; it was likely cancelled or ComfyUI restarted");
+                }
+            } else missingSince = null;
+            long now = System.currentTimeMillis();
+            if (now - lastLog > 30_000) {
+                log.info("Still waiting on ComfyUI H3 audio prompt {} ({}s elapsed, timeout {}s)",
+                        promptId, (now - startedAt) / 1000, timeout.toSeconds());
+                lastLog = now;
+            }
+            try { Thread.sleep(pollIntervalMs); }
+            catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); cancelPrompt(promptId);
+                throw new IllegalStateException("Interrupted while waiting for ComfyUI H3 audio", e);
+            }
+        }
+        cancelPrompt(promptId);
+        throw new IllegalStateException("Timed out after " + timeout.toSeconds() + "s waiting for ComfyUI H3 audio generation (promptId=" + promptId + ")");
+    }
+
+    private byte[] extractFirstAudio(JsonNode outputs) {
+        for (JsonNode nodeOutput : outputs) {
+            var fields = nodeOutput.fields();
+            while (fields.hasNext()) {
+                var field = fields.next();
+                JsonNode value = field.getValue();
+                if (!value.isArray()) continue;
+                for (JsonNode item : value) {
+                    String filename = item.path("filename").asText("");
+                    if (filename.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(wav|flac|mp3|m4a|ogg)$")) {
+                        return downloadFile(filename, item.path("subfolder").asText(""), item.path("type").asText("output"));
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     @Override

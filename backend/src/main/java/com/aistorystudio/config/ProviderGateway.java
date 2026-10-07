@@ -129,6 +129,12 @@ public class ProviderGateway {
         return videoGenerationProvider.generateVideo(request);
     }
 
+    /** H3 audio-only path for Classic Story Production. It intentionally lives beside
+     * video generation because the same ComfyUI H3 runtime/model stack is shared. */
+    public VideoGenerationProvider.H3AudioResult generateH3Audio(VideoGenerationProvider.H3AudioRequest request) {
+        return videoGenerationProvider.generateH3Audio(request);
+    }
+
     public double maxVideoDurationSecondsFor(String workflow) {
         return videoGenerationProvider.maxDurationSecondsFor(workflow);
     }

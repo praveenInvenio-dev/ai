@@ -52,6 +52,17 @@ services:
   #             count: all
   #             capabilities: [gpu]
 
+  tts-rumik:
+    environment:
+      RUMIK_DEVICE: ${RUMIK_DEVICE:-cuda}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   comfyui:
     # RTX 5060 Ti (Blackwell) / CUDA 13.0 ComfyUI image (PyTorch 2.13+cu130).
     # MUST match docker-compose.yml. This override file would otherwise win and

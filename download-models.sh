@@ -27,6 +27,32 @@ dl() {
 }
 HF=https://huggingface.co
 
+# --- Rumik OSS-1 speech model (persistent local HF cache) --------------------
+# Rumik runs as a separate GPU sidecar, not inside ComfyUI. Pre-download the
+# model here so the first Story generation does not unexpectedly download ~GBs.
+if [ -z "${SKIP_RUMIK:-}" ]; then
+  echo "[AI Story Studio] preparing Rumik OSS-1 model cache..."
+  docker compose up -d tts-rumik >/dev/null
+  for i in $(seq 1 60); do
+    if $DC true >/dev/null 2>&1; then :; fi
+    if docker compose exec -T tts-rumik python -c 'import transformers, huggingface_hub; print("rumik runtime ready")' >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+  done
+  docker compose exec -T tts-rumik python - <<'PYRUMIK'
+import os
+from huggingface_hub import snapshot_download
+repo = os.getenv("RUMIK_MODEL", "rumik-ai/rumik-oss-1")
+cache = os.getenv("HF_HOME", "/hf-cache")
+print(f"[AI Story Studio] downloading Rumik: {repo}")
+snapshot_download(repo_id=repo, cache_dir=cache)
+print(f"[AI Story Studio] Rumik cache ready: {repo}")
+PYRUMIK
+else
+  echo "[AI Story Studio] SKIP_RUMIK=1: Rumik pre-download skipped"
+fi
+
 # --- custom node: VideoHelperSuite (Wan mp4 output) ---
 $DC bash -c 'cd /root/ComfyUI/custom_nodes && ([ -d ComfyUI-VideoHelperSuite ] || git clone --depth 1 https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) && python3 -m pip install -q -r ComfyUI-VideoHelperSuite/requirements.txt'
 

@@ -387,6 +387,18 @@ export class ApiService {
     return this.http.post<{ jobId: string }>(`${this.base}/video-generation/jobs`, form);
   }
 
+  createFunnySkitJob(character: File, idea: string, language: string, tone: string, speaker = 'Ira'): Observable<{jobId: string}> {
+    const form = new FormData(); form.append('character', character, character.name); form.append('idea', idea); form.append('language', language); form.append('tone', tone); form.append('speaker', speaker);
+    return this.http.post<{jobId: string}>(`${this.base}/funny-skits/jobs`, form);
+  }
+  getFunnySkitJob(jobId: string): Observable<{id:string,status:string,errorMessage:string|null,language:string,script:string|null,visualPrompts:string[],dialogues:string[],imageUrls:(string|null)[],soundscape:string,resultVideoPath:string|null}> {
+    return this.http.get<any>(`${this.base}/funny-skits/jobs/${jobId}`);
+  }
+  funnySkitResultUrl(jobId: string): string { return `${this.base}/funny-skits/jobs/${jobId}/video`; }
+  regenerateFunnySkitImage(jobId: string, scene: number): Observable<any> { return this.http.post(`${this.base}/funny-skits/jobs/${jobId}/images/${scene}/regenerate`, {}); }
+  renderFunnySkit(jobId: string, tone: string, speaker = "Ira"): Observable<any> { return this.http.post(`${this.base}/funny-skits/jobs/${jobId}/render?tone=${encodeURIComponent(tone)}&speaker=${encodeURIComponent(speaker)}`, {}); }
+  funnySkitImageUrl(jobId: string, scene: number): string { return `${this.base}/funny-skits/jobs/${jobId}/images/${scene}`; }
+
   getVideoGenerationJob(jobId: string): Observable<VideoGenerationJob> {
     return this.http.get<VideoGenerationJob>(`${this.base}/video-generation/jobs/${jobId}`);
   }

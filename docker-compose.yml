@@ -137,6 +137,32 @@ networks:
     driver: bridge
 
 services:
+  # Rumik OSS-1: expressive 3B TTS for 22 Indic languages + English.
+  # Speech is generated here; MiniMax H3 remains the soundscape/SFX/music engine.
+  # The model is downloaded into the persistent HF cache on first use.
+  tts-rumik:
+    build:
+      context: ./tts-rumik
+    environment:
+      RUMIK_MODEL: ${RUMIK_MODEL:-rumik-ai/rumik-oss-1}
+      RUMIK_SPEAKER: ${RUMIK_SPEAKER:-Ira}
+      RUMIK_DEVICE: ${RUMIK_DEVICE:-cuda}
+      HF_HOME: /hf-cache
+    volumes:
+      - rumik-cache:/hf-cache
+    expose:
+      - "5006"
+    restart: unless-stopped
+    networks:
+      - ai-story-studio-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -381,6 +407,7 @@ services:
       - ai-story-studio-net
 
 volumes:
+  rumik-cache:
   # ComfyUI's persistent /root (ComfyUI checkout, models, custom nodes, output).
   # Name is pinned so existing downloads are reused, never recreated.
   comfyui-gpu-root:

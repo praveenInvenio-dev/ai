@@ -26,20 +26,46 @@ import { Project, Universe, Character } from '../../models/models';
         placeholder="e.g. Create a funny 3-minute story about Bobo and Mimi discovering a magical moon."
       ></textarea>
 
-      <div class="learning-panel">
-        <div class="trend-head"><div><strong>🎬 Entertainment Learning</strong><span>Teach any topic through a funny, cinematic story — not a lecture.</span></div><span class="live-chip">ANY SUBJECT</span></div>
-        <div class="learning-grid">
-          <div><label>Learning category</label><select [(ngModel)]="learningCategory" (ngModelChange)="applyLearningCategory()"><option *ngFor="let c of learningCategories" [value]="c.value">{{ c.label }}</option></select></div>
-          <div><label>Learning style</label><select [(ngModel)]="learningStyle"><option *ngFor="let s of learningStyles" [value]="s.value">{{ s.label }}</option></select></div>
-          <div><label>Difficulty</label><select [(ngModel)]="learningDifficulty"><option>Beginner</option><option>Intermediate</option><option>Advanced</option><option>Interview / Exam</option></select></div>
-          <div><label>Learning duration</label><select [(ngModel)]="learningDuration" (ngModelChange)="syncLearningDuration()"><option [ngValue]="30">30 sec</option><option [ngValue]="60">60 sec</option><option [ngValue]="90">90 sec</option><option [ngValue]="180">3 min</option></select></div>
-          <div><label>Language style</label><select [(ngModel)]="learningLanguageStyle"><option *ngFor="let m of learningLanguageStyles" [value]="m.value">{{ m.label }}</option></select></div>
+      <div class="mode-panel">
+        <div class="trend-head">
+          <div><strong>🎬 Story mode</strong><span>Choose how the story should be written. Normal Story is the default and keeps the classic experience unchanged.</span></div>
+          <span class="live-chip">OPTIONAL</span>
         </div>
-        <div class="field-help">The engine first identifies the correct concept, then hides the explanation inside a story. Medical, legal and exam content gets stricter accuracy/currentness instructions.</div>
+        <div class="mode-grid">
+          <button type="button" class="mode-card" [class.selected]="storyMode === 'NORMAL'" (click)="setStoryMode('NORMAL')">
+            <span class="mode-icon">📖</span><strong>Normal Story</strong><span>Classic story creation with no extra learning or format instructions.</span>
+          </button>
+          <button type="button" class="mode-card" [class.selected]="storyMode === 'LEARNING'" (click)="setStoryMode('LEARNING')">
+            <span class="mode-icon">🎓</span><strong>Entertainment Learning</strong><span>Explain any topic through an entertaining story, while still giving the real explanation.</span>
+          </button>
+          <button type="button" class="mode-card" [class.selected]="storyMode === 'CREATIVE'" (click)="setStoryMode('CREATIVE')">
+            <span class="mode-icon">🎭</span><strong>Creative Format</strong><span>Rap, song, comedy, mystery, cinematic, satire and more.</span>
+          </button>
+        </div>
+
+        <div class="learning-panel" *ngIf="storyMode === 'LEARNING'">
+          <div class="trend-head"><div><strong>🎓 Entertainment Learning</strong><span>Teach any topic through an entertaining story — not a lecture.</span></div><span class="live-chip">ANY SUBJECT</span></div>
+          <div class="learning-grid">
+            <div><label>Topic category</label><select [(ngModel)]="learningCategory" (ngModelChange)="applyLearningCategory()"><option *ngFor="let c of learningCategories" [value]="c.value">{{ c.label }}</option></select></div>
+            <div><label>Learning style</label><select [(ngModel)]="learningStyle"><option *ngFor="let s of learningStyles" [value]="s.value">{{ s.label }}</option></select></div>
+            <div><label>Difficulty</label><select [(ngModel)]="learningDifficulty"><option>Beginner</option><option>Intermediate</option><option>Advanced</option><option>Interview / Exam</option></select></div>
+            <div><label>Learning duration</label><select [(ngModel)]="learningDuration" (ngModelChange)="syncLearningDuration()"><option [ngValue]="30">30 sec</option><option [ngValue]="60">60 sec</option><option [ngValue]="90">90 sec</option><option [ngValue]="180">3 min</option></select></div>
+            <div><label>Language style</label><select [(ngModel)]="learningLanguageStyle"><option *ngFor="let m of learningLanguageStyles" [value]="m.value">{{ m.label }}</option></select></div>
+          </div>
+          <div class="field-help">The story makes the concept memorable, but the final narration must explicitly explain the requested topic in simple, accurate language and include a concrete example.</div>
+        </div>
+
+        <div class="creative-panel" *ngIf="storyMode === 'CREATIVE' || storyMode === 'LEARNING'">
+          <div class="trend-head"><div><strong>🎭 Creative format <span class="optional-label">(optional)</span></strong><span>Use any format with any topic. Learning and creative format can be combined.</span></div></div>
+          <div class="format-grid">
+            <button type="button" class="format-card" [class.selected]="creativeFormat === ''" (click)="creativeFormat = ''"><strong>📖 Natural</strong><span>Normal storytelling</span></button>
+            <button type="button" class="format-card" *ngFor="let f of creativeFormats" [class.selected]="creativeFormat === f.value" (click)="applyCreativeFormat(f)"><strong>{{ f.icon }} {{ f.label }}</strong><span>{{ f.description }}</span></button>
+          </div>
+        </div>
       </div>
 
-      <div class="trend-panel">
-        <div class="trend-head"><div><strong>🔥 Trend & Satire Studio</strong><span>Turn a hot topic into obvious, balanced fictional satire — roast the contradiction, not just one side.</span></div><span class="live-chip">CURRENT-AFFAIRS READY</span></div>
+      <div class="trend-panel" *ngIf="creativeFormat === 'POLITICAL_SATIRE' || creativeFormat === 'CURRENT_AFFAIRS_SATIRE' || creativeFormat === 'NEWS_PARODY' || creativeFormat === 'TECH_SATIRE'">
+        <div class="trend-head"><div><strong>🔥 Satire presets</strong><span>Optional starting points. You can still change the prompt or use any other topic.</span></div><span class="live-chip">OPTIONAL</span></div>
         <div class="preset-grid">
           <button type="button" class="preset-card" *ngFor="let p of satirePresets" (click)="applySatirePreset(p)">
             <strong>{{ p.name }}</strong><span>{{ p.genre }}</span>
@@ -139,7 +165,7 @@ import { Project, Universe, Character } from '../../models/models';
           <select [(ngModel)]="language">
             <option *ngFor="let l of languages" [value]="l.value">{{ l.label }}</option>
           </select>
-          <span class="field-help">Narration, dialogue and story text are generated in this language. Image prompts stay in production-friendly English.</span>
+          <span class="field-help">Narration, dialogue and story text are generated in this language. Auto-detect can infer the language from your idea. Image prompts stay in production-friendly English.</span>
         </div>
         <div>
           <label>Model</label>
@@ -172,8 +198,10 @@ import { Project, Universe, Character } from '../../models/models';
     </div>
   `,
   styles: [`
+    .mode-panel { margin: 0 0 1.2rem; padding: 1rem; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-raised); } .mode-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.75rem; } .mode-card, .format-card { text-align:left; border:1px solid var(--border); background:var(--surface); color:inherit; border-radius:14px; padding:.85rem; cursor:pointer; transition:.15s ease; } .mode-card:hover, .format-card:hover { border-color:var(--accent); } .mode-card.selected, .format-card.selected { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); } .mode-icon { font-size:1.25rem; display:block; margin-bottom:.3rem; } .mode-card strong, .format-card strong { display:block; } .mode-card span:last-child, .format-card span { display:block; color:var(--muted); font-size:.72rem; margin-top:.25rem; } .creative-panel { margin-top:1rem; padding-top:1rem; border-top:1px solid var(--border); } .format-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.65rem; } .optional-label { color:var(--muted); font-weight:400; }
     .learning-panel { margin: 0 0 1.2rem; padding: 1rem; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-raised); } .learning-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.75rem; }
     .learning-panel select { width:100%; }
+    @media (max-width: 1000px) { .mode-grid { grid-template-columns:1fr; } .format-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
     @media (max-width: 900px) { .learning-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
     @media (max-width: 560px) { .learning-grid { grid-template-columns:1fr; } }
     .trend-panel { margin: 0 0 1.2rem; padding: 1rem; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-raised); }
@@ -231,6 +259,8 @@ export class CreateStoryComponent implements OnInit {
   newProjectName = '';
   selectedUniverseId = '';
   durationSeconds = 180;
+  storyMode: 'NORMAL' | 'LEARNING' | 'CREATIVE' = 'NORMAL';
+  creativeFormat = '';
   learningCategory = 'general';
   learningStyle = 'COMEDY';
   learningDifficulty = 'Beginner';
@@ -263,6 +293,16 @@ export class CreateStoryComponent implements OnInit {
     { value: 'Odia', label: 'ଓଡ଼ିଆ (Odia)' },
     { value: 'Punjabi', label: 'ਪੰਜਾਬੀ (Punjabi)' },
     { value: 'Urdu', label: 'اردو (Urdu)' },
+    { value: 'Assamese', label: 'অসমীয়া (Assamese)' },
+    { value: 'Nepali', label: 'नेपाली (Nepali)' },
+    { value: 'Sanskrit', label: 'संस्कृतम् (Sanskrit)' },
+    { value: 'Maithili', label: 'मैथिली (Maithili)' },
+    { value: 'Manipuri', label: 'মৈতৈলোন্ (Manipuri)' },
+    { value: 'Bodo', label: 'बड़ो (Bodo)' },
+    { value: 'Dogri', label: 'डोगरी (Dogri)' },
+    { value: 'Konkani', label: 'कोंकणी (Konkani)' },
+    { value: 'Santali', label: 'ᱥᱟᱱᱛᱟᱲᱤ (Santali)' },
+    { value: 'Kashmiri', label: 'کٲشُر (Kashmiri)' },
     { value: 'Auto-detect', label: 'Auto-detect from my idea' }
   ];
 
@@ -290,6 +330,24 @@ export class CreateStoryComponent implements OnInit {
     { value: 'DETECTIVE', label: '🔎 Detective case' }
   ];
 
+  creativeFormats = [
+    { value: 'RAP', icon: '🎤', label: 'Rap', description: 'Explain or tell it as a rhythmic rap.' },
+    { value: 'SONG', icon: '🎵', label: 'Song', description: 'Turn the story or topic into a memorable song.' },
+    { value: 'COMEDY', icon: '😂', label: 'Comedy', description: 'Funny situations, reactions and punchlines.' },
+    { value: 'MUSICAL', icon: '🎶', label: 'Musical Story', description: 'Story scenes connected by musical moments.' },
+    { value: 'MYSTERY', icon: '🕵️', label: 'Mystery', description: 'Reveal the concept through clues and discovery.' },
+    { value: 'DETECTIVE', icon: '🔎', label: 'Detective', description: 'Solve a case while uncovering the topic.' },
+    { value: 'ACTION', icon: '💥', label: 'Action', description: 'Fast cinematic action around the idea.' },
+    { value: 'OFFICE', icon: '🏢', label: 'Office Comedy', description: 'Everyday workplace characters and humour.' },
+    { value: 'BEDTIME', icon: '🌙', label: 'Bedtime Tale', description: 'Gentle, warm storytelling.' },
+    { value: 'ABSURD', icon: '🤯', label: 'Absurd', description: 'Unexpected, exaggerated comic situations.' },
+    { value: 'CINEMATIC', icon: '🎬', label: 'Cinematic', description: 'Movie-like dramatic storytelling.' },
+    { value: 'POLITICAL_SATIRE', icon: '📰', label: 'Political Satire', description: 'Balanced satire aimed at contradictions and systems.' },
+    { value: 'CURRENT_AFFAIRS_SATIRE', icon: '🔥', label: 'Current Affairs Satire', description: 'Fictional satire inspired by a live topic.' },
+    { value: 'NEWS_PARODY', icon: '📺', label: 'News Parody', description: 'Mock-news format with obvious fictional framing.' },
+    { value: 'TECH_SATIRE', icon: '🤖', label: 'Tech Satire', description: 'Technology, AI and workplace satire.' }
+  ];
+
   genres = ['Adventure', 'Comedy', 'Fantasy', 'Educational', 'Mystery', 'Bedtime', 'Friendship', 'Moral', 'Science', 'Animals', 'Political Satire', 'Current Affairs Satire', 'News Parody', 'Social Commentary', 'Gen-Z / Meme Satire', 'Corporate Satire', 'Tech / AI Satire', 'Dark Comedy'];
   tones = ['Funny', 'Cute', 'Emotional', 'Exciting', 'Calm', 'Magical', 'Mysterious', 'Sharp Satire', 'Deadpan', 'Absurd', 'Darkly Funny', 'Witty'];
 
@@ -300,19 +358,31 @@ export class CreateStoryComponent implements OnInit {
     { name: 'AI Politics', genre: 'Tech / AI Satire', tone: 'Witty', prompt: 'Create a modern Indian political satire where an AI assistant is asked to solve a political controversy but discovers that every side has trained it on a different version of reality. Roast everyone through absurd technology and bureaucracy.' }
   ];
 
+  setStoryMode(mode: 'NORMAL' | 'LEARNING' | 'CREATIVE'): void {
+    this.storyMode = mode;
+    if (mode === 'NORMAL') this.creativeFormat = '';
+  }
+
   syncLearningDuration(): void {
     this.durationSeconds = this.learningDuration;
   }
 
   applyLearningCategory(): void {
-    if (this.learningCategory === 'custom') return;
-    const labels: Record<string,string> = { programming:'Programming / Software', technology:'Technology / AI', medical:'Medical / Biology', construction:'Construction / Civil', law:'Law / Constitution', upsc:'UPSC / Civil Services', neet:'NEET', jee:'JEE', science:'Science', finance:'Finance / Economics', general:'General Knowledge' };
-    this.genre = 'Educational';
-    this.durationSeconds = this.learningDuration;
-    this.targetAge = 'General';
+    // Learning category only describes the subject area. It must not force the
+    // user's genre, tone, age or other normal Story Studio settings.
+  }
+
+  applyCreativeFormat(format: { value: string; icon: string; label: string; description: string }): void {
+    this.creativeFormat = format.value;
+    if (format.value.includes('SATIRE') || format.value === 'NEWS_PARODY' || format.value === 'TECH_SATIRE') {
+      this.genre = format.value === 'NEWS_PARODY' ? 'News Parody' : format.value === 'TECH_SATIRE' ? 'Tech / AI Satire' : format.value === 'CURRENT_AFFAIRS_SATIRE' ? 'Current Affairs Satire' : 'Political Satire';
+      this.tone = format.value === 'NEWS_PARODY' ? 'Absurd' : 'Witty';
+      this.targetAge = 'General';
+    }
   }
 
   applySatirePreset(preset: { name: string; genre: string; tone: string; prompt: string }): void {
+    this.creativeFormat = preset.genre === 'News Parody' ? 'NEWS_PARODY' : preset.genre === 'Tech / AI Satire' ? 'TECH_SATIRE' : preset.genre === 'Current Affairs Satire' ? 'CURRENT_AFFAIRS_SATIRE' : 'POLITICAL_SATIRE';
     this.genre = preset.genre;
     this.tone = preset.tone;
     this.prompt = preset.prompt;
@@ -429,6 +499,18 @@ export class CreateStoryComponent implements OnInit {
     this.selectedCharacterIds.has(id) ? this.selectedCharacterIds.delete(id) : this.selectedCharacterIds.add(id);
   }
 
+  private buildPromptForMode(): string {
+    const base = this.prompt.trim();
+    const tags: string[] = [];
+    if (this.storyMode === 'LEARNING') {
+      tags.push(`[STORY_MODE=LEARNING] category=${this.learningCategory}; style=${this.learningStyle}; difficulty=${this.learningDifficulty}; requestedDuration=${this.learningDuration}s; languageStyle=${this.learningLanguageStyle}`);
+    }
+    if (this.creativeFormat) {
+      tags.push(`[CREATIVE_FORMAT=${this.creativeFormat}]`);
+    }
+    return tags.length ? `${base}\n\n${tags.join('\n')}` : base;
+  }
+
   submit(): void {
     this.error = '';
     this.loading = true;
@@ -437,9 +519,7 @@ export class CreateStoryComponent implements OnInit {
       this.api.createDraft({
         projectId,
         universeId: this.selectedUniverseId || undefined,
-        prompt: this.learningCategory !== 'custom' ? `${this.prompt}
-
-[ENTERTAINMENT_LEARNING] category=${this.learningCategory}; style=${this.learningStyle}; difficulty=${this.learningDifficulty}; requestedDuration=${this.learningDuration}s; languageStyle=${this.learningLanguageStyle}` : this.prompt,
+        prompt: this.buildPromptForMode(),
         durationSeconds: this.durationSeconds,
         targetAge: this.targetAge,
         genre: this.genre,
