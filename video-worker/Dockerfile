@@ -10,8 +10,13 @@ RUN pip install --no-cache-dir \
       flask==3.0.3 \
       opencv-python-headless==4.10.0.84 \
       "numpy<2" \
-      scenedetect==0.6.4
+      scenedetect==0.6.4 \
+      "rembg[cpu]==2.0.59" \
+      pillow==10.4.0
 
+# rembg downloads its ONNX models (isnet / birefnet / u2net) on first use into
+# U2NET_HOME, which is a named volume so they survive rebuilds.
+ENV U2NET_HOME=/models/rembg
 COPY server.py /app/server.py
 WORKDIR /app
 

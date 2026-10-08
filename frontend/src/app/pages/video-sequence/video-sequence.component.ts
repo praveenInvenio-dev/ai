@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import {
   ApiService, SequenceSceneView, SequenceStatusInfo, SequenceView
@@ -19,7 +19,7 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
 @Component({
   selector: 'app-video-sequence',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <header class="page-head">
       <h1>Story Video Production</h1>
@@ -232,6 +232,12 @@ import { Character, CharacterReference, Project, Universe } from '../../models/m
           <h3>Final video <span class="muted" *ngIf="seq.mergedSeconds">({{ seq.mergedSeconds.toFixed(1) }}s)</span></h3>
           <video [src]="api.sequenceMergedUrl(seq.id, seq.mergedStamp)" controls [class.tall]="seq.orientation === 'vertical'"></video>
           <a class="btn" [href]="api.sequenceMergedUrl(seq.id, seq.mergedStamp)" download="sequence.mp4">Download</a>
+          <span class="studio-links">
+            <a class="btn" [routerLink]="['/motion-studio']" [queryParams]="{ sequenceId: seq.id, tab: 'upscale' }">✦ Upscale 720p&ndash;4K</a>
+            <a class="btn" [routerLink]="['/motion-studio']" [queryParams]="{ sequenceId: seq.id, tab: 'reframe' }">Reframe</a>
+            <a class="btn" [routerLink]="['/motion-studio']" [queryParams]="{ sequenceId: seq.id, tab: 'dub' }">Dub</a>
+            <a class="btn" [routerLink]="['/motion-studio']" [queryParams]="{ sequenceId: seq.id, tab: 'analyze' }">Analyze</a>
+          </span>
         </div>
 
         <h3>Scenes</h3>

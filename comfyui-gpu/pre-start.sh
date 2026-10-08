@@ -87,3 +87,28 @@ if [ "${DOWNLOAD_H3_MODELS:-true}" = "true" ]; then
   h3get "$H3_DIR/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors" "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors?download=true"
   h3get "$H3_DIR/loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors" "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors?download=true"
 fi
+
+# -----------------------------------------------------------------------------
+# Motion & Effects Studio: Wan 2.2 Animate (motion control, "move" mode)
+# -----------------------------------------------------------------------------
+# Opt-in (about 18 GB): DOWNLOAD_MOTION_CONTROL_MODELS=true in .env.
+# Needs comfyui_controlnet_aux for the DWPose Estimator (pose video from the driving clip).
+if [ "${DOWNLOAD_MOTION_CONTROL_MODELS:-false}" = "true" ]; then
+  AUX_DIR="$CN_DIR/comfyui_controlnet_aux"
+  if [ ! -d "$AUX_DIR/.git" ]; then
+    echo "[AI Story Studio] Installing comfyui_controlnet_aux (DWPose)..."
+    rm -rf "$AUX_DIR"
+    git clone --depth 1 https://github.com/Fannovel16/comfyui_controlnet_aux "$AUX_DIR"
+  fi
+  if [ -f "$AUX_DIR/requirements.txt" ] && [ ! -f "$AUX_DIR/.deps-installed" ]; then
+    python3 -m pip install --no-cache-dir -r "$AUX_DIR/requirements.txt" && touch "$AUX_DIR/.deps-installed"
+  fi
+  M=/root/ComfyUI/models
+  mkdir -p "$M/diffusion_models" "$M/loras" "$M/clip_vision" "$M/text_encoders" "$M/vae"
+  mcget() { local dst="$1" url="$2"; if [ ! -s "$dst" ]; then echo "[AI Story Studio] Downloading $(basename "$dst")..."; curl -fL --retry 5 --retry-delay 3 --continue-at - "$url" -o "$dst"; fi; }
+  mcget "$M/diffusion_models/Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors" "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/Wan22Animate/Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors?download=true"
+  mcget "$M/loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors" "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors?download=true"
+  mcget "$M/clip_vision/clip_vision_h.safetensors" "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors?download=true"
+  mcget "$M/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors" "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors?download=true"
+  mcget "$M/vae/wan_2.1_vae.safetensors" "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors?download=true"
+fi

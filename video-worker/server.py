@@ -19,6 +19,7 @@ Design notes that matter on a 12-core / 2 GB-VRAM box:
     same number is wasted CPU.
 """
 import os
+import shutil
 import subprocess
 import json
 import math
@@ -347,6 +348,90 @@ def api_analyze():
             app.logger.exception("Analysis failed for %s", path)
             return jsonify({"error": str(exc)}), 500
 
+
+
+# ---------------------------------------------------------------------------
+# Background removal (Motion & Effects Studio)
+# ---------------------------------------------------------------------------
+_REMBG_SESSIONS = {}
+_REMBG_MODELS = {"fast": "u2net_human_seg", "general": "isnet-general-use", "best": "birefnet-general"}
+
+
+def _rembg_session(quality: str):
+    from rembg import new_session  # imported lazily: heavy, only needed here
+    name = _REMBG_MODELS.get(quality, _REMBG_MODELS["general"])
+    if name not in _REMBG_SESSIONS:
+        _REMBG_SESSIONS[name] = new_session(name)
+    return _REMBG_SESSIONS[name]
+
+
+def _composite(rgba, background: str, color: str, original=None):
+    """rgba: PIL RGBA cut-out. background: transparent | color | blur."""
+    from PIL import Image, ImageFilter
+    if background == "transparent":
+        return rgba
+    if background == "blur" and original is not None:
+        bg = original.convert("RGB").filter(ImageFilter.GaussianBlur(radius=max(8, original.width // 40)))
+    else:
+        c = (color or "#00ff00").lstrip("#")
+        c = (c * 2)[:6] if len(c) == 3 else c.ljust(6, "0")[:6]
+        bg = Image.new("RGB", rgba.size, tuple(int(c[i:i + 2], 16) for i in (0, 2, 4)))
+    bg = bg.convert("RGBA")
+    bg.alpha_composite(rgba)
+    return bg.convert("RGB")
+
+
+@app.post("/api/remove-background")
+def api_remove_background():
+    """{source, target, kind: image|video, background: transparent|color|blur, color, quality, maxSeconds, fps}"""
+    from PIL import Image
+    from rembg import remove
+    body = request.get_json(force=True, silent=True) or {}
+    src, dst = body.get("source"), body.get("target")
+    if not src or not os.path.exists(src):
+        return jsonify({"error": f"File not found: {src}"}), 404
+    kind = body.get("kind", "image")
+    background = body.get("background", "transparent")
+    color = body.get("color", "#00ff00")
+    quality = body.get("quality", "general")
+    try:
+        session = _rembg_session(quality)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        if kind == "image":
+            img = Image.open(src).convert("RGBA")
+            cut = remove(img, session=session, post_process_mask=True)
+            out = _composite(cut, background, color, img)
+            out.save(dst)
+            return jsonify({"status": "ok", "target": dst, "width": out.width, "height": out.height})
+
+        max_seconds = float(body.get("maxSeconds", 15))
+        fps = float(body.get("fps", 24))
+        work = dst + ".frames"
+        shutil.rmtree(work, ignore_errors=True)
+        os.makedirs(work + "/in")
+        os.makedirs(work + "/out")
+        subprocess.run(["ffmpeg", "-nostdin", "-y", "-t", str(max_seconds), "-i", src, "-vf", f"fps={fps}",
+                        work + "/in/%05d.png"], check=True, capture_output=True)
+        frames = sorted(os.listdir(work + "/in"))
+        for name in frames:
+            img = Image.open(f"{work}/in/{name}").convert("RGBA")
+            cut = remove(img, session=session, post_process_mask=True)
+            _composite(cut, background, color, img).save(f"{work}/out/{name}")
+        if background == "transparent":
+            cmd = ["ffmpeg", "-nostdin", "-y", "-framerate", str(fps), "-i", work + "/out/%05d.png",
+                   "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "30", "-auto-alt-ref", "0", dst]
+        else:
+            cmd = ["ffmpeg", "-nostdin", "-y", "-framerate", str(fps), "-i", work + "/out/%05d.png",
+                   "-t", str(max_seconds), "-i", src, "-map", "0:v", "-map", "1:a?", "-shortest",
+                   "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+                   "-movflags", "+faststart", dst]
+        subprocess.run(cmd, check=True, capture_output=True)
+        shutil.rmtree(work, ignore_errors=True)
+        return jsonify({"status": "ok", "target": dst, "frames": len(frames)})
+    except subprocess.CalledProcessError as exc:
+        return jsonify({"error": exc.stderr.decode("utf-8", "ignore")[-400:]}), 500
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 500
 
 if __name__ == "__main__":
     cv2.setNumThreads(ANALYSIS_THREADS)

@@ -167,6 +167,28 @@ studio:
     retention-hours: ${VIDEO_SEQUENCE_RETENTION_HOURS:24}
   video-generation:
     retention-hours: ${VIDEO_GENERATION_RETENTION_HOURS:24}
+  # Motion & Effects Studio (Higgsfield-style tools, local)
+  motion-studio:
+    retention-hours: ${MOTION_STUDIO_RETENTION_HOURS:48}
+    motion:
+      # Wan 2.2 Animate "move" mode. Download with DOWNLOAD_MOTION_CONTROL_MODELS=true (~18 GB)
+      model: ${MOTION_CONTROL_MODEL:Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors}
+      lora: ${MOTION_CONTROL_LORA:lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors}
+      text-encoder: ${MOTION_CONTROL_TEXT_ENCODER:umt5_xxl_fp8_e4m3fn_scaled.safetensors}
+      vae: ${MOTION_CONTROL_VAE:wan_2.1_vae.safetensors}
+      clip-vision: ${MOTION_CONTROL_CLIP_VISION:clip_vision_h.safetensors}
+      width: ${MOTION_CONTROL_WIDTH:480}
+      height: ${MOTION_CONTROL_HEIGHT:832}
+      steps: ${MOTION_CONTROL_STEPS:6}
+      cfg: ${MOTION_CONTROL_CFG:1.0}
+      fps: ${MOTION_CONTROL_FPS:16}
+      # one WanAnimate window = 77 frames @16 fps; longer needs chained windows (not yet)
+      max-seconds: ${MOTION_CONTROL_MAX_SECONDS:4.8}
+      # long driving videos are rendered as chained windows up to this total
+      max-total-seconds: ${MOTION_CONTROL_MAX_TOTAL_SECONDS:20}
+    upscale:
+      model: ${MOTION_STUDIO_UPSCALE_MODEL:RealESRGAN_x2.pth}
+      ai-max-seconds: ${MOTION_STUDIO_AI_UPSCALE_MAX_SECONDS:30}
   h3:
     # Shared H3 scene renderer (Video Generation, Story Video Production, Storyboard).
     # H3 speaks the scene: narrator = off-screen voice-over (audio-only H3 pass, the

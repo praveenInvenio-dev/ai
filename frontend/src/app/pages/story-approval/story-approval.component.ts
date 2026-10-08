@@ -155,6 +155,14 @@ import { Episode, SceneDto, VoiceSegment } from '../../models/models';
           </label>
           <button class="btn btn-primary" (click)="produceVideo()" [disabled]="busy" title="Every scene through MiniMax H3: H3 speaks narration (voice-over) and dialogue (lip-synced), with ambience, SFX and music">🎬 Produce story video (H3 voice + video)</button>
           <button class="btn btn-secondary" (click)="continueToVideoGeneration()" [disabled]="busy">Test one scene in Video Generation</button>
+          <button class="btn btn-secondary" (click)="openInStudio()" [disabled]="busy" title="Upscale, reframe, dub or analyze this story's finished video">✦ Finished video &rarr; studio</button>
+          <span class="translate" style="display:inline-flex;gap:.4rem;align-items:center" title="Copies this story with the same approved images and translates every line">
+            <select [(ngModel)]="translateTo" [disabled]="busy">
+              <option value="">Same story in another language&hellip;</option>
+              <option *ngFor="let l of translateLanguages" [value]="l">{{ l }}</option>
+            </select>
+            <button class="btn btn-secondary" (click)="translateStory()" [disabled]="busy || !translateTo">🌐 Create copy</button>
+          </span>
         </ng-container>
       </footer>
       <p class="hint action-hint" *ngIf="imagesReady">
@@ -193,7 +201,7 @@ export class StoryApprovalComponent implements OnInit, OnDestroy {
   imgVersion: Record<string, number> = {};
   private sub?: Subscription;
   constructor(public api: ApiService, private route: ActivatedRoute, private router: Router) {}
-  ngOnInit(){ const id=this.route.snapshot.paramMap.get('id')!; this.api.listVoices().subscribe(v=>{this.voices=v.voices||[];this.customVoiceCount=this.voices.filter((x:any)=>String(x.id).startsWith('profile:')).length;this.initializeVoices();}); this.load(id); }
+  ngOnInit(){ this.api.listVoices().subscribe(v=>{this.voices=v.voices||[];this.customVoiceCount=this.voices.filter((x:any)=>String(x.id).startsWith('profile:')).length;this.initializeVoices();}); this.route.paramMap.subscribe(pm=>{ const id=pm.get('id'); if(id){ this.load(id); } }); }
   ngOnDestroy(){ this.sub?.unsubscribe(); }
   get stageLabel(){ return this.imagesReady ? 'Images ready — voice selection' : 'Draft — nothing rendered yet'; }
   get totalMinutes(){ return (this.scenes.reduce((sum,s)=>sum+(s.imageDurationSeconds||0),0)/60).toFixed(1); }
@@ -351,6 +359,17 @@ export class StoryApprovalComponent implements OnInit, OnDestroy {
   applyVoice(speaker:string){ const voice=this.voiceMap[speaker]; this.scenes.filter(s=>(s.voiceSegments||[]).some(x=>(x.character||'Narrator')===speaker)).forEach(s=>{(s.voiceSegments||[]).forEach(x=>{if((x.character||'Narrator')===speaker)x.voice=voice;});this.api.updateSceneVoices(this.episode!.id,s.id,s.voiceSegments||[]).subscribe();}); }
   /** INDIC_TTS instead of H3 speech - one or the other. */
   useIndicTts=false;
+  translateTo='';
+  translateLanguages=['Hindi','Kannada','Tamil','Telugu','Malayalam','Marathi','Bengali','Gujarati','Punjabi','Odia','English'];
+  openInStudio(){ if(!this.episode)return; this.router.navigate(['/motion-studio'],{queryParams:{episodeId:this.episode.id,tab:'upscale'}}); }
+  translateStory(){
+    if(!this.episode||!this.translateTo)return;
+    this.busy=true; this.error='';
+    this.api.translateEpisode(this.episode.id,this.translateTo).subscribe({
+      next: r => { this.busy=false; this.translateTo=''; this.router.navigate(['/episodes', r.id, 'approve']); },
+      error: e => { this.busy=false; this.error=e?.error?.message||'Translation failed.'; }
+    });
+  }
   produceVideo(){
     if(!this.episode)return;
     this.busy=true; this.error='';

@@ -17,7 +17,7 @@ FROM eclipse-temurin:21-jre-jammy
 # arm64 on Apple Silicon Macs) so this works on both without extra flags.
 ARG TARGETARCH
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates xz-utils curl \
+    && apt-get install -y --no-install-recommends ca-certificates xz-utils curl fontconfig libfreetype6 \
     && ARCH_NAME=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "amd64") \
     && curl -fsSL -o /tmp/ffmpeg.tar.xz \
        "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${ARCH_NAME}-static.tar.xz" \

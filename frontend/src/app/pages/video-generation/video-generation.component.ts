@@ -1,7 +1,7 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ApiService, VideoGenerationStatus, VideoGenerationJob } from '../../services/api.service';
+import { ApiService, VideoGenerationStatus, VideoGenerationJob, CameraPreset } from '../../services/api.service';
 import { ActivatedRoute } from '@angular/router';
 import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
 
@@ -92,6 +92,13 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
                   [placeholder]="mode === 't2v'
                     ? 'e.g. a small cartoon rabbit waving in a sunny forest clearing, butterflies drifting past'
                     : 'e.g. the character waves and smiles, gentle camera push-in'"></textarea>
+        <label for="cameraPreset" style="margin-top:.5rem">Camera preset <span class="muted small">(Motion &amp; effects studio)</span></label>
+        <select id="cameraPreset" [(ngModel)]="cameraPresetId">
+          <option value="">None - use only the prompt</option>
+          <optgroup *ngFor="let cat of presetCategories()" [label]="cat">
+            <option *ngFor="let p of presetsIn(cat)" [value]="p.id">{{ p.name }}</option>
+          </optgroup>
+        </select>
       </div>
 
       <div class="field">
@@ -236,7 +243,13 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     this.durationSeconds = Math.min(this.durationSeconds, this.maxSeconds());
   }
 
+  cameraPresets: CameraPreset[] = [];
+  cameraPresetId = '';
+  presetCategories(): string[] { return [...new Set(this.cameraPresets.map(p => p.category))]; }
+  presetsIn(cat: string): CameraPreset[] { return this.cameraPresets.filter(p => p.category === cat); }
+
   ngOnInit(): void {
+    this.api.cameraPresets().subscribe({ next: p => this.cameraPresets = p, error: () => {} });
     this.api.videoGenerationStatus().subscribe({
       next: res => {
         this.status = res;
@@ -458,7 +471,9 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
 
     const image = this.mode === 'i2v' ? (this.selectedFile ?? null) : null;
     const h3 = this.workflow === 'MINIMAX_H3';
-    const visualPrompt = this.prompt.split(/\n\n\[NATIVE H3 AUDIO\]/i)[0].trim();
+    const preset = this.cameraPresets.find(p => p.id === this.cameraPresetId);
+    const basePrompt = this.prompt.split(/\n\n\[NATIVE H3 AUDIO\]/i)[0].trim();
+    const visualPrompt = preset ? `${basePrompt}. Camera: ${preset.prompt}` : basePrompt;
     this.api.createVideoGenerationJob(image, visualPrompt, this.negativePrompt, this.durationSeconds,
       this.narrationText || undefined, h3 ? undefined : (this.voiceProfileId || undefined), this.workflow,
       h3 ? {

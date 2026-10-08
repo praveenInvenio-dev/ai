@@ -78,6 +78,11 @@ public class VideoSequenceService {
     private final SceneRepository sceneRepository;
     private final VideoSequenceRecordRepository sequenceRecordRepository;
     private final H3SceneRenderer h3SceneRenderer;
+    // field-injected so the long constructor stays unchanged
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aistorystudio.service.EpisodeMemoryService episodeMemoryService;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aistorystudio.repository.StoryBibleRepository storyBibleRepository;
     private final ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
     private final NegativePromptBuilder negativePromptBuilder = new NegativePromptBuilder();
     private final Map<UUID, VideoSequence> sequences = new ConcurrentHashMap<>();
@@ -817,11 +822,101 @@ public class VideoSequenceService {
             a.setWorkflow("video-sequence:" + s.id);
             a.setDurationSeconds(s.mergedSeconds);
             assetRepository.save(a);
+            publishExtras(s, ep, target, version);
             ep.setStatus(EpisodeStatus.PRODUCTION_COMPLETE);
             episodeRepository.save(ep);
         } catch (Exception e) {
             log.warn("Sequence {} finished but could not be attached to story {}: {}", s.id, s.episodeId, e.getMessage());
         }
+    }
+
+    /** Thumbnail + subtitles (SRT) + universe memory, like the classic pipeline did. Best effort. */
+    private void publishExtras(VideoSequence s, Episode ep, Path video, int version) {
+        String base = ep.getProjectId() + "/" + ep.getId() + "/video/";
+        try {
+            Path thumb = storage.resolve(base + "thumbnail-h3-" + s.id + ".jpg");
+            double first = s.scenes.isEmpty() || s.scenes.get(0).clipFile == null ? 1.0
+                    : Math.max(0.5, ClipMerger.probeDuration(file(s, s.scenes.get(0).clipFile)) * 0.4);
+            Process p = new ProcessBuilder("ffmpeg", "-nostdin", "-y", "-ss", String.format(Locale.ROOT, "%.2f", first),
+                    "-i", video.toString(), "-frames:v", "1", "-q:v", "2", thumb.toString()).redirectErrorStream(true).start();
+            p.getInputStream().readAllBytes();
+            if (p.waitFor() == 0 && Files.isRegularFile(thumb)) saveExtraAsset(ep, AssetType.THUMBNAIL, thumb, version);
+        } catch (Exception e) {
+            log.warn("Thumbnail for story {} failed: {}", ep.getId(), e.getMessage());
+        }
+        try {
+            String srt = buildSrt(s);
+            if (!srt.isBlank()) {
+                Path sub = storage.resolve(base + "subtitles-h3-" + s.id + ".srt");
+                Files.writeString(sub, srt, java.nio.charset.StandardCharsets.UTF_8);
+                saveExtraAsset(ep, AssetType.SUBTITLE, sub, version);
+            }
+        } catch (Exception e) {
+            log.warn("Subtitles for story {} failed: {}", ep.getId(), e.getMessage());
+        }
+        try {
+            if (episodeMemoryService != null && storyBibleRepository != null) {
+                storyBibleRepository.findFirstByEpisodeIdAndActiveTrueOrderByVersionDesc(ep.getId())
+                        .ifPresent(b -> episodeMemoryService.recordMemory(ep, b));
+            }
+        } catch (Exception e) {
+            log.warn("Episode memory for story {} not recorded: {}", ep.getId(), e.getMessage());
+        }
+    }
+
+    private void saveExtraAsset(Episode ep, AssetType type, Path file, int version) {
+        List<Asset> previous = assetRepository.findByEpisodeIdAndAssetType(ep.getId(), type);
+        previous.forEach(x -> x.setActive(false));
+        assetRepository.saveAll(previous);
+        Asset a = new Asset();
+        a.setEpisodeId(ep.getId());
+        a.setAssetType(type);
+        a.setFilePath(file.toString());
+        a.setVersion(version);
+        a.setActive(true);
+        a.setProvider("minimax-h3-native");
+        assetRepository.save(a);
+    }
+
+    /**
+     * Cues per spoken line. Scene start = sum of previous clip lengths minus crossfades; inside a
+     * scene the speech time (clip minus the H3 speech tail) is shared by estimated line length.
+     */
+    private String buildSrt(VideoSequence s) {
+        StringBuilder out = new StringBuilder();
+        double sceneStart = 0;
+        int n = 1;
+        for (int i = 0; i < s.scenes.size(); i++) {
+            SequenceScene sc = s.scenes.get(i);
+            if (sc.clipFile == null) continue;
+            double clip = ClipMerger.probeDuration(file(s, sc.clipFile));
+            List<H3SceneRenderer.Line> lines = sc.voiceSegmentsJson != null && !sc.voiceSegmentsJson.isBlank()
+                    ? H3SceneRenderer.linesFromVoiceSegments(mapper, sc.voiceSegmentsJson, sc.narration)
+                    : H3SceneRenderer.linesFromText(sc.narration, sc.dialogue);
+            var lang = com.aistorystudio.h3.IndicSpeech.resolve(sc.language, String.join(" ", lines.stream().map(H3SceneRenderer.Line::text).toList()));
+            double[] est = lines.stream().mapToDouble(l -> com.aistorystudio.h3.IndicSpeech.estimateSeconds(
+                    com.aistorystudio.h3.IndicSpeech.prepare(l.text(), lang).text(), lang)).toArray();
+            double totalEst = java.util.Arrays.stream(est).sum();
+            double speech = Math.max(0.5, clip - 0.8);
+            double t = sceneStart + 0.15;
+            for (int k = 0; k < lines.size(); k++) {
+                double d = totalEst > 0 ? speech * est[k] / totalEst : speech / lines.size();
+                String text = com.aistorystudio.h3.IndicSpeech.prepare(lines.get(k).text(), lang).text();
+                if (!text.isBlank()) {
+                    out.append(n++).append('\n').append(srtTime(t)).append(" --> ").append(srtTime(t + d - 0.05)).append('\n');
+                    String who = lines.get(k).voiceOver() ? "" : lines.get(k).speaker() + ": ";
+                    out.append(who).append(text).append("\n\n");
+                }
+                t += d;
+            }
+            sceneStart += clip - (i < s.scenes.size() - 1 ? Math.max(0, s.crossfadeSeconds) : 0);
+        }
+        return out.toString();
+    }
+
+    private static String srtTime(double sec) {
+        long ms = Math.max(0, Math.round(sec * 1000));
+        return String.format(Locale.ROOT, "%02d:%02d:%02d,%03d", ms / 3_600_000, (ms / 60_000) % 60, (ms / 1000) % 60, ms % 1000);
     }
 
     // ----------------------------------------------------------------- prompts

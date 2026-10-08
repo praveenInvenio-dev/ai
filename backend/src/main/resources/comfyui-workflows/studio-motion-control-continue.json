@@ -1,0 +1,282 @@
+{
+  "_comment": "Wan 2.2 Animate MOVE mode - continuation window. Same as studio-motion-control plus the previous window's clip as continue_motion, so long driving videos are rendered as chained ~4.8 s windows.",
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "{{MC_MODEL}}",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "lora_name": "{{MC_LORA}}",
+      "strength_model": 1.0
+    }
+  },
+  "3": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": [
+        "2",
+        0
+      ],
+      "shift": 8.0
+    }
+  },
+  "4": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "{{MC_TEXT_ENCODER}}",
+      "type": "wan",
+      "device": "default"
+    }
+  },
+  "5": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "{{MC_VAE}}"
+    }
+  },
+  "6": {
+    "class_type": "CLIPVisionLoader",
+    "inputs": {
+      "clip_name": "{{MC_CLIP_VISION}}"
+    }
+  },
+  "7": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{CHARACTER_IMAGE}}"
+    }
+  },
+  "8": {
+    "class_type": "CLIPVisionEncode",
+    "inputs": {
+      "clip_vision": [
+        "6",
+        0
+      ],
+      "image": [
+        "7",
+        0
+      ],
+      "crop": "none"
+    }
+  },
+  "9": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{POSITIVE_PROMPT}}",
+      "clip": [
+        "4",
+        0
+      ]
+    }
+  },
+  "10": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "{{NEGATIVE_PROMPT}}",
+      "clip": [
+        "4",
+        0
+      ]
+    }
+  },
+  "11": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "{{DRIVING_VIDEO}}"
+    }
+  },
+  "12": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": [
+        "11",
+        0
+      ]
+    }
+  },
+  "13": {
+    "class_type": "DWPreprocessor",
+    "inputs": {
+      "image": [
+        "12",
+        0
+      ],
+      "detect_hand": "enable",
+      "detect_body": "enable",
+      "detect_face": "enable",
+      "resolution": 512,
+      "bbox_detector": "yolox_l.onnx",
+      "pose_estimator": "dw-ll_ucoco_384_bs5.torchscript.pt",
+      "scale_stick_for_xinsr_cn": "disable"
+    }
+  },
+  "14": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "13",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": "{{WIDTH}}",
+      "height": "{{HEIGHT}}",
+      "crop": "center"
+    }
+  },
+  "15": {
+    "class_type": "WanAnimateToVideo",
+    "inputs": {
+      "positive": [
+        "9",
+        0
+      ],
+      "negative": [
+        "10",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ],
+      "width": "{{WIDTH}}",
+      "height": "{{HEIGHT}}",
+      "length": "{{LENGTH}}",
+      "batch_size": 1,
+      "clip_vision_output": [
+        "8",
+        0
+      ],
+      "reference_image": [
+        "7",
+        0
+      ],
+      "pose_video": [
+        "14",
+        0
+      ],
+      "continue_motion_max_frames": 5,
+      "video_frame_offset": 0,
+      "continue_motion": [
+        "23",
+        0
+      ]
+    }
+  },
+  "16": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "3",
+        0
+      ],
+      "seed": "{{SEED}}",
+      "steps": "{{STEPS}}",
+      "cfg": "{{CFG}}",
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": [
+        "15",
+        0
+      ],
+      "negative": [
+        "15",
+        1
+      ],
+      "latent_image": [
+        "15",
+        2
+      ],
+      "denoise": 1.0
+    }
+  },
+  "17": {
+    "class_type": "TrimVideoLatent",
+    "inputs": {
+      "samples": [
+        "16",
+        0
+      ],
+      "trim_amount": [
+        "15",
+        3
+      ]
+    }
+  },
+  "18": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "17",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    }
+  },
+  "19": {
+    "class_type": "ImageFromBatch",
+    "inputs": {
+      "image": [
+        "18",
+        0
+      ],
+      "batch_index": [
+        "15",
+        4
+      ],
+      "length": 4096
+    }
+  },
+  "20": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "19",
+        0
+      ],
+      "fps": "{{FPS}}",
+      "audio": [
+        "12",
+        1
+      ]
+    }
+  },
+  "21": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "20",
+        0
+      ],
+      "filename_prefix": "{{FILENAME_PREFIX}}",
+      "format": "mp4",
+      "codec": "auto"
+    }
+  },
+  "22": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "{{PREVIOUS_CLIP}}"
+    }
+  },
+  "23": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": [
+        "22",
+        0
+      ]
+    }
+  }
+}

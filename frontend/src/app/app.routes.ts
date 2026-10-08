@@ -16,12 +16,14 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/storyboard/storyboard.component').then(m => m.StoryboardComponent) },
   // Kept so existing links and the ?episodeId= deep link do not 404.
   { path: 'storyboard', redirectTo: 'build-story', pathMatch: 'full' },
+  { path: 'motion-studio', loadComponent: () => import('./pages/motion-studio/motion-studio.component').then(m => m.MotionStudioComponent) },
   { path: 'video-editor', loadComponent: () => import('./pages/video-editor/video-editor.component').then(m => m.VideoEditorComponent) },
   { path: 'funny-skits', loadComponent: () => import('./pages/funny-skit/funny-skit.component').then(m => m.FunnySkitComponent) },
+  { path: 'concept-explainer', loadComponent: () => import('./pages/concept-explainer/concept-explainer.component').then(m => m.ConceptExplainerComponent) },
   { path: 'video-generation', loadComponent: () => import('./pages/video-generation/video-generation.component').then(m => m.VideoGenerationComponent) },
   { path: 'video-sequence', loadComponent: () => import('./pages/video-sequence/video-sequence.component').then(m => m.VideoSequenceComponent) },
-  { path: 'wan-workflow', data: { workflow: 'WAN_2_2' }, loadComponent: () => import('./pages/video-workflow/video-workflow.component').then(m => m.VideoWorkflowComponent) },
-  { path: 'minimax-h3-workflow', data: { workflow: 'MINIMAX_H3' }, loadComponent: () => import('./pages/video-workflow/video-workflow.component').then(m => m.VideoWorkflowComponent) },
+  { path: 'wan-workflow', redirectTo: 'video-generation' },
+  { path: 'minimax-h3-workflow', redirectTo: 'video-generation' },
   { path: 'voice-lab', loadComponent: () => import('./pages/voice-lab/voice-lab.component').then(m => m.VoiceLabComponent) },
   { path: 'characters', loadComponent: () => import('./pages/character-studio/character-studio.component').then(m => m.CharacterStudioComponent) },
   { path: '**', redirectTo: 'dashboard' }

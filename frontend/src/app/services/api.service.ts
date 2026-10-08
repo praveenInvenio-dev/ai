@@ -430,6 +430,61 @@ export class ApiService {
   produceEpisodeVideo(episodeId: string, speechEngine: SpeechEngine = 'H3', orientation: 'vertical' | 'horizontal' = 'vertical'): Observable<SequenceView> {
     return this.http.post<SequenceView>(`${this.base}/video-sequences/produce-episode/${episodeId}`, {}, { params: { orientation, speechEngine } });
   }
+  // ---- Motion & Effects Studio -------------------------------------------
+  studioStatus(): Observable<StudioStatus> { return this.http.get<StudioStatus>(`${this.base}/studio/status`); }
+  cameraPresets(): Observable<CameraPreset[]> { return this.http.get<CameraPreset[]>(`${this.base}/studio/camera-presets`); }
+  studioJobs(): Observable<StudioJobView[]> { return this.http.get<StudioJobView[]>(`${this.base}/studio/jobs`); }
+  studioJob(id: string): Observable<StudioJobView> { return this.http.get<StudioJobView>(`${this.base}/studio/jobs/${id}`); }
+  studioVideoUrl(id: string): string { return `${this.base}/studio/jobs/${id}/video`; }
+  studioMotionControl(image: Blob, video: Blob, prompt: string, orientation: string, seconds: number): Observable<StudioJobView> {
+    const f = new FormData();
+    f.append('image', image, (image as File).name || 'character.png');
+    f.append('video', video, (video as File).name || 'driving.mp4');
+    if (prompt) { f.append('prompt', prompt); }
+    f.append('orientation', orientation); f.append('seconds', String(seconds));
+    return this.http.post<StudioJobView>(`${this.base}/studio/motion-control`, f);
+  }
+  studioUpscale(src: StudioSource, mode: 'AI' | 'FAST', smooth24: boolean, resolution = 1080): Observable<StudioJobView> {
+    const f = this.studioForm(src);
+    f.append('mode', mode); f.append('smooth24', String(smooth24)); f.append('resolution', String(resolution));
+    return this.http.post<StudioJobView>(`${this.base}/studio/upscale`, f);
+  }
+  studioReframe(src: StudioSource, aspect: string, mode: string): Observable<StudioJobView> {
+    const f = this.studioForm(src);
+    f.append('aspect', aspect); f.append('mode', mode);
+    return this.http.post<StudioJobView>(`${this.base}/studio/reframe`, f);
+  }
+  private studioForm(src: StudioSource): FormData {
+    const f = new FormData();
+    if (src.video) { f.append('video', src.video, src.video.name); }
+    if (src.image) { f.append('image', src.image, src.image.name); }
+    if (src.sourceJobId) { f.append('sourceJobId', src.sourceJobId); }
+    if (src.episodeId) { f.append('episodeId', src.episodeId); }
+    if (src.sequenceId) { f.append('sequenceId', src.sequenceId); }
+    return f;
+  }
+  studioBackground(src: StudioSource, background: string, color: string, quality: string): Observable<StudioJobView> {
+    const f = this.studioForm(src);
+    f.append('background', background); f.append('color', color); f.append('quality', quality);
+    return this.http.post<StudioJobView>(`${this.base}/studio/background`, f);
+  }
+  studioDub(src: StudioSource, o: { script: string; sourceLanguage?: string; targetLanguage: string; mode: string; speechEngine: string; originalVolume: number; voice?: string }): Observable<StudioJobView> {
+    const f = this.studioForm(src);
+    f.append('script', o.script); f.append('targetLanguage', o.targetLanguage); f.append('mode', o.mode);
+    f.append('speechEngine', o.speechEngine); f.append('originalVolume', String(o.originalVolume));
+    if (o.sourceLanguage) { f.append('sourceLanguage', o.sourceLanguage); }
+    if (o.voice) { f.append('voice', o.voice); }
+    return this.http.post<StudioJobView>(`${this.base}/studio/dub`, f);
+  }
+  studioAnalyze(src: StudioSource, platform: string): Observable<StudioJobView> {
+    const f = this.studioForm(src);
+    f.append('platform', platform);
+    return this.http.post<StudioJobView>(`${this.base}/studio/analyze`, f);
+  }
+  /** Copy a story into another language (images reused, lines translated). */
+  translateEpisode(episodeId: string, language: string): Observable<{ id: string; title: string; language: string }> {
+    return this.http.post<{ id: string; title: string; language: string }>(`${this.base}/episodes/${episodeId}/translate`, {}, { params: { language } });
+  }
   createSequence(req: CreateSequenceRequest): Observable<SequenceView> {
     return this.http.post<SequenceView>(`${this.base}/video-sequences`, req);
   }
@@ -815,3 +870,8 @@ export interface VideoGenerationJob {
 /** Who speaks in H3 flows: H3 itself, or IndicF5 (tts-indic) voices with H3 lip sync + ambience. */
 export type SpeechEngine = 'H3' | 'INDIC_TTS';
 
+
+export interface StudioStatus { comfyAvailable: boolean; comfyReason?: string; motionControlConfigured: boolean; motionMaxSeconds: number; aiUpscaleMaxSeconds: number; }
+export interface CameraPreset { id: string; name: string; category: string; prompt: string; }
+export interface StudioSource { video?: File; image?: File; sourceJobId?: string; episodeId?: string; sequenceId?: string; }
+export interface StudioJobView { report?: string; resultExtension?: string; id: string; tool: 'MOTION_CONTROL' | 'UPSCALE' | 'REFRAME' | 'BACKGROUND' | 'DUB' | 'ANALYZE'; status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'; stage: string; errorMessage?: string; resultSeconds?: number; summary?: string; resultUrl?: string; }

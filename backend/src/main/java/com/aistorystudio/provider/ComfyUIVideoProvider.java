@@ -828,6 +828,61 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
     /** Same /upload/image mechanism ComfyUIImageProvider uses for reference
      *  images - this is ComfyUI's own documented way to feed an external
      *  image into any workflow's LoadImage node. */
+    /**
+     * Motion & Effects Studio: runs one bundled API-format workflow that ends in SaveVideo
+     * (motion control, AI upscale ...). Uses the same GPU slot as every other video job, so
+     * studio work queues behind H3/Wan instead of fighting for VRAM.
+     *
+     * @param uploads placeholder -> local file; each file is uploaded to ComfyUI's input folder
+     *                and the placeholder is replaced by the uploaded name.
+     */
+    public byte[] runStudioWorkflow(String template, Map<String, String> text, Map<String, Number> numeric,
+                                    Map<String, Path> uploads) {
+        String reason = unavailableReason();
+        if (reason != null) throw new IllegalStateException("Local AI video is not available: " + reason);
+        boolean acquired;
+        try {
+            acquired = slot.tryAcquire(queueWait.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting for a free video slot", e);
+        }
+        if (!acquired) throw new IllegalStateException("Timed out waiting for a free ComfyUI video slot after " + queueWait.toSeconds() + "s");
+        try {
+            freeComfyMemory();
+            Map<String, String> t = new LinkedHashMap<>(text);
+            for (Map.Entry<String, Path> u : uploads.entrySet()) {
+                t.put(u.getKey(), uploadMediaWithPrefix(u.getValue(), "studio-"));
+            }
+            t.put("{{FILENAME_PREFIX}}", "ai-story-studio-studio-" + UUID.randomUUID());
+            String json = pruneEmptyMediaInputs(WorkflowTemplateFiller.fill(mapper, template, t, numeric));
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("prompt", mapper.readTree(json));
+            payload.put("client_id", UUID.randomUUID().toString());
+            log.info("ComfyUI studio submit: workflow={}", template);
+            JsonNode queueResponse;
+            try {
+                queueResponse = webClient.post().uri("/prompt").bodyValue(payload)
+                        .retrieve().bodyToMono(JsonNode.class).block(Duration.ofSeconds(30));
+            } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+                throw new IllegalStateException("ComfyUI rejected the " + template + " workflow (" + e.getStatusCode() + "): "
+                        + e.getResponseBodyAsString(), e);
+            }
+            if (queueResponse == null || queueResponse.get("prompt_id") == null) {
+                throw new IllegalStateException("ComfyUI did not accept the " + template + " workflow: " + queueResponse);
+            }
+            JsonNode nodeErrors = queueResponse.path("node_errors");
+            if (nodeErrors.isObject() && nodeErrors.size() > 0) {
+                throw new IllegalStateException("ComfyUI reported node errors (missing model or custom node?): " + nodeErrors);
+            }
+            return pollForVideo(queueResponse.get("prompt_id").asText());
+        } catch (IOException e) {
+            throw new IllegalStateException("Invalid studio workflow '" + template + "'", e);
+        } finally {
+            slot.release();
+        }
+    }
+
     private String uploadStartingImage(Path imagePath) {
         return uploadMedia(imagePath);
     }

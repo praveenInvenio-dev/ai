@@ -48,6 +48,12 @@ x-app-env: &app-env
   WAN14B_HIGH_NOISE_MODEL: ${WAN14B_HIGH_NOISE_MODEL:-wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors}
   WAN14B_LOW_NOISE_MODEL: ${WAN14B_LOW_NOISE_MODEL:-wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors}
   WAN14B_VAE: ${WAN14B_VAE:-wan_2.1_vae.safetensors}
+  # Motion & Effects Studio / H3 scene renderer (defaults live in application.yml)
+  MOTION_CONTROL_MODEL: ${MOTION_CONTROL_MODEL:-Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors}
+  MOTION_CONTROL_STEPS: ${MOTION_CONTROL_STEPS:-6}
+  MOTION_CONTROL_MAX_SECONDS: ${MOTION_CONTROL_MAX_SECONDS:-4.8}
+  H3_SCENE_INDIC_NARRATOR_VOICE: ${H3_SCENE_INDIC_NARRATOR_VOICE:-}
+  H3_SCENE_TTS_LIPSYNC_REFERENCE: ${H3_SCENE_TTS_LIPSYNC_REFERENCE:-true}
   WAN14B_WIDTH: ${WAN14B_WIDTH:-480}
   WAN14B_HEIGHT: ${WAN14B_HEIGHT:-832}
   WAN14B_FPS: ${WAN14B_FPS:-16}
@@ -220,6 +226,8 @@ services:
       MKL_NUM_THREADS: ${MKL_NUM_THREADS:-4}
       # pre-start.sh: download Qwen Image 2.1 files on first start.
       DOWNLOAD_16GB_IMAGE_MODELS: ${DOWNLOAD_16GB_IMAGE_MODELS:-true}
+      # Motion & Effects Studio: Wan 2.2 Animate + DWPose nodes (~18 GB extra download)
+      DOWNLOAD_MOTION_CONTROL_MODELS: ${DOWNLOAD_MOTION_CONTROL_MODELS:-false}
     # The -slim images do NOT ship ComfyUI: they git-clone it into /root on first
     # start, which fails if /root/ComfyUI/models or /output are pre-created as
     # separate volumes ("destination path 'ComfyUI' already exists"). So one volume
@@ -353,6 +361,9 @@ services:
       # Same mount as the backend: the worker reads uploads and writes proxies
       # in place, so only paths cross the network, never the video itself.
       - video-editor-data:/data/video-editor
+      # Motion & Effects Studio files (background removal) live in the projects volume.
+      - projects-data:/data/projects
+      - video-worker-models:/models
     ports:
       - "127.0.0.1:5010:5010"
     restart: unless-stopped
@@ -408,6 +419,7 @@ services:
       - ai-story-studio-net
 
 volumes:
+  video-worker-models:
   rumik-cache:
   # ComfyUI's persistent /root (ComfyUI checkout, models, custom nodes, output).
   # Name is pinned so existing downloads are reused, never recreated.
