@@ -35,3 +35,11 @@ IndicF5 weights into the persistent `indicf5-cache` volume.
 The release cannot contain a working Hugging Face credential. If an old token has expired,
 replace it in `.env` and recreate `tts-indic`; the application code itself does not need another
 secret or hard-coded credential.
+
+
+## GPU IndicF5 container fix
+
+- `tts-indic/Dockerfile` now installs CUDA-enabled PyTorch and the permanent `pydub`/`f5_tts` dependencies.
+- `docker-compose.gpu.yml` now passes one NVIDIA GPU to `tts-indic` and defaults `INDICF5_DEVICE` to `cuda`.
+- `.env.example` documents `INDICF5_DEVICE=cuda`.
+- IndicF5/HF model weights remain outside the image and use the persistent `indicf5-cache` volume.

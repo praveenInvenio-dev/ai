@@ -1,31 +1,39 @@
 FROM python:3.11-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libsndfile1 ffmpeg ca-certificates \
+    && apt-get install -y --no-install-recommends \
+       libsndfile1 \
+       ffmpeg \
+       ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# CPU-only torch from PyTorch's own index. The default PyPI wheel pulls the full
-# CUDA runtime (~2.5 GB of nvidia-* packages) which is pure waste here: IndicF5
-# runs on CPU in this setup, and even on a 2 GB card the model would not fit
-# alongside ComfyUI. This keeps the image at roughly a third of the size.
+# NVIDIA / CUDA PyTorch for IndicF5 GPU inference.
+# The container receives the NVIDIA GPU from docker-compose.gpu.yml.
 RUN pip install --no-cache-dir \
-      --index-url https://download.pytorch.org/whl/cpu \
-      torch==2.4.1
+      --index-url https://download.pytorch.org/whl/cu130 \
+      torch==2.14.1 \
+      torchaudio==2.11.0
 
+# IndicF5 and F5-TTS runtime dependencies.
 RUN pip install --no-cache-dir \
-      transformers==4.44.2 \
+      transformers==5.19.0 \
       flask==3.0.3 \
       soundfile==0.12.1 \
       numpy==1.26.4 \
-      scipy==1.14.1
+      scipy==1.14.1 \
+      pydub==0.25.1 \
+      f5_tts==1.1.22
 
-# Model weights are NOT baked in: ai4bharat/IndicF5 is a gated repo, so it can
-# only be fetched with a token the user supplies. They download on first
-# synthesis into the HF cache, which is mounted as a volume so the ~1.6 GB
-# download survives container recreation.
+# Model weights are NOT baked into the image.
+# IndicF5 is gated and uses HF_TOKEN supplied by docker-compose/.env.
+# The HF cache is mounted as a persistent Docker volume so model downloads
+# survive container recreation.
 ENV HF_HOME=/hf-cache
+ENV TRANSFORMERS_CACHE=/hf-cache
+ENV HUGGINGFACE_HUB_CACHE=/hf-cache
 ENV INDICF5_REPO=ai4bharat/IndicF5
 ENV INDICF5_PROMPTS_DIR=/prompts
+ENV INDICF5_DEVICE=cuda
 
 COPY server.py /app/server.py
 WORKDIR /app
