@@ -1,16 +1,25 @@
 # Usage: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 #
-# Requires: an NVIDIA driver on the host that supports CUDA 13.0 (driver 580+, the
-# ComfyUI image is PyTorch cu130), plus the NVIDIA Container Toolkit. Check with:
-#   docker run --rm --gpus all nvidia/cuda:13.0.0-base-ubuntu24.04 nvidia-smi
-# Validate the merged ComfyUI image/GPU config without starting anything:
-#   scripts/validate-comfyui-config.sh
+# Requires: an NVIDIA driver on the host new enough for CUDA 12.4, and (on
+# Windows) Docker Desktop running on the WSL2 backend. Check with:
+#   docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
 #
 # Target: 16 GB NVIDIA card. Qwen Image 2.1 (images), Wan 2.2 TI2V-5B / I2V-A14B
 # and MiniMax H3 (video). ComfyUI offloads weights to system RAM when needed,
 # so 64 GB host RAM is recommended for the 14B / H3 video paths.
 
 services:
+  tts-indic:
+    environment:
+      INDICF5_DEVICE: ${INDICF5_DEVICE:-cuda}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   tts-chatterbox:
     build:
       args:
@@ -25,10 +34,6 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-
-  tts-indic:
-    environment:
-      INDICF5_DEVICE: ${INDICF5_DEVICE:-cpu}
 
   tts-cosyvoice:
     build:
@@ -56,33 +61,59 @@ services:
   #             count: all
   #             capabilities: [gpu]
 
-  tts-rumik:
+  comfyui:
+    # cu124-slim is a retired tag. Its runner script git-clones ComfyUI at HEAD,
+    # so it pairs a current ComfyUI (which needs comfy_aimdo, blake3, etc.)
+    # with a Python environment frozen in 2024, and main.py dies on:
+    #   ModuleNotFoundError: No module named 'comfy_aimdo'
+    # Use a maintained tag so the bundled dependencies match the ComfyUI it
+    # pulls. cu128 covers Turing (MX450/GTX 16xx) through Blackwell.
+    image: ${COMFYUI_GPU_IMAGE:-yanwk/comfyui-boot:cu128-slim}
+
     environment:
-      RUMIK_DEVICE: ${RUMIK_DEVICE:-cuda}
+      # Overrides the base file's "--cpu": no --cpu here, and previews are
+      # cheap on a GPU. Extra flags still come from COMFYUI_EXTRA_CLI_ARGS.
+      #
+      # ON A 2-4 GB CARD, set this in .env:
+      #   COMFYUI_EXTRA_CLI_ARGS=--lowvram
+      # --lowvram keeps only the block being computed resident and swaps the
+      # rest to system RAM. It costs some speed but is what makes SD1.5 fit at
+      # all below ~4 GB. Use --novram if --lowvram still OOMs.
+      CLI_ARGS: ${COMFYUI_EXTRA_CLI_ARGS:-}
+      # GPU generation still offloads some work to CPU on small cards. An empty
+      # OMP_NUM_THREADS is invalid to libgomp and produces:
+      #   libgomp: Invalid value for environment variable OMP_NUM_THREADS
+      # Keep a small explicit value instead of exporting an empty string.
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-4}
+      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-4}
+      # pre-start.sh: download Qwen Image 2.1 files on first start.
+      DOWNLOAD_16GB_IMAGE_MODELS: ${DOWNLOAD_16GB_IMAGE_MODELS:-true}
+    # The :cpu image ships ComfyUI inside the image. The :cu124-slim image does
+    # NOT - it git-clones ComfyUI into /root on first start. Inheriting the base
+    # file's volumes would pre-create /root/ComfyUI/models and /root/ComfyUI/output,
+    # and git refuses to clone into a non-empty directory:
+    #   fatal: destination path 'ComfyUI' already exists and is not an empty directory
+    #   /runner-scripts/download.sh: cd: /root/ComfyUI/custom_nodes: No such file or directory
+    # So this REPLACES the volume list (!override) with a single empty volume at
+    # /root, which is the layout these images expect.
+    #
+    # Consequence: the GPU stack has its own model store, separate from the CPU
+    # stack's comfyui-data volume. Download checkpoints again AFTER ComfyUI has
+    # started once and finished its first-run setup:
+    #   ./download-models.sh   (see MODELS.md)
+    volumes: !override
+      - comfyui-gpu-root:/root
+      # Runs after the ComfyUI bundle is copied into /root and before the
+      # server starts. Installs ComfyUI-VideoHelperSuite and (optionally) downloads
+      # the Qwen Image 2.1 files, so a fresh GPU volume works out of the box.
+      - ./comfyui-gpu/pre-start.sh:/root/user-scripts/pre-start.sh
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              count: all
               capabilities: [gpu]
-
-  comfyui:
-    # RTX 5060 Ti (Blackwell) / CUDA 13.0 ComfyUI image (PyTorch 2.13+cu130).
-    # MUST match docker-compose.yml. This override file would otherwise win and
-    # silently downgrade the image (it used to default to cu128-slim).
-    # Single source of truth: COMFYUI_GPU_IMAGE in .env.
-    # Validate with: scripts/validate-comfyui-config.sh
-    image: ${COMFYUI_GPU_IMAGE:-yanwk/comfyui-boot:cu130-slim-v2}
-    gpus: !override all
-    environment:
-      # Same as the base file; no --cpu. Extra flags come from COMFYUI_EXTRA_CLI_ARGS
-      # (empty by default). Only add flags for a proven runtime failure, e.g. if
-      # Qwen sampling dies with "No operator found for memory_efficient_attention",
-      # set COMFYUI_EXTRA_CLI_ARGS=--use-pytorch-cross-attention --disable-xformers
-      CLI_ARGS: --preview-method none ${COMFYUI_EXTRA_CLI_ARGS:-}
-    # Volumes (comfyui-gpu-root:/root + pre-start.sh) are inherited from
-    # docker-compose.yml; the existing model volume is reused as-is.
 
   # Image/video model settings come from .env. Only timeouts change here.
   backend:
@@ -109,3 +140,6 @@ services:
               count: all
               capabilities: [gpu]
 
+volumes:
+  comfyui-gpu-root:
+    name: ${COMFYUI_GPU_VOLUME:-ai-story-studio_comfyui-gpu-root}
