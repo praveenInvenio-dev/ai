@@ -186,6 +186,11 @@ import { ApiService, StoryboardEpisode, StoryboardScene, Voice, VoiceSegment } f
         <button class="btn primary" [disabled]="!canAssemble()" (click)="assemble()">
           {{ busy ? 'Starting…' : '🎬 Produce video (H3 voice + video)' }}
         </button>
+        <button class="btn primary" [disabled]="!canAssemble() || classicBusy" (click)="produceClassic()">🎞️ Classic video (images + voice, no AI video)</button>
+        <label class="check" style="display:flex;gap:.4rem;align-items:center"><input type="checkbox" [(ngModel)]="classicCaptions"> subtitles</label>
+        <p class="muted small" *ngIf="classicStage"><strong>{{ classicStage }}</strong></p>
+        <p class="muted small" *ngIf="classicError" style="color:#ff6b6b">{{ classicError }}</p>
+        <video *ngIf="classicVideoUrl" [src]="classicVideoUrl" controls style="max-width:420px;border-radius:12px"></video>
         <label class="check" style="display:flex;gap:.5rem;align-items:flex-start">
           <input type="checkbox" [(ngModel)]="useIndicTts"> Use Indic TTS voice (IndicF5) instead of H3 speech
         </label>
@@ -342,6 +347,25 @@ export class StoryboardComponent implements OnInit {
   resultFile = '';
   /** INDIC_TTS instead of H3 speech - one or the other. */
   useIndicTts = false;
+  classicBusy = false; classicCaptions = true; classicStage = ''; classicError = ''; classicVideoUrl = '';
+  produceClassic(): void {
+    if (!this.episode) return;
+    const id = this.episode.id;
+    this.classicBusy = true; this.classicError = ''; this.classicVideoUrl = ''; this.classicStage = 'Starting…';
+    this.api.startClassicVideo(id, undefined, this.classicCaptions).subscribe({
+      next: r => {
+        const t = setInterval(() => this.api.classicVideoJob(r.jobId).subscribe({
+          next: j => {
+            this.classicStage = j.stage + (j.warnings?.length ? ' — ' + j.warnings.join(' ') : '');
+            if (j.status === 'SUCCEEDED') { clearInterval(t); this.classicBusy = false; this.classicStage = `Classic video ready (${Math.round(j.seconds)} s)`; this.classicVideoUrl = this.api.episodeVideoUrl(id) + '?v=' + Date.now(); }
+            if (j.status === 'FAILED') { clearInterval(t); this.classicBusy = false; this.classicStage = ''; this.classicError = j.error || 'Classic video failed.'; }
+          },
+          error: () => { clearInterval(t); this.classicBusy = false; }
+        }), 3000);
+      },
+      error: e => { this.classicBusy = false; this.classicStage = ''; this.classicError = e?.error?.message || 'Could not start the classic video.'; }
+    });
+  }
   voices: Voice[] = [];
   previewing: VoiceSegment | null = null;
   defaultVoice = '';

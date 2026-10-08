@@ -349,7 +349,11 @@ public class ProviderGateway {
         String lang = request.language() == null ? "" : request.language().trim().toLowerCase(java.util.Locale.ROOT);
         boolean englishFamily = lang.equals("english") || lang.equals("en") || lang.startsWith("english ")
                 || lang.equals("indian english") || lang.equals("en-in") || lang.startsWith("en-in-");
-        if (englishFamily && requestedVoice.startsWith("narrator-")) {
+        if (englishFamily && (requestedVoice.startsWith("narrator-") || requestedVoice.startsWith("tutor-"))) {
+            return synthesize(request);
+        }
+        // Explicit Edge voice or a Voice Lab clone chosen by the user: use exactly that voice.
+        if (requestedVoice.startsWith("edge:") || requestedVoice.startsWith("profile:")) {
             return synthesize(request);
         }
         // An explicitly chosen IndicF5 voice is the user's decision: use it, don't swap to Edge.

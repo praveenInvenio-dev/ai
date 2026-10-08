@@ -27,12 +27,13 @@ public class ConceptExplainerController {
     /** motion: REVEAL (elements appear with the narration, default) or STATIC. animationMode kept for old clients. */
     public record CreateRequest(String topic, String instructions, String language, String duration,
                                 String difficulty, String motion, String animationMode, String model,
-                                String track, String subject, Boolean examFocus, String voice) {}
+                                String track, String subject, Boolean examFocus, String voice, String style) {}
 
     @PostMapping("/jobs")
     public ResponseEntity<Map<String, UUID>> create(@RequestBody CreateRequest r) {
         ConceptExplainerJob job = service.create(r.topic(), r.instructions(), r.language(), r.duration(), r.difficulty(),
                 r.motion() != null ? r.motion() : r.animationMode(), r.model(), r.track(), r.subject(), Boolean.TRUE.equals(r.examFocus()), r.voice());
+        job.setStyle(r.style());
         service.generateAsync(job.getId());
         return ResponseEntity.accepted().body(Map.of("jobId", job.getId()));
     }

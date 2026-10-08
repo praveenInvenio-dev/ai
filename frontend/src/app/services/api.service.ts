@@ -426,6 +426,13 @@ export class ApiService {
     Object.entries(options).forEach(([k, v]) => { if (v !== undefined && v !== null) params[k] = String(v); });
     return this.http.post<SequenceView>(`${this.base}/video-sequences/from-episode/${episodeId}`, {}, { params });
   }
+  /** Classic storyboard video: approved images + narration, animated layer by layer (no video model). */
+  startClassicVideo(episodeId: string, voice?: string, captions = true): Observable<{ jobId: string }> {
+    return this.http.post<{ jobId: string }>(`${this.base}/storyboard/episodes/${episodeId}/classic-video`, { voice: voice || null, captions });
+  }
+  classicVideoJob(jobId: string): Observable<{ id: string; status: string; stage: string; error?: string; seconds: number; warnings: string[] }> {
+    return this.http.get<any>(`${this.base}/storyboard/classic-video-jobs/${jobId}`);
+  }
   /** Storyboard / Story Approval: load the story into an H3 sequence and start it (H3 speech). */
   produceEpisodeVideo(episodeId: string, speechEngine: SpeechEngine = 'H3', orientation: 'vertical' | 'horizontal' = 'vertical'): Observable<SequenceView> {
     return this.http.post<SequenceView>(`${this.base}/video-sequences/produce-episode/${episodeId}`, {}, { params: { orientation, speechEngine } });

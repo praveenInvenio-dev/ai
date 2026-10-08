@@ -49,3 +49,10 @@ from source, needing flit_core, which the PyTorch-only index does not have.
 - `/constraints.txt` keeps torch/torchaudio/numpy/transformers fixed for every later pip step.
 - Dependencies pinned to IndicF5's release period (accelerate 1.5.2, datasets 3.5.0, librosa 0.10.2.post1,
   x_transformers 1.44.4, vocos 0.1.0); the set was resolved for Python 3.10 against torch 2.7.1.
+
+## v24.5.2 - IndicF5 vocoder weights
+The IndicF5 checkpoint saves the vocoder under `vocoder._orig_mod.*` (torch.compile prefix); the model
+expects `vocoder.*`, so transformers logged them as "not used" / "newly initialized" and the vocoder ran with
+random weights (noise instead of voice). `tts-indic/server.py` now reloads those tensors with the prefix
+stripped right after loading and logs "IndicF5 vocoder weights restored: N tensors loaded".
+New `scripts/test-indicf5.sh` tests tts-indic directly, via the tts proxy and via the backend preview.

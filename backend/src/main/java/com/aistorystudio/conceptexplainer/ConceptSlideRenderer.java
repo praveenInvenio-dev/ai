@@ -67,22 +67,97 @@ public final class ConceptSlideRenderer {
             "bag", "clock", "home", "bulb", "car", "book", "money", "chart", "lock", "cloud", "box", "ticket", "food");
 
     // reference palette
-    static final Color CYAN = new Color(0, 220, 255), MAGENTA = new Color(255, 60, 220), YELLOW = new Color(255, 225, 60),
-            GREEN = new Color(70, 255, 120), ORANGE = new Color(255, 160, 40), VIOLET = new Color(170, 110, 255),
-            WHITE = new Color(240, 244, 250), RED = new Color(255, 60, 80), DIM = new Color(150, 160, 180);
-    private static final Color[] BORDER = {MAGENTA, CYAN, CYAN, GREEN, MAGENTA, GREEN, CYAN, MAGENTA, CYAN, YELLOW, GREEN, MAGENTA};
-    private static final Color[] TITLE = {YELLOW, CYAN, YELLOW, GREEN, YELLOW, GREEN, CYAN, YELLOW, CYAN, YELLOW, GREEN, YELLOW};
-    private static final Color[] ACCENT = {MAGENTA, CYAN, YELLOW, GREEN, ORANGE, VIOLET};
+    // Palette slots (names kept from the neon design). The active STYLE fills them; WHITE means
+    // "main text colour" (dark ink on paper styles).
+    Color CYAN, MAGENTA, YELLOW, GREEN, ORANGE, VIOLET, WHITE, RED, DIM;
+    private Color[] BORDER, TITLE, ACCENT;
+
+    // ---------------------------------------------------------------- visual styles
+
+    /** Look of a whole lesson. dark = light ink on a dark background (glow / screen blending). */
+    public record Style(String id, String label, boolean dark, boolean glow, String stroke, Color[] palette,
+                        boolean handFont, boolean popTitle, String illustrationStyle) { }
+
+    private static Color c(int rgb) { return new Color(rgb); }
+
+    /** palette order: cyan, magenta, yellow, green, orange, violet, text, red, dim */
+    public static final Map<String, Style> STYLES = new LinkedHashMap<>();
+    static {
+        STYLES.put("neon", new Style("neon", "Neon glow", true, true, "neon",
+                new Color[]{c(0x00DCFF), c(0xFF3CDC), c(0xFFE13C), c(0x46FF78), c(0xFFA028), c(0xAA6EFF), c(0xF0F4FA), c(0xFF3C50), c(0x96A0B4)},
+                false, false, "premium glowing neon line art with subtle 3D depth, electric cyan, magenta, yellow and green outlines, isolated on a PURE BLACK background"));
+        STYLES.put("sketchnote", new Style("sketchnote", "Sketchnote (hand-drawn)", false, false, "sketch",
+                new Color[]{c(0x2E9BB3), c(0xE07A5F), c(0xC9920E), c(0x4F9D5B), c(0xE8803A), c(0x8E6BC7), c(0x2A2A2A), c(0xD1495B), c(0x6B6B6B)},
+                true, false, "simple hand-drawn sketchnote doodle, black fine-liner ink outlines with soft peach and teal marker fills, on a PLAIN WHITE background"));
+        STYLES.put("storyboard", new Style("storyboard", "Clean storyboard (3D icons)", false, false, "card",
+                new Color[]{c(0x2F7AE5), c(0xD63384), c(0xE09A00), c(0x2FA84F), c(0xF2711C), c(0x7B4FD6), c(0x1D2B45), c(0xE03131), c(0x5C6B80)},
+                false, false, "glossy colourful 3D clay-style icon, soft studio lighting, rounded friendly shapes, on a PLAIN WHITE background"));
+        STYLES.put("chalkboard", new Style("chalkboard", "Chalkboard classroom", true, false, "chalk",
+                new Color[]{c(0x8FD3E8), c(0xF59AC3), c(0xF7E07A), c(0xA5E39A), c(0xF6B57A), c(0xC4A8F0), c(0xF2F2EC), c(0xFF8A8A), c(0xB7C4BC)},
+                true, false, "white and pastel chalk drawing, loose hand-drawn chalk strokes, on a PURE BLACK background"));
+        STYLES.put("blueprint", new Style("blueprint", "Blueprint (engineering)", true, true, "blueprint",
+                new Color[]{c(0x9FD8FF), c(0xFFB3D9), c(0xFFE08A), c(0xA8F0C0), c(0xFFC58A), c(0xD0B8FF), c(0xFFFFFF), c(0xFF9090), c(0xB8CDE8)},
+                false, false, "white technical blueprint line drawing with thin precise lines and measurement marks, on a PURE BLACK background"));
+        STYLES.put("anime", new Style("anime", "Anime pop", false, false, "pop",
+                new Color[]{c(0x1C9BEF), c(0xFF4FA3), c(0xF5B700), c(0x22B573), c(0xFF7A1A), c(0x8A5CFF), c(0x1A1A2E), c(0xFF3B3B), c(0x55556A)},
+                false, true, "bright anime cel-shaded illustration, bold clean black outlines, vivid flat colours, cheerful, on a PLAIN WHITE background"));
+    }
+
+    private Style style = STYLES.get("neon");
+    private long lessonSeed;
+
+    public static Style style(String id) {
+        return STYLES.getOrDefault(id == null ? "neon" : id.trim().toLowerCase(java.util.Locale.ROOT), STYLES.get("neon"));
+    }
+
+    private void applyStyle(Style st, long seed) {
+        style = st;
+        lessonSeed = seed;
+        Color[] p = st.palette();
+        CYAN = p[0]; MAGENTA = p[1]; YELLOW = p[2]; GREEN = p[3]; ORANGE = p[4]; VIOLET = p[5]; WHITE = p[6]; RED = p[7]; DIM = p[8];
+        Color[] border = {MAGENTA, CYAN, CYAN, GREEN, MAGENTA, GREEN, CYAN, MAGENTA, CYAN, YELLOW, GREEN, MAGENTA};
+        Color[] title = st.dark() ? new Color[]{YELLOW, CYAN, YELLOW, GREEN, YELLOW, GREEN, CYAN, YELLOW, CYAN, YELLOW, GREEN, YELLOW}
+                : new Color[]{WHITE, CYAN, MAGENTA, GREEN, WHITE, VIOLET, CYAN, ORANGE, WHITE, MAGENTA, GREEN, CYAN};
+        Color[] accent = {MAGENTA, CYAN, YELLOW, GREEN, ORANGE, VIOLET};
+        // every lesson rotates the colour order, so two lessons never look identical
+        int rot = (int) Math.floorMod(seed, 6);
+        BORDER = rotate(border, rot);
+        TITLE = rotate(title, rot);
+        ACCENT = rotate(accent, rot);
+        titleFont = st.popTitle() ? popFont : st.handFont() ? handBold : baseTitle;
+        mediumFont = st.handFont() ? handBold : baseMedium;
+        bodyFont = st.handFont() ? handRegular : baseBody;
+    }
+
+    private static Color[] rotate(Color[] in, int k) {
+        Color[] out = new Color[in.length];
+        for (int i = 0; i < in.length; i++) out[i] = in[(i + k) % in.length];
+        return out;
+    }
+
+    /** 0 or 1 per scene: mirrored / alternative layouts so lessons are not all the same pattern. */
+    private int variant(Slide s) {
+        long h = lessonSeed * 0x9E3779B97F4A7C15L + s.number() * 0xBF58476D1CE4E5B9L;
+        return (int) ((h >>> 29) & 1);
+    }
+
+    private boolean looksLikeCode(String t) {
+        return t != null && (t.contains("=") || t.contains("(") || t.contains(";") || t.contains("{") || t.contains("->"));
+    }
 
     // ---------------------------------------------------------------- fonts
 
-    private final Font titleFont, bodyFont, mediumFont, monoFont;
+    private Font titleFont, bodyFont, mediumFont;
+    private final Font monoFont, baseTitle, baseBody, baseMedium, handBold, handRegular, popFont;
     private final Map<Character.UnicodeScript, Font> scriptFonts = new LinkedHashMap<>();
 
     public ConceptSlideRenderer() {
-        titleFont = load("BarlowSemiCondensed-SemiBold.ttf", new Font(Font.SANS_SERIF, Font.BOLD, 10));
-        mediumFont = load("BarlowSemiCondensed-Medium.ttf", new Font(Font.SANS_SERIF, Font.PLAIN, 10));
-        bodyFont = load("BarlowSemiCondensed-Regular.ttf", new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+        baseTitle = load("BarlowSemiCondensed-SemiBold.ttf", new Font(Font.SANS_SERIF, Font.BOLD, 10));
+        baseMedium = load("BarlowSemiCondensed-Medium.ttf", new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+        baseBody = load("BarlowSemiCondensed-Regular.ttf", new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+        handBold = load("Kalam-Bold.ttf", baseTitle);
+        handRegular = load("Kalam-Regular.ttf", baseBody);
+        popFont = load("Bangers-Regular.ttf", baseTitle);
         monoFont = load("FiraMono-Medium.ttf", new Font(Font.MONOSPACED, Font.PLAIN, 10));
         Object[][] indic = {
                 {Character.UnicodeScript.KANNADA, "NotoSansKannada.ttf"}, {Character.UnicodeScript.DEVANAGARI, "NotoSansDevanagari.ttf"},
@@ -94,6 +169,7 @@ public final class ConceptSlideRenderer {
             Font f = load((String) e[1], null);
             if (f != null) scriptFonts.put((Character.UnicodeScript) e[0], f);
         }
+        applyStyle(STYLES.get("neon"), 0);
     }
 
     private static Font load(String name, Font fallback) {
@@ -108,6 +184,53 @@ public final class ConceptSlideRenderer {
     }
 
     // ---------------------------------------------------------------- public API
+
+    /**
+     * Subtitle card for the classic storyboard video: rounded translucent panel with the spoken line
+     * (Indian scripts via the bundled Noto fonts). Transparent around the card.
+     */
+    public synchronized BufferedImage caption(String text, String speaker, int maxWidth, int size) {
+        applyStyle(STYLES.get("neon"), 0);
+        String body = text == null ? "" : text.replace("**", "").trim();
+        List<String> lines = wrap(body, baseMedium, size, maxWidth - 80);
+        if (lines.size() > 3) {
+            lines = new ArrayList<>(lines.subList(0, 3));
+            lines.set(2, fit(lines.get(2) + " …", baseMedium, size, maxWidth - 80));
+        }
+        int lineH = (int) (size * 1.25);
+        boolean named = speaker != null && !speaker.isBlank() && !speaker.equalsIgnoreCase("narrator");
+        int nameH = named ? (int) (size * 0.95) : 0;
+        int w = 80;
+        for (String l : lines) w = Math.max(w, (int) widthOf(l, baseMedium, size) + 80);
+        if (named) w = Math.max(w, (int) widthOf(speaker, baseTitle, (int) (size * 0.7)) + 80);
+        w = Math.min(maxWidth, w);
+        int h = nameH + lines.size() * lineH + 44;
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+        g.setColor(new Color(8, 10, 18, 185));
+        g.fill(new RoundRectangle2D.Double(0, 0, w, h, 36, 36));
+        g.setColor(new Color(255, 255, 255, 60));
+        g.setStroke(new BasicStroke(2f));
+        g.draw(new RoundRectangle2D.Double(1, 1, w - 2, h - 2, 36, 36));
+        int y = 22;
+        if (named) {
+            AttributedString n = attributed(speaker, baseTitle, (int) (size * 0.7));
+            n.addAttribute(TextAttribute.FOREGROUND, new Color(255, 214, 90));
+            g.drawString(n.getIterator(), 40, y + (int) (size * 0.7));
+            y += nameH;
+        }
+        for (String l : lines) {
+            AttributedString as = attributed(l, baseMedium, size);
+            as.addAttribute(TextAttribute.FOREGROUND, new Color(250, 250, 250));
+            g.drawString(as.getIterator(), (w - widthOf(l, baseMedium, size)) / 2f, y + size);
+            y += lineH;
+        }
+        g.dispose();
+        return img;
+    }
 
     /** Number of build steps this slide will have (always >= 1). */
     public int stepCount(Slide s) {
@@ -124,6 +247,12 @@ public final class ConceptSlideRenderer {
 
     /** Cumulative build steps; the last one is the complete slide. */
     public List<BufferedImage> render(Slide s) {
+        return render(s, "neon", 0);
+    }
+
+    /** styleId: neon | sketchnote | storyboard | chalkboard | blueprint | anime. seed: per lesson. */
+    public synchronized List<BufferedImage> render(Slide s, String styleId, long seed) {
+        applyStyle(style(styleId), seed);
         int n = stepCount(s);
         List<BufferedImage> out = new ArrayList<>();
         for (int k = 0; k < n; k++) out.add(renderStep(s, k, n));
@@ -142,11 +271,21 @@ public final class ConceptSlideRenderer {
         // Premium reference-style frame: black canvas, luminous rounded frame, numbered badge,
         // strong editorial title and restrained inner glow. Keep every scene crisp and uncluttered.
         c.neonRect(28, 24, W - 56, H - 48, 38, border, 4.5f);
-        c.neonCircle(112, 108, 50, border, 5.5f);
-        c.text(String.valueOf(s.number()), 112 - widthOf(String.valueOf(s.number()), titleFont, 58) / 2f, 129, titleFont, 58, WHITE, true);
-        String title = fit(s.title(), titleFont, 70, W - 360);
-        c.text(title, 188, 132, titleFont, 70, TITLE[idx], true);
-        c.line(188, 158, (int)Math.min(W - 90, 188 + widthOf(title, titleFont, 70)), 158, new Color(border.getRed(), border.getGreen(), border.getBlue(), 110), 2f);
+        String num = String.valueOf(s.number());
+        if (((lessonSeed >>> 3) & 1) == 0) { // badge left + title
+            c.neonCircle(112, 108, 50, border, 5.5f);
+            c.text(num, 112 - widthOf(num, titleFont, 58) / 2f, 129, titleFont, 58, WHITE, true);
+            String title = fit(s.title(), titleFont, 70, W - 360);
+            c.text(title, 188, 132, titleFont, 70, TITLE[idx], true);
+            c.line(188, 158, (int) Math.min(W - 90, 188 + widthOf(title, titleFont, 70)), 158, new Color(border.getRed(), border.getGreen(), border.getBlue(), 110), 2f);
+        } else { // centred title with a small step pill
+            String title = fit(s.title(), titleFont, 74, W - 420);
+            float tw = widthOf(title, titleFont, 74);
+            c.text(title, W / 2f - tw / 2f, 136, titleFont, 74, TITLE[idx], true);
+            c.neonRect((int) (W / 2f - tw / 2f) - 112, 82, 84, 64, 20, border, 3.5f);
+            centered(c, num, (int) (W / 2f - tw / 2f) - 70, 128, titleFont, 44, WHITE, 70);
+            c.line((int) (W / 2f - tw / 2f), 162, (int) (W / 2f + tw / 2f), 162, new Color(border.getRed(), border.getGreen(), border.getBlue(), 150), 3f);
+        }
 
         switch (s.template()) {
             case "definition" -> definition(c, s, step);
@@ -162,58 +301,51 @@ public final class ConceptSlideRenderer {
             default -> paragraph(c, s.text(), 120, 260, W - 240, 44, 12);
         }
         c.dispose();
-        return compose(sharp, glow);
+        return style.glow() ? compose(sharp, glow) : sharp;
     }
 
     // ---------------------------------------------------------------- templates
 
     private void definition(Canvas c, Slide s, int step) {
-        // Progressive teaching composition matching the approved legacy video while preserving
-        // the newer premium reference layout: step 0 introduces the idea and mental model;
-        // step 1 adds the explanation callouts; step 2 adds code and the final memory formula.
+        // step 0: explanation + mental-model diagram, step 1: callouts, step 2: code / memory line.
+        // Only what the scene actually has is drawn (no hard-coded Java), and every other lesson
+        // mirrors the layout (diagram right, callouts left).
+        boolean mirror = variant(s) == 1;
         int top = 205;
         paragraph(c, s.text(), 120, top + 20, W - 240, 52, 3, WHITE, bodyFont);
-
-        int boxTop = 405;
+        boolean hasCode = s.code() != null && !s.code().isBlank();
+        boolean hasFormula = (s.formula() != null && !s.formula().isBlank()) || (s.formulaResult() != null && !s.formulaResult().isBlank());
+        int boxTop = 405, panelX = mirror ? 1000 : 100, calloutX = mirror ? 130 : 980;
+        int panelH = hasFormula ? 470 : 560;
         BoxSpec b = s.box() == null ? new BoxSpec("name", "value") : s.box();
-        c.panel(100, boxTop - 10, 820, 470, 28, CYAN);
-        c.text("REAL-WORLD MENTAL MODEL", 140, boxTop + 42, mediumFont, 30, CYAN, true);
-        isoBox(c, 175, boxTop + 72, 640, 335, b.label(), b.value());
+        c.panel(panelX, boxTop - 10, 820, panelH, 28, CYAN);
+        c.text("REAL-WORLD MENTAL MODEL", panelX + 40, boxTop + 42, mediumFont, 30, CYAN, true);
+        isoBox(c, panelX + 75, boxTop + 72, 640, panelH - 135, b.label(), b.value());
 
-        if (step == 1 && s.callouts() != null) {
-            int x = 980, y = 455;
-            for (int i = 0; i < Math.min(3, s.callouts().size()); i++) {
+        if (step >= 1 && s.callouts() != null) {
+            int y = 455;
+            int maxY = hasCode && step >= 2 ? 660 : 880;
+            for (int i = 0; i < Math.min(3, s.callouts().size()) && y < maxY; i++) {
                 Callout co = s.callouts().get(i);
-                Color col = i == 0 ? MAGENTA : i == 1 ? GREEN : YELLOW;
-                c.curveArrow(925, y + 24, x - 25, y + 24, col);
-                c.text(nz(co.label()), x, y, mediumFont, 36, col, true);
-                int end = paragraph(c, co.detail(), x, y + 20, 690, 32, 2, WHITE, bodyFont);
-                y = Math.max(y + 98, end + 45);
+                Color col = ACCENT[i % ACCENT.length];
+                if (mirror) c.curveArrow(calloutX + 760, y + 24, panelX - 10, y + 24, col);
+                else c.curveArrow(panelX + 825, y + 24, calloutX - 25, y + 24, col);
+                c.text(nz(co.label()), calloutX, y, mediumFont, 40, col, true);
+                int end = paragraph(c, co.detail(), calloutX, y + 20, 730, 34, 2, WHITE, bodyFont);
+                y = Math.max(y + 104, end + 45);
             }
         }
-
-        if (step >= 2) {
-            // Once the narrator has finished the mental model, reveal the code in the open
-            // lower-right area and keep the final formula visible. The reveal is still a single
-            // cumulative slide, so earlier elements never disappear.
-            int codeX = 935, codeY = 700, codeW = 825, codeH = 150;
-            c.panel(codeX, codeY, codeW, codeH, 24, CYAN);
-            c.dot(codeX + 35, codeY + 32, 7, RED); c.dot(codeX + 59, codeY + 32, 7, YELLOW); c.dot(codeX + 83, codeY + 32, 7, GREEN);
-            c.text("JAVA CODE", codeX + 115, codeY + 42, mediumFont, 25, WHITE, false);
-            c.line(codeX + 20, codeY + 60, codeX + codeW - 20, codeY + 60, new Color(0, 220, 255, 90), 1.5f);
-            String code = nz(s.code());
-            int fs = 58;
-            while (fs > 38 && widthOf(code, monoFont, fs) > codeW - 70) fs -= 2;
-            syntax(c, code, codeX + 35, codeY + 120, fs);
-
+        if (step >= 2 && hasCode) {
+            int codeX = mirror ? 110 : 935, codeY = 700, codeW = 825, codeH = 150;
+            String title = "CODE";
+            codeBox(c, s.code(), codeX, codeY, codeW, codeH + (hasFormula ? 0 : 60), 58, CYAN, Integer.MAX_VALUE, title);
+        }
+        if (step >= 2 && hasFormula) {
             c.neonRect(95, 930, W - 190, 70, 18, GREEN, 3f);
             c.text("REMEMBER", 130, 975, titleFont, 29, GREEN, true);
-            c.text("TYPE", 350, 975, mediumFont, 23, MAGENTA, true);
-            c.text("+", 425, 975, mediumFont, 23, WHITE, true);
-            c.text("NAME", 470, 975, mediumFont, 23, CYAN, true);
-            c.text("+", 565, 975, mediumFont, 23, WHITE, true);
-            c.text("VALUE", 610, 975, mediumFont, 23, YELLOW, true);
-            c.text("= Java variable", 750, 975, mediumFont, 27, WHITE, false);
+            String left = nz(s.formula()), right = nz(s.formulaResult());
+            String line = left.isBlank() ? right : right.isBlank() ? left : left + "  =  " + right;
+            c.text(fit(line, mediumFont, 32, W - 520), 330, 976, mediumFont, 32, WHITE, false);
         }
     }
 
@@ -221,10 +353,12 @@ public final class ConceptSlideRenderer {
         int y = paragraph(c, s.text(), 120, 250, W - 240, 52, 3);
         int top = Math.max(y + 30, 420);
         int imgW = withCode ? 700 : 820, imgH = H - 90 - top;
+        boolean mirror = variant(s) == 1 && !withCode;
+        int imgX = mirror ? W - 130 - imgW : 100;
         if (step >= 1) {
-            c.panel(100, top - 10, imgW + 30, imgH + 20, 26, CYAN);
-            c.text("REAL-WORLD CONNECTION", 135, top + 34, mediumFont, 28, CYAN, true);
-            illustration(c, s.illustration(), 125, top + 48, imgW - 20, imgH - 55);
+            c.panel(imgX, top - 10, imgW + 30, imgH + 20, 26, CYAN);
+            c.text("REAL-WORLD CONNECTION", imgX + 35, top + 34, mediumFont, 28, CYAN, true);
+            illustration(c, s.illustration(), imgX + 25, top + 48, imgW - 20, imgH - 55);
         }
         if (step >= 2) {
             if (withCode) {
@@ -234,12 +368,13 @@ public final class ConceptSlideRenderer {
                 for (int i = 0; i < Math.min(4, s.callouts().size()); i++) {
                     Callout co = s.callouts().get(i);
                     Color col = i % 2 == 0 ? GREEN : YELLOW;
-                    int tx = 140 + imgW + 160;
-                    c.curveArrow(tx - 20, ly - 14, 140 + imgW - 60, top + imgH / 3 + i * 70, col);
+                    int tx = mirror ? 140 : 140 + imgW + 160;
+                    if (mirror) c.curveArrow(tx + 520, ly - 14, imgX + 60, top + imgH / 3 + i * 70, col);
+                    else c.curveArrow(tx - 20, ly - 14, 140 + imgW - 60, top + imgH / 3 + i * 70, col);
                     c.text(co.label(), tx, ly, mediumFont, 60, col, true);
                     if (co.detail() != null && !co.detail().isBlank()) {
                         ly += 20;
-                        ly = paragraph(c, co.detail(), tx, ly, W - tx - 120, 46, 2, WHITE, bodyFont) - 10;
+                        ly = paragraph(c, co.detail(), tx, ly, mirror ? 560 : W - tx - 120, 46, 2, WHITE, bodyFont) - 10;
                     }
                     ly += 90;
                 }
@@ -364,7 +499,10 @@ public final class ConceptSlideRenderer {
         List<Item> items = s.items() == null ? List.of() : s.items();
         int n = Math.min(5, items.size());
         if (n == 0) return;
+        if (variant(s) == 1 && n >= 2) { exampleGrid(c, items, n, y, step); return; }
         int rowH = Math.min(150, (H - 100 - y) / n - 18);
+        int block = n * (rowH + 18) - 18;
+        y = y + Math.max(0, (H - 90 - y - block) / 2); // centre the rows in the free space
         for (int i = 0; i < n; i++) {
             if (step < i + 1) break;
             Item it = items.get(i);
@@ -374,9 +512,15 @@ public final class ConceptSlideRenderer {
             icon(c, it.icon(), 140 + rowH / 2, ry + rowH / 2, rowH * 0.58f, col);
             c.neonRect(140 + rowH + 22, ry, 1060, rowH, 16, MAGENTA, 3f);
             String code = it.code() == null ? "" : it.code();
-            int fs = 50;
-            while (widthOf(code, monoFont, fs) > 1000 && fs > 26) fs -= 2;
-            syntax(c, code, 140 + rowH + 52, ry + rowH / 2 + fs / 3, fs);
+            if (looksLikeCode(code)) {
+                int fs = 50;
+                while (widthOf(code, monoFont, fs) > 1000 && fs > 26) fs -= 2;
+                syntax(c, code, 140 + rowH + 52, ry + rowH / 2 + fs / 3, fs);
+            } else { // a fact or name, not code: normal font, no syntax colours
+                int fs = 50;
+                while (widthOf(code, titleFont, fs) > 1000 && fs > 28) fs -= 2;
+                c.text(code, 140 + rowH + 52, ry + rowH / 2 + fs / 3, titleFont, fs, col, true);
+            }
             c.neonRect(140 + rowH + 22 + 1080, ry, W - 140 - (140 + rowH + 22 + 1080), rowH, 16, MAGENTA, 3f);
             List<String> lab = wrap(nz(it.label()), mediumFont, 46, W - 140 - (140 + rowH + 22 + 1080) - 40);
             int nl = Math.min(2, lab.size());
@@ -388,30 +532,68 @@ public final class ConceptSlideRenderer {
         }
     }
 
+    /** Alternative layout: big cards in a row/grid (icon on top, value, label), like a storyboard strip. */
+    private void exampleGrid(Canvas c, List<Item> items, int n, int y, int step) {
+        int cols = n <= 4 ? n : 3, rows = (n + cols - 1) / cols;
+        int gap = 36, cw = (W - 240 - gap * (cols - 1)) / cols;
+        int ch = Math.min(560, (H - 110 - y - gap * (rows - 1)) / rows);
+        int top = y + Math.max(0, (H - 100 - y - (rows * ch + (rows - 1) * gap)) / 2);
+        for (int i = 0; i < n; i++) {
+            if (step < i + 1) break;
+            Item it = items.get(i);
+            Color col = ACCENT[i % ACCENT.length];
+            int x = 120 + (i % cols) * (cw + gap), yy = top + (i / cols) * (ch + gap);
+            c.panel(x, yy, cw, ch, 26, col);
+            icon(c, it.icon(), x + cw / 2, yy + (int) (ch * 0.30), Math.min(cw, ch) * 0.32f, col);
+            String code = nz(it.code());
+            if (looksLikeCode(code)) {
+                int fs = 40;
+                while (widthOf(code, monoFont, fs) > cw - 40 && fs > 20) fs -= 2;
+                syntax(c, code, x + (cw - widthOf(code, monoFont, fs)) / 2f, yy + (int) (ch * 0.62), fs);
+            } else {
+                centered(c, code, x + cw / 2, yy + (int) (ch * 0.62), titleFont, 52, col, cw - 40);
+            }
+            List<String> lab = wrap(nz(it.label()), mediumFont, 40, cw - 50);
+            int ty = yy + (int) (ch * 0.62) + 64;
+            for (String l : lab.subList(0, Math.min(2, lab.size()))) {
+                centered(c, l, x + cw / 2, ty, mediumFont, 40, WHITE, cw - 40);
+                ty += 46;
+            }
+        }
+    }
+
     private void checklist(Canvas c, Slide s, int step, int steps) {
         List<Item> items = s.items() == null ? List.of() : s.items();
         int n = Math.min(7, items.size());
         int shown = steps <= 1 ? n : (int) Math.ceil(n * (step + 1) / (double) steps);
-        int y = 240, rowH = Math.min(118, (H - 110 - y) / Math.max(1, n));
+        boolean twoCol = variant(s) == 1 && n >= 4;
+        int perCol = twoCol ? (n + 1) / 2 : n;
+        int y = 240, rowH = Math.min(twoCol ? 150 : 118, (H - 110 - y) / Math.max(1, perCol));
+        y += Math.max(0, (H - 100 - y - perCol * rowH) / 2);
+        int colW = twoCol ? (W - 300) / 2 : W - 400;
         for (int i = 0; i < shown; i++) {
             Item it = items.get(i);
             boolean ok = it.ok() == null || it.ok();
             Color col = ok ? GREEN : RED;
-            int cy = y + i * rowH + rowH / 2;
-            c.neonCircle(185, cy, 30, col, 4f);
-            if (ok) c.polyline(new int[]{168, 181, 204}, new int[]{cy + 1, cy + 14, cy - 12}, col, 6f);
-            else { c.line(172, cy - 13, 198, cy + 13, col, 6f); c.line(198, cy - 13, 172, cy + 13, col, 6f); }
-            List<String> ws = wrap(nz(it.text()), bodyFont, 52, W - 400);
+            int ox = twoCol && i >= perCol ? colW + 120 : 0;
+            int cy = y + (twoCol ? i % perCol : i) * rowH + rowH / 2;
+            if (twoCol) c.panel(130 + ox, cy - rowH / 2 + 8, colW, rowH - 16, 20, col);
+            c.neonCircle(185 + ox, cy, 30, col, 4f);
+            if (ok) c.polyline(new int[]{168 + ox, 181 + ox, 204 + ox}, new int[]{cy + 1, cy + 14, cy - 12}, col, 6f);
+            else { c.line(172 + ox, cy - 13, 198 + ox, cy + 13, col, 6f); c.line(198 + ox, cy - 13, 172 + ox, cy + 13, col, 6f); }
+            List<String> ws = wrap(nz(it.text()), bodyFont, twoCol ? 44 : 52, colW - (twoCol ? 160 : 0));
             int nl = Math.min(2, ws.size());
-            int ty = cy + 18 - (nl - 1) * 28;
+            int fsz = twoCol ? 44 : 52;
+            int ty = cy + fsz / 3 - (nl - 1) * (fsz / 2 + 2);
             for (String l : ws.subList(0, nl)) {
-                c.text(l, 250, ty, bodyFont, 52, WHITE, false);
-                ty += 56;
+                c.text(l, 250 + ox, ty, bodyFont, fsz, WHITE, false);
+                ty += fsz + 4;
             }
         }
     }
 
     private void summary(Canvas c, Slide s, int step) {
+        if (variant(s) == 1 && s.mappings() != null && s.mappings().size() >= 3) { summaryHub(c, s, step); return; }
         int y = 230;
         List<String> st = wrap(nz(s.statement()), mediumFont, 52, W - 420);
         int sh = 70 + st.size() * 62;
@@ -439,6 +621,31 @@ public final class ConceptSlideRenderer {
         }
     }
 
+    /** Mind-map recap (like the storyboard reference): statement in the centre, ideas around it. */
+    private void summaryHub(Canvas c, Slide s, int step) {
+        int cx = W / 2, cy = 610, r = 150;
+        List<Mapping> ms = s.mappings();
+        int n = Math.min(6, ms.size());
+        if (step >= 1) {
+            for (int i = 0; i < n; i++) {
+                double a = -Math.PI / 2 + i * 2 * Math.PI / n;
+                int bx = (int) (cx + Math.cos(a) * 560), by = (int) (cy + Math.sin(a) * 300);
+                Color col = ACCENT[i % ACCENT.length];
+                c.line((int) (cx + Math.cos(a) * (r + 8)), (int) (cy + Math.sin(a) * (r + 8)), bx, by, col, 3f);
+                c.panel(bx - 220, by - 62, 440, 124, 24, col);
+                centered(c, ms.get(i).left(), bx, by - 6, titleFont, 42, col, 400);
+                centered(c, ms.get(i).right(), bx, by + 40, bodyFont, 32, WHITE, 400);
+            }
+        }
+        c.neonCircle(cx, cy, r, YELLOW, 6f);
+        List<String> st = wrap(nz(s.statement()), titleFont, 40, 2 * r - 50);
+        int ty = cy - (Math.min(4, st.size()) - 1) * 23 + 14;
+        for (String l : st.subList(0, Math.min(4, st.size()))) { centered(c, l, cx, ty, titleFont, 40, YELLOW, 2 * r - 40); ty += 46; }
+        if (step >= 2 && s.formulaResult() != null && !s.formulaResult().isBlank()) {
+            centered(c, s.formulaResult(), cx, H - 70, mediumFont, 44, GREEN, W - 300);
+        }
+    }
+
     // ---------------------------------------------------------------- building blocks
 
     private void isoBox(Canvas c, int x, int y, int w, int h, String label, String value) {
@@ -446,8 +653,8 @@ public final class ConceptSlideRenderer {
         int fx = x, fy = y + depth, fw = w - depth, fh = h - depth;
         Color edge = CYAN;
         // top + side faces
-        c.poly(new int[]{fx, fx + depth, fx + fw + depth, fx + fw}, new int[]{fy, fy - depth, fy - depth, fy}, edge, 3.5f, new Color(0, 60, 90, 120));
-        c.poly(new int[]{fx + fw, fx + fw + depth, fx + fw + depth, fx + fw}, new int[]{fy, fy - depth, fy - depth + fh, fy + fh}, edge, 3.5f, new Color(0, 40, 70, 140));
+        c.poly(new int[]{fx, fx + depth, fx + fw + depth, fx + fw}, new int[]{fy, fy - depth, fy - depth, fy}, edge, 3.5f, new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), 45));
+        c.poly(new int[]{fx + fw, fx + fw + depth, fx + fw + depth, fx + fw}, new int[]{fy, fy - depth, fy - depth + fh, fy + fh}, edge, 3.5f, new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), 70));
         c.neonRect(fx, fy, fw, fh, 6, edge, 4f);
         // label tag
         int tagW = (int) (fw * 0.62), tagH = (int) Math.min(110, fh * 0.28);
@@ -472,6 +679,22 @@ public final class ConceptSlideRenderer {
         double scale = Math.min(w / (double) img.getWidth(), h / (double) img.getHeight());
         int dw = (int) (img.getWidth() * scale), dh = (int) (img.getHeight() * scale);
         c.screen(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+    }
+
+    private void codeBox(Canvas c, String code, int x, int y, int w, int h, int size, Color border, int maxLines, String title) {
+        c.panel(x, y, w, h, 22, border);
+        int bar = 56;
+        c.dot(x + 32, y + bar / 2, 8, RED); c.dot(x + 56, y + bar / 2, 8, YELLOW); c.dot(x + 80, y + bar / 2, 8, GREEN);
+        c.text(title, x + 110, y + bar / 2 + 9, mediumFont, 26, WHITE, false);
+        c.line(x + 16, y + bar, x + w - 16, y + bar, new Color(border.getRed(), border.getGreen(), border.getBlue(), 110), 1.5f);
+        List<String> ls = lines(code);
+        int fs = size;
+        while (fs > 22 && (maxLineWidth(ls, fs) > w - 80 || ls.size() * fs * 1.4 > h - bar - 30)) fs -= 2;
+        int ly = y + bar + Math.max(20, (h - bar - (int) (ls.size() * fs * 1.4)) / 2) + fs;
+        for (int i = 0; i < Math.min(maxLines, ls.size()); i++) {
+            syntax(c, ls.get(i), x + 36, ly, fs);
+            ly += (int) (fs * 1.4);
+        }
     }
 
     private void codeBox(Canvas c, String code, int x, int y, int w, int h, int size, Color border, int maxLines) {
@@ -822,21 +1045,150 @@ public final class ConceptSlideRenderer {
                 x.setColor(Color.BLACK);
                 x.fillRect(0, 0, W, H);
             }
-            g.setColor(new Color(4, 5, 10));
-            g.fillRect(0, 0, W, H);
+            background();
+        }
+
+        /** Same seed for every build step, so textures never flicker between reveals. */
+        private void background() {
+            java.util.Random rnd = new java.util.Random(4242);
+            switch (style.stroke()) {
+                case "sketch" -> {
+                    g.setColor(new Color(0xF6C9A6)); g.fillRect(0, 0, W, H);
+                    speckle(rnd, new Color(120, 90, 60), 9000, 10);
+                }
+                case "card" -> {
+                    g.setPaint(new java.awt.GradientPaint(0, 0, new Color(0xE8F1FF), W, H, new Color(0xFFF3E4)));
+                    g.fillRect(0, 0, W, H);
+                }
+                case "chalk" -> {
+                    g.setPaint(new java.awt.RadialGradientPaint(W / 2f, H / 2f, W * 0.75f, new float[]{0f, 1f},
+                            new Color[]{new Color(0x2C4A3D), new Color(0x16271F)}));
+                    g.fillRect(0, 0, W, H);
+                    speckle(rnd, new Color(230, 240, 230), 14000, 14);
+                    g.setColor(new Color(255, 255, 255, 5));
+                    for (int i = 0; i < 14; i++) { // faint eraser smudges
+                        g.fillOval(rnd.nextInt(W), rnd.nextInt(H), 200 + rnd.nextInt(400), 60 + rnd.nextInt(120));
+                    }
+                }
+                case "blueprint" -> {
+                    g.setColor(new Color(0x0D3B73)); g.fillRect(0, 0, W, H);
+                    g.setStroke(new BasicStroke(1f));
+                    for (int x = 0; x < W; x += 40) { g.setColor(new Color(255, 255, 255, x % 200 == 0 ? 40 : 16)); g.drawLine(x, 0, x, H); }
+                    for (int y = 0; y < H; y += 40) { g.setColor(new Color(255, 255, 255, y % 200 == 0 ? 40 : 16)); g.drawLine(0, y, W, y); }
+                }
+                case "pop" -> {
+                    g.setPaint(new java.awt.GradientPaint(0, 0, new Color(0xFFE6F2), W, H, new Color(0xDDF1FF)));
+                    g.fillRect(0, 0, W, H);
+                    g.setColor(new Color(255, 120, 180, 40));
+                    for (int y = 0; y < 260; y += 22) for (int x = 0; x < 360; x += 22) { // halftone corner
+                        int r = Math.max(1, 9 - (x + y) / 60);
+                        g.fillOval(W - 40 - x, H - 40 - y, r, r);
+                        g.fillOval(30 + x, 30 + y, r, r);
+                    }
+                }
+                default -> { g.setColor(new Color(4, 5, 10)); g.fillRect(0, 0, W, H); }
+            }
+        }
+
+        private void speckle(java.util.Random rnd, Color col, int count, int alpha) {
+            g.setColor(new Color(col.getRed(), col.getGreen(), col.getBlue(), alpha));
+            for (int i = 0; i < count; i++) g.fillRect(rnd.nextInt(W), rnd.nextInt(H), 1 + rnd.nextInt(2), 1 + rnd.nextInt(2));
         }
 
         void stroke(Shape s, Color col, float width) {
-            g.setColor(col);
-            g.setStroke(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g.draw(s);
-            gl.setColor(col);
-            gl.setStroke(new BasicStroke(width * 2.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            gl.draw(s);
+            switch (style.stroke()) {
+                case "sketch", "chalk" -> { // hand-drawn: two slightly different wobbly passes
+                    Color ink = style.stroke().equals("sketch") ? new Color(0x2A2A2A) : col;
+                    float w1 = style.stroke().equals("sketch") ? Math.max(2f, width * 0.7f) : Math.max(2.4f, width * 0.85f);
+                    g.setStroke(new BasicStroke(w1, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g.setColor(ink);
+                    g.draw(wobble(s, 1));
+                    g.setColor(new Color(ink.getRed(), ink.getGreen(), ink.getBlue(), style.stroke().equals("chalk") ? 120 : 150));
+                    g.setStroke(new BasicStroke(w1 * 0.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g.draw(wobble(s, 2));
+                }
+                case "pop" -> { // anime / comic: thick black outline, colour inside
+                    g.setColor(new Color(0x1A1A2E));
+                    g.setStroke(new BasicStroke(width * 1.9f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g.draw(s);
+                    g.setColor(col);
+                    g.setStroke(new BasicStroke(Math.max(1.5f, width * 0.7f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g.draw(s);
+                }
+                case "card" -> {
+                    g.setColor(col);
+                    g.setStroke(new BasicStroke(Math.max(2f, width * 0.75f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g.draw(s);
+                }
+                default -> { // neon + blueprint
+                    g.setColor(col);
+                    g.setStroke(new BasicStroke(style.stroke().equals("blueprint") ? Math.max(1.6f, width * 0.6f) : width,
+                            BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g.draw(s);
+                    gl.setColor(col);
+                    gl.setStroke(new BasicStroke(width * 2.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    gl.draw(s);
+                }
+            }
+        }
+
+        /** Hand-drawn line: resample the outline and jitter it a little (seeded by the shape). */
+        private Shape wobble(Shape s, int pass) {
+            java.awt.geom.Rectangle2D b = s.getBounds2D();
+            long seed = Double.doubleToLongBits(b.getX() * 31 + b.getY() * 17 + b.getWidth() * 7 + b.getHeight()) + pass * 977L;
+            java.util.Random rnd = new java.util.Random(seed);
+            Path2D out = new Path2D.Double();
+            double[] co = new double[6];
+            double lx = 0, ly = 0, sx = 0, sy = 0;
+            double amp = style.stroke().equals("chalk") ? 1.8 : 1.4;
+            for (java.awt.geom.PathIterator it = s.getPathIterator(null, 1.5); !it.isDone(); it.next()) {
+                int t = it.currentSegment(co);
+                if (t == java.awt.geom.PathIterator.SEG_MOVETO) {
+                    lx = sx = co[0] + rnd.nextGaussian() * amp; ly = sy = co[1] + rnd.nextGaussian() * amp;
+                    out.moveTo(lx, ly);
+                } else if (t == java.awt.geom.PathIterator.SEG_LINETO || t == java.awt.geom.PathIterator.SEG_CLOSE) {
+                    double tx = t == java.awt.geom.PathIterator.SEG_CLOSE ? sx : co[0], ty = t == java.awt.geom.PathIterator.SEG_CLOSE ? sy : co[1];
+                    double len = Math.hypot(tx - lx, ty - ly);
+                    int steps = Math.max(1, (int) (len / 26));
+                    for (int k = 1; k <= steps; k++) {
+                        double f = k / (double) steps;
+                        out.lineTo(lx + (tx - lx) * f + rnd.nextGaussian() * amp * 0.6, ly + (ty - ly) * f + rnd.nextGaussian() * amp * 0.6);
+                    }
+                    lx = tx; ly = ty;
+                }
+            }
+            return out;
+        }
+
+        /** Fill used inside cards: dark tint on dark styles, light tint (paper / white card) on light ones. */
+        private Color fillFor(Color col, boolean big) {
+            switch (style.stroke()) {
+                case "sketch": return big ? new Color(0xFBF6E6) : new Color(mix(col.getRed(), 255, 0.80), mix(col.getGreen(), 255, 0.80), mix(col.getBlue(), 255, 0.80));
+                case "card": case "pop": return big ? new Color(255, 255, 255, 200) : new Color(mix(col.getRed(), 255, 0.88), mix(col.getGreen(), 255, 0.88), mix(col.getBlue(), 255, 0.88));
+                case "chalk": return new Color(255, 255, 255, big ? 0 : 10);
+                case "blueprint": return new Color(255, 255, 255, big ? 0 : 14);
+                default: return big ? new Color(4, 5, 10) : new Color(col.getRed() / 28 + 3, col.getGreen() / 28 + 3, col.getBlue() / 28 + 5);
+            }
+        }
+
+        private int mix(int a, int b, double t) { return (int) Math.round(a * (1 - t) + b * t); }
+
+        private void shadow(RoundRectangle2D rr) {
+            if (!style.stroke().equals("card") && !style.stroke().equals("pop")) return;
+            g.setColor(new Color(20, 30, 60, style.stroke().equals("pop") ? 60 : 28));
+            int off = style.stroke().equals("pop") ? 8 : 6;
+            g.fill(new RoundRectangle2D.Double(rr.getX() + off, rr.getY() + off, rr.getWidth(), rr.getHeight(), rr.getArcWidth(), rr.getArcHeight()));
         }
 
         void panel(int x, int y, int w, int h, int r, Color col) {
             RoundRectangle2D rr = new RoundRectangle2D.Double(x, y, w, h, r * 2, r * 2);
+            if (!style.stroke().equals("neon")) {
+                shadow(rr);
+                g.setColor(fillFor(col, false));
+                g.fill(rr);
+                stroke(rr, col, 3.2f);
+                return;
+            }
             g.setColor(new Color(5, 7, 14));
             g.fill(rr);
             // very subtle colored glass wash, not a gradient that competes with text.
@@ -851,9 +1203,11 @@ public final class ConceptSlideRenderer {
         void neonRect(int x, int y, int w, int h, int r, Color col, float width) {
             RoundRectangle2D rr = new RoundRectangle2D.Double(x, y, w, h, r * 2, r * 2);
             boolean big = w > W / 2 && h > H / 2;
-            g.setColor(big ? new Color(4, 5, 10) : new Color(col.getRed() / 28 + 3, col.getGreen() / 28 + 3, col.getBlue() / 28 + 5));
+            if (!big) shadow(rr);
+            g.setColor(fillFor(col, big));
             g.fill(rr);
             stroke(rr, col, width);
+            if (!style.stroke().equals("neon")) return;
             g.setColor(new Color(255, 255, 255, 18));
             g.setStroke(new BasicStroke(1f));
             g.draw(new RoundRectangle2D.Double(x + 3, y + 3, Math.max(1, w - 6), Math.max(1, h - 6), Math.max(2, r * 2 - 6), Math.max(2, r * 2 - 6)));
@@ -914,7 +1268,7 @@ public final class ConceptSlideRenderer {
             AttributedString as = attributed(text, f, size);
             as.addAttribute(TextAttribute.FOREGROUND, col);
             g.drawString(as.getIterator(), x, baseline);
-            if (glow) {
+            if (glow && style.glow()) {
                 AttributedString gs = attributed(text, f, size);
                 gs.addAttribute(TextAttribute.FOREGROUND, new Color(col.getRed(), col.getGreen(), col.getBlue()));
                 gl.drawString(gs.getIterator(), x, baseline);
@@ -934,8 +1288,14 @@ public final class ConceptSlideRenderer {
                     int p = scaled.getRGB(xx, yy);
                     int r = (p >> 16) & 255, gg = (p >> 8) & 255, b = p & 255;
                     // lift-the-blacks: near-black noise becomes fully transparent
-                    int lum = Math.max(r, Math.max(gg, b));
-                    int alpha = Math.max(0, Math.min(255, (lum - 18) * 255 / 120));
+                    int alpha;
+                    if (style.dark()) { // black background of the image becomes transparent
+                        int lum = Math.max(r, Math.max(gg, b));
+                        alpha = Math.max(0, Math.min(255, (lum - 18) * 255 / 120));
+                    } else {            // white background becomes transparent
+                        int dark = 255 - Math.min(r, Math.min(gg, b));
+                        alpha = Math.max(0, Math.min(255, (dark - 14) * 255 / 70));
+                    }
                     // soft vignette so the illustration never shows a hard rectangular edge
                     double ex = Math.min(xx, w - 1 - xx) / (w * 0.08), ey = Math.min(yy, h - 1 - yy) / (h * 0.08);
                     alpha = (int) (alpha * Math.min(1.0, Math.min(ex, ey)));
@@ -944,9 +1304,11 @@ public final class ConceptSlideRenderer {
             }
             g.setComposite(AlphaComposite.SrcOver);
             g.drawImage(mask, x, y, null);
-            gl.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.45f));
-            gl.drawImage(mask, x, y, null);
-            gl.setComposite(AlphaComposite.SrcOver);
+            if (style.glow()) {
+                gl.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.45f));
+                gl.drawImage(mask, x, y, null);
+                gl.setComposite(AlphaComposite.SrcOver);
+            }
         }
 
         void dispose() {

@@ -89,6 +89,7 @@ def get_model():
             _model = AutoModel.from_pretrained(
                 REPO_ID, trust_remote_code=True, token=hf_token
             )
+            _fix_vocoder_weights(_model, hf_token)
             requested = DEVICE
             if requested == "auto":
                 try:
@@ -239,6 +240,46 @@ def synthesize():
     buffer = io.BytesIO()
     sf.write(buffer, audio, samplerate=SAMPLE_RATE, format="WAV", subtype="PCM_16")
     return Response(buffer.getvalue(), mimetype="audio/wav")
+
+
+def _fix_vocoder_weights(model, hf_token):
+    """
+    The IndicF5 checkpoint stores the vocoder from a torch.compile()d module, so its keys are
+    "vocoder._orig_mod.backbone..." while the model expects "vocoder.backbone...". transformers
+    then reports them as "not used" + "newly initialized": the vocoder (mel -> waveform) would run
+    with random weights and the voice comes out as noise/buzz. Load those weights again with the
+    "_orig_mod." prefix removed.
+    """
+    vocoder = getattr(model, "vocoder", None)
+    if vocoder is None:
+        app.logger.warning("IndicF5 model has no .vocoder attribute; skipping vocoder weight fix")
+        return
+    try:
+        from huggingface_hub import hf_hub_download, list_repo_files
+        files = [f for f in list_repo_files(REPO_ID, token=hf_token) if f.endswith((".safetensors", ".bin"))]
+        prefix = "vocoder._orig_mod."
+        fixed = {}
+        for name in files:
+            path = hf_hub_download(REPO_ID, name, token=hf_token)
+            if name.endswith(".safetensors"):
+                from safetensors.torch import load_file
+                state = load_file(path)
+            else:
+                import torch
+                state = torch.load(path, map_location="cpu")
+            for key, value in state.items():
+                if key.startswith(prefix):
+                    fixed[key[len(prefix):]] = value
+        if not fixed:
+            app.logger.info("IndicF5 vocoder weights already matched; nothing to fix")
+            return
+        result = vocoder.load_state_dict(fixed, strict=False)
+        app.logger.info("IndicF5 vocoder weights restored: %d tensors loaded, %d missing, %d unexpected",
+                        len(fixed) - len(result.unexpected_keys), len(result.missing_keys), len(result.unexpected_keys))
+        if result.missing_keys:
+            app.logger.warning("IndicF5 vocoder still missing: %s", result.missing_keys[:10])
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("IndicF5 vocoder weight fix failed: %s", exc)
 
 
 def _synthesize(model, text, ref_wav, ref_text):

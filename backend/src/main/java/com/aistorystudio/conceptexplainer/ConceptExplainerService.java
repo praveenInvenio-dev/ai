@@ -194,8 +194,10 @@ public class ConceptExplainerService {
     public ConceptExplainerJob retry(UUID id) {
         ConceptExplainerJob old = jobs.get(id);
         if (old == null) throw new IllegalArgumentException("Lesson not found (it may have expired).");
-        return create(old.getTopic(), old.getInstructions(), old.getLanguage(), old.getDuration(), old.getDifficulty(),
+        ConceptExplainerJob copy = create(old.getTopic(), old.getInstructions(), old.getLanguage(), old.getDuration(), old.getDifficulty(),
                 old.getMotion(), old.getModel(), old.getTrack(), old.getSubject(), old.isExamFocus(), old.getVoice());
+        copy.setStyle(old.getStyle());
+        return copy;
     }
 
     // =================================================================== plan
@@ -270,6 +272,12 @@ public class ConceptExplainerService {
             Keep slide text SHORT (text <= 25 words, labels <= 4 words) - the narration carries the detail.
             Slide text and narration in the requested language; code stays in its original syntax.
             Typical order: hook/definition -> analogy -> code_anatomy or example -> details -> mistake (checklist) -> summary.
+            VARIETY (important - lessons must not all look the same):
+            - use at least 5 different templates per lesson and never the same template twice in a row;
+            - vary the order to fit the topic (start with a question, a surprising fact, an analogy or a table);
+            - code / code_anatomy / code_block / code_visual / analogy_code ONLY when the topic is about programming;
+              for every other topic leave "code" empty, and example_list "code" holds a short name or fact (e.g. "Malleus");
+            - "definition" may add formula + formulaResult as a one-line REMEMBER rule that fits THIS topic (optional).
 
             NARRATION / VOICE PERFORMANCE
             "narration" is an ARRAY of 2-5 short spoken sentences IN THE ORDER the slide builds up.
@@ -357,9 +365,10 @@ public class ConceptExplainerService {
 
     /** Only the real-world object is AI-generated: neon line art on pure black, no text, no people. */
     private void makeIllustration(ConceptExplainerJob job, ConceptExplainerJob.Scene s) {
-        String prompt = "A single " + s.getIllustrationPrompt() + ", drawn as premium glowing neon line art with subtle 3D depth, "
-                + "clean crisp outlines in electric cyan, magenta, yellow and green, isolated on a PURE BLACK background, centered, "
-                + "high detail, like an icon in a futuristic neon technical infographic. No text, no letters, no numbers, no words, "
+        // the object is drawn in the lesson's visual style (neon / sketch / 3D clay / chalk / blueprint / anime)
+        String look = ConceptSlideRenderer.style(job.getStyle()).illustrationStyle();
+        String prompt = "A single " + s.getIllustrationPrompt() + ", " + look + ", centered, high detail, clean composition, "
+                + "like an icon in a premium educational infographic. No text, no letters, no numbers, no words, "
                 + "no people, no hands, no faces, no frame, no border, no background scene.";
         String negative = "text, letters, words, numbers, typography, watermark, logo, people, person, hands, face, character, "
                 + "background scenery, room, frame, border, collage, grid, multiple panels, photo, blurry, low contrast, clutter";
@@ -380,7 +389,8 @@ public class ConceptExplainerService {
             try { ill = ImageIO.read(Path.of(s.getIllustrationPath()).toFile()); } catch (Exception ignored) { }
         }
         ConceptSlideRenderer.Slide slide = toSlide(mapper.readTree(s.getPlanJson()), s, ill);
-        List<BufferedImage> steps = renderer.render(slide);
+        // style chosen by the user; the lesson id seeds colour rotation + mirrored/alternative layouts
+        List<BufferedImage> steps = renderer.render(slide, job.getStyle(), job.getId().getMostSignificantBits());
         s.bumpImageVersion();
         List<String> paths = new ArrayList<>();
         for (int k = 0; k < steps.size(); k++) {
@@ -438,6 +448,9 @@ public class ConceptExplainerService {
             boolean question = line.endsWith("?") || line.endsWith("？");
             boolean excited = line.endsWith("!") || line.contains("[laugh]") || line.contains("[chuckle]");
             double speed = question ? 0.96 : (excited ? 0.99 : (i % 3 == 1 ? 0.97 : 1.0));
+            String v = job.getVoice() == null ? "" : job.getVoice();
+            if (v.startsWith("edge:")) speed *= 0.94;          // Edge is brisk; a calmer teacher pace sounds more human
+            else if (v.startsWith("indic:")) speed *= 0.98;    // IndicF5 is already natural; tiny breath room
             double pitch = question ? 1.015 : (excited ? 1.01 : (i % 4 == 0 ? 0.99 : 1.0));
             String emotion = question ? "curious" : (excited ? "happy" : "neutral");
             double intensity = excited ? 0.68 : (question ? 0.58 : 0.50);

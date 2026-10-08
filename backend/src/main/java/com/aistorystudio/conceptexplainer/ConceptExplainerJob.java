@@ -90,6 +90,11 @@ public class ConceptExplainerJob {
         public String getImagePath() { return stepPaths.isEmpty() ? null : stepPaths.get(stepPaths.size() - 1); }
     }
 
+    /** Visual style: neon | sketchnote | storyboard | chalkboard | blueprint | anime. */
+    private volatile String style = "neon";
+    public String getStyle() { return style; }
+    public void setStyle(String v) { style = ConceptSlideRenderer.style(v).id(); }
+
     public UUID getId() { return id; }
     public String getTopic() { return topic; }
     public String getInstructions() { return instructions; }

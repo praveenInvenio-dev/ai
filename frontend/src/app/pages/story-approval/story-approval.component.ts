@@ -150,7 +150,9 @@ import { Episode, SceneDto, VoiceSegment } from '../../models/models';
         <button class="btn btn-ghost" (click)="regenerate()" [disabled]="busy || imageJob">Regenerate story</button>
         <button class="btn btn-primary" *ngIf="!imagesReady && !imageJob" (click)="generateImages()" [disabled]="busy">✨ Approve story & generate images</button>
         <ng-container *ngIf="imagesReady">
-          <label class="check" style="display:flex;gap:.5rem;align-items:flex-start" title="IndicF5 voices speak; H3 animates (lip-synced) and adds ambience/music">
+          <button class="btn btn-primary" (click)="produceClassic()" [disabled]="busy || classicBusy" title="No video model: the approved images come alive layer by layer, synced to the narration">🎞️ Classic video (images + voice)</button>
+          <label class="check" style="display:flex;gap:.4rem;align-items:center"><input type="checkbox" [(ngModel)]="classicCaptions"> subtitles</label>
+                    <label class="check" style="display:flex;gap:.5rem;align-items:flex-start" title="IndicF5 voices speak; H3 animates (lip-synced) and adds ambience/music">
             <input type="checkbox" [(ngModel)]="useIndicTts"> Indic TTS voice instead of H3 speech
           </label>
           <button class="btn btn-primary" (click)="produceVideo()" [disabled]="busy" title="Every scene through MiniMax H3: H3 speaks narration (voice-over) and dialogue (lip-synced), with ambience, SFX and music">🎬 Produce story video (H3 voice + video)</button>
@@ -166,7 +168,11 @@ import { Episode, SceneDto, VoiceSegment } from '../../models/models';
         </ng-container>
       </footer>
       <p class="hint action-hint" *ngIf="imagesReady">
-        <strong>Produce story video</strong> animates every approved image with MiniMax H3. H3 generates the speech too: narration is off-screen voice-over (no lip movement), character dialogue is lip-synced. Long scenes become several continuous shots. You will be taken to Story Video Production to watch progress; the finished video is attached to this story.
+        <strong>Classic video</strong> needs no video model: each approved image comes alive layer by layer — the characters and objects lift out of the picture one by one as the narrator speaks, the spoken line appears as a subtitle, and scenes cross-fade (fast, runs on any machine).
+        <span *ngIf="classicStage" style="display:block;margin-top:.4rem"><strong>{{ classicStage }}</strong></span>
+        <span *ngIf="classicError" style="display:block;color:#ff6b6b">{{ classicError }}</span>
+        <video *ngIf="classicVideoUrl" [src]="classicVideoUrl" controls style="display:block;max-width:420px;margin-top:.6rem;border-radius:12px"></video>
+                <strong>Produce story video</strong> animates every approved image with MiniMax H3. H3 generates the speech too: narration is off-screen voice-over (no lip movement), character dialogue is lip-synced. Long scenes become several continuous shots. You will be taken to Story Video Production to watch progress; the finished video is attached to this story.
         <strong>Video Generation</strong> renders a single scene with the same engine, for quick tests.
       </p>
       <section class="card classic-output" *ngIf="classicVideoReady">
@@ -368,6 +374,25 @@ export class StoryApprovalComponent implements OnInit, OnDestroy {
     this.api.translateEpisode(this.episode.id,this.translateTo).subscribe({
       next: r => { this.busy=false; this.translateTo=''; this.router.navigate(['/episodes', r.id, 'approve']); },
       error: e => { this.busy=false; this.error=e?.error?.message||'Translation failed.'; }
+    });
+  }
+  classicBusy=false; classicCaptions=true; classicStage=''; classicError=''; classicVideoUrl='';
+  produceClassic(){
+    if(!this.episode)return;
+    const id=this.episode.id;
+    this.classicBusy=true; this.classicError=''; this.classicVideoUrl=''; this.classicStage='Starting…';
+    this.api.startClassicVideo(id, this.voiceMap['Narrator'] || undefined, this.classicCaptions).subscribe({
+      next: r => {
+        const t=setInterval(()=>this.api.classicVideoJob(r.jobId).subscribe({
+          next: j => {
+            this.classicStage=j.stage + (j.warnings?.length ? ' — ' + j.warnings.join(' ') : '');
+            if(j.status==='SUCCEEDED'){ clearInterval(t); this.classicBusy=false; this.classicStage='Classic video ready ('+Math.round(j.seconds)+' s)'; this.classicVideoUrl=this.api.episodeVideoUrl(id)+'?v='+Date.now(); }
+            if(j.status==='FAILED'){ clearInterval(t); this.classicBusy=false; this.classicStage=''; this.classicError=j.error||'Classic video failed.'; }
+          },
+          error: () => { clearInterval(t); this.classicBusy=false; }
+        }), 3000);
+      },
+      error: e => { this.classicBusy=false; this.classicStage=''; this.classicError=e?.error?.message||'Could not start the classic video.'; }
     });
   }
   produceVideo(){

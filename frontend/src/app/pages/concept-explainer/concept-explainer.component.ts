@@ -65,10 +65,29 @@ interface LessonSummary { id: string; title: string; duration: string; language:
         <div class="section-title"><div><h2>What do you want to learn?</h2><p>AI plans the lesson and the everyday analogies; the app draws every slide pixel-perfect.</p></div></div>
         <div class="form-grid">
           <div>
+            <label>Visual style</label>
+            <select [(ngModel)]="style">
+              <option *ngFor="let st of styles" [value]="st.id">{{ st.label }}</option>
+            </select>
+            <small class="sync-note">{{ styleHint() }}</small>
+          </div>
+          <div>
             <label>Narrator voice</label>
             <select [(ngModel)]="voice">
-              <option value="narrator-male">Arjun — Natural Male Tutor</option>
-              <option value="narrator-female">Maya — Natural Female Tutor</option>
+              <optgroup label="Indian English — natural Indian accent">
+                <option value="edge:en-IN-NeerjaNeural">Neerja — Indian English, female</option>
+                <option value="edge:en-IN-PrabhatNeural">Prabhat — Indian English, male</option>
+              </optgroup>
+              <optgroup *ngIf="edgeForLanguage().length" [label]="'Edge — ' + language">
+                <option *ngFor="let v of edgeForLanguage()" [value]="v.id">{{ v.label }}</option>
+              </optgroup>
+              <optgroup label="Expressive (Chatterbox, US-style accent)">
+                <option value="narrator-male">Arjun — Natural Male Tutor</option>
+                <option value="narrator-female">Maya — Natural Female Tutor</option>
+              </optgroup>
+              <optgroup *ngIf="clonedVoices.length" label="My voices (Voice Lab clones — expressive + your accent)">
+                <option *ngFor="let v of clonedVoices" [value]="v.id">{{ v.label }}</option>
+              </optgroup>
               <optgroup *ngIf="indicForLanguage().length" [label]="'IndicF5 — native ' + language">
                 <option *ngFor="let v of indicForLanguage()" [value]="v.id">{{ v.label }}</option>
               </optgroup>
@@ -282,12 +301,29 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
 
   /** IndicF5 voices from the TTS service ("indic:kn-in-sapna" ...). */
   indicVoices: { id: string; label: string }[] = [];
+  edgeVoices: { id: string; label: string }[] = [];
+  clonedVoices: { id: string; label: string }[] = [];
+  style = 'neon';
+  readonly styles = [
+    { id: 'neon', label: 'Neon glow', hint: 'Black canvas, glowing neon panels and code — tech look.' },
+    { id: 'sketchnote', label: 'Sketchnote (hand-drawn)', hint: 'Cream paper, hand-drawn ink lines, handwritten font, pastel highlights.' },
+    { id: 'storyboard', label: 'Clean storyboard (3D icons)', hint: 'Light pastel cards with soft shadows and glossy 3D-style illustrations.' },
+    { id: 'chalkboard', label: 'Chalkboard classroom', hint: 'Green board, chalk lines and handwriting — classroom feel.' },
+    { id: 'blueprint', label: 'Blueprint (engineering)', hint: 'Blue grid paper with white technical lines.' },
+    { id: 'anime', label: 'Anime pop', hint: 'Bright pop colours, bold outlines, comic title font, anime-style illustrations.' }
+  ];
+  styleHint(): string { return this.styles.find(s => s.id === this.style)?.hint || ''; }
   private static readonly LANG_CODE: Record<string, string> = {
     Kannada: 'kn', Hindi: 'hi', Hinglish: 'hi', Telugu: 'te', Tamil: 'ta', Malayalam: 'ml', Marathi: 'mr',
     Bengali: 'bn', Gujarati: 'gu', Punjabi: 'pa', Odia: 'or'
   };
 
   constructor(private http: HttpClient, private route: ActivatedRoute, private router: Router) {}
+
+  edgeForLanguage(): { id: string; label: string }[] {
+    const code = ConceptExplainerComponent.LANG_CODE[this.language];
+    return code ? this.edgeVoices.filter(v => v.id.startsWith('edge:' + code + '-')) : [];
+  }
 
   indicForLanguage(): { id: string; label: string }[] {
     const code = ConceptExplainerComponent.LANG_CODE[this.language];
@@ -296,7 +332,8 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
 
   onLanguageChange(): void {
     // IndicF5 voices are per language (and never English): reset an invalid choice.
-    if (this.voice.startsWith('indic:') && !this.indicForLanguage().some(v => v.id === this.voice)) {
+    if ((this.voice.startsWith('indic:') && !this.indicForLanguage().some(v => v.id === this.voice))
+        || (this.voice.startsWith('edge:') && !this.voice.startsWith('edge:en-IN') && !this.edgeForLanguage().some(v => v.id === this.voice))) {
       this.voice = 'narrator-male';
     }
   }
@@ -315,6 +352,10 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
         const list: any[] = r?.voices || [];
         this.indicVoices = list.filter(v => String(v.id).startsWith('indic:') && v.installed !== false)
           .map(v => ({ id: v.id, label: String(v.id).replace('indic:', '').replace(/-in-/, ' · ') }));
+        this.edgeVoices = list.filter(v => String(v.id).startsWith('edge:') && !String(v.id).startsWith('edge:en-'))
+          .map(v => ({ id: v.id, label: v.label || String(v.id).replace('edge:', '').replace('Neural', '') }));
+        this.clonedVoices = list.filter(v => String(v.id).startsWith('profile:'))
+          .map(v => ({ id: v.id, label: v.label || v.name || String(v.id).replace('profile:', '') }));
       },
       error: () => {}
     });
@@ -344,7 +385,7 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
     this.formError = '';
     this.http.post<{ jobId: string }>(`${this.base}/concept-explainer/jobs`, {
       topic: this.topic.trim(), instructions: this.instructions, language: this.language,
-      duration: this.duration, difficulty: this.difficulty, motion: this.motion, model: this.model, voice: this.voice,
+      duration: this.duration, difficulty: this.difficulty, motion: this.motion, model: this.model, voice: this.voice, style: this.style,
       track: this.track, subject: this.subject, examFocus: this.examFocus
     }).subscribe({
       next: r => { this.loading = false; this.open(r.jobId); this.loadLessons(); },

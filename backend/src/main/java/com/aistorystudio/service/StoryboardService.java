@@ -573,7 +573,42 @@ public class StoryboardService {
         return mediaProcessor.musicPresetPath(episode.getMusicPreset());
     }
 
+    /** Narration plus WHEN each voice segment starts (seconds into the scene WAV). */
+    public record TimedNarration(Path wav, List<Double> segmentStarts, List<String> segmentTexts,
+                                 List<String> speakers, double seconds) {}
+
+    /** Used by the classic animated-storyboard video: same voices/prosody as before, plus a timeline. */
+    public TimedNarration narrateTimed(UUID episodeId, UUID sceneId, String voice) {
+        Episode episode = requireEpisode(episodeId);
+        Scene scene = requireScene(episodeId, sceneId);
+        List<Double> starts = new ArrayList<>();
+        List<String> texts = new ArrayList<>();
+        List<String> speakers = new ArrayList<>();
+        Path wav = narrate(episode, scene, voice, starts, texts, speakers);
+        double seconds;
+        try { seconds = probeWavDuration(java.nio.file.Files.readAllBytes(wav)); } catch (IOException e) { seconds = -1; }
+        return new TimedNarration(wav, starts, texts, speakers, seconds);
+    }
+
+    /** Episode music (uploaded track or preset) for other renderers. */
+    public Path musicFor(UUID episodeId) {
+        return resolveMusicPath(requireEpisode(episodeId));
+    }
+
+    private double totalSeconds(List<byte[]> parts) {
+        double t = 0;
+        for (byte[] p : parts) {
+            double d = probeWavDuration(p);
+            if (d > 0) t += d;
+        }
+        return t;
+    }
+
     private Path narrate(Episode episode, Scene scene, String voice) {
+        return narrate(episode, scene, voice, null, null, null);
+    }
+
+    private Path narrate(Episode episode, Scene scene, String voice, List<Double> starts, List<String> texts, List<String> speakers) {
         List<VoiceSegmentInput> segments = readVoiceSegments(scene);
         if (segments.isEmpty()) {
             segments = List.of(new VoiceSegmentInput(
@@ -590,6 +625,11 @@ public class StoryboardService {
             maybeInsertBreath(audioParts, segment.pauseBeforeMs());
             double pauseScale = lookupEmotionProsody(segment.emotion()).pauseScale();
             appendSilence(audioParts, scaledPause(segment.pauseBeforeMs(), pauseScale));
+            if (starts != null) { // speech of this segment starts here
+                starts.add(totalSeconds(audioParts));
+                texts.add(segment.text().trim());
+                speakers.add(segment.character() == null ? "Narrator" : segment.character());
+            }
             for (String part : splitPauseMarkers(insertPunctuationPauses(segment.text(), pauseScale))) {
                 if (part.startsWith("\u0000PAUSE:")) {
                     appendSilence(audioParts, Integer.parseInt(part.substring("\u0000PAUSE:".length())));
