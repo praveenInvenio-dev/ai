@@ -38,6 +38,7 @@ app = Flask(__name__)
 REPO_ID = os.environ.get("INDICF5_REPO", "ai4bharat/IndicF5")
 PROMPTS_DIR = os.environ.get("INDICF5_PROMPTS_DIR", "/prompts")
 SAMPLE_RATE = 24000
+DEVICE = os.environ.get("INDICF5_DEVICE", "auto").strip().lower()
 
 # Languages IndicF5 covers. English is deliberately absent - it is not supported
 # and asking for it produces garbled output rather than an error.
@@ -69,9 +70,34 @@ def get_model():
         try:
             from transformers import AutoModel
             app.logger.info("Loading %s (this takes a few minutes on first run)", REPO_ID)
+            # Pass the token explicitly as well as via HF's environment handling.
+            # This makes the gated-repository requirement unambiguous and avoids
+            # confusing failures when the hub library changes its env-variable
+            # handling. Never log the token itself.
+            hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+            if not hf_token:
+                raise RuntimeError(
+                    "HF_TOKEN is not set. Accept the IndicF5 model terms on Hugging Face "
+                    "and provide a read token via HF_TOKEN in .env."
+                )
             # trust_remote_code: IndicF5 ships its own modelling code, which is how
             # the F5 flow-matching pipeline is wired up. Required by the model card.
-            _model = AutoModel.from_pretrained(REPO_ID, trust_remote_code=True)
+            _model = AutoModel.from_pretrained(
+                REPO_ID, trust_remote_code=True, token=hf_token
+            )
+            requested = DEVICE
+            if requested == "auto":
+                try:
+                    import torch
+                    requested = "cuda" if torch.cuda.is_available() else "cpu"
+                except Exception:
+                    requested = "cpu"
+            if requested == "cuda":
+                try:
+                    _model = _model.to("cuda")
+                    app.logger.info("Loaded %s on CUDA", REPO_ID)
+                except Exception as exc:
+                    app.logger.warning("CUDA load failed (%s); keeping IndicF5 on CPU", exc)
             app.logger.info("Loaded %s", REPO_ID)
             return _model
         except Exception as exc:  # noqa: BLE001

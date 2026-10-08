@@ -88,6 +88,17 @@ equivalent instead of silently reaching out. See
 `docs/OPEN_SOURCE_LICENSES.md` and `voices/LICENSES.md` for exactly what's
 verified and what still needs your own review before commercial use.
 
+
+## IndicF5 / Indian-language narration
+
+IndicF5 is an optional local TTS engine for supported Indian languages. It is a gated
+Hugging Face model, so accept the model terms and set `HF_TOKEN` in `.env`; never put
+the real token in source control. Start it with the `indic` profile and run
+`scripts/check-indicf5.sh` to verify authentication and model loading. English narration
+continues to use the configured English provider.
+
+See `CHANGELOG_V24.3_INDICF5.md` for the current deployment notes.
+
 ## 3. Requirements
 
 - Docker + Docker Compose v2, NVIDIA Container Toolkit

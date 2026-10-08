@@ -44,6 +44,9 @@ import io
 import logging
 import os
 import threading
+import time
+import urllib.request
+import json
 
 import numpy as np
 import soundfile as sf
@@ -65,7 +68,9 @@ VOICES_DIR = os.environ.get("CHATTERBOX_VOICES_DIR", "/voices")
 # voice recorded/uploaded through the Voice Library UI lands here under its
 # VoiceProfile id, separate from the manually-placed clips in VOICES_DIR.
 VOICE_PROFILES_DIR = os.environ.get("CHATTERBOX_VOICE_PROFILES_DIR", "/voice-profiles")
-DEFAULT_VOICE = os.environ.get("CHATTERBOX_DEFAULT_VOICE", "narrator")
+DEFAULT_VOICE = os.environ.get("CHATTERBOX_DEFAULT_VOICE", "narrator-male")
+BOOTSTRAP_URL = os.environ.get("CHATTERBOX_REFERENCE_BOOTSTRAP_URL", "http://tts:5002")
+BOOTSTRAP_VOICES = os.environ.get("CHATTERBOX_BOOTSTRAP_VOICES", "narrator-male:en_US-ryan-high,narrator-female:en_US-amy-medium")
 
 _models = {}
 _model_lock = threading.Lock()
@@ -136,6 +141,48 @@ def voice_reference_path(voice: str):
         return profile_path
     manual_path = os.path.join(VOICES_DIR, f"{voice}.wav")
     return manual_path if os.path.isfile(manual_path) else None
+
+
+
+def bootstrap_reference_voices():
+    """Create safe, local reference clips from the project's own open-source Piper voices.
+
+    This prevents the previous failure mode where Chatterbox had no narrator.wav and
+    the backend silently fell back to the default female Edge/Piper voice. The generated
+    reference is only a conditioning clip; users can replace it with their own 10-second
+    recording from the Voice Library at any time.
+    """
+    entries = []
+    for item in BOOTSTRAP_VOICES.split(","):
+        if ":" not in item:
+            continue
+        name, source = item.split(":", 1)
+        entries.append((name.strip(), source.strip()))
+    for name, source in entries:
+        target = os.path.join(VOICES_DIR, f"{name}.wav")
+        if os.path.isfile(target) and os.path.getsize(target) > 10000:
+            continue
+        for attempt in range(12):
+            try:
+                payload = json.dumps({
+                    "text": "Hello. I am your tutor. Let's make this simple, practical, and a little fun.",
+                    "voice": source, "speed": 0.98, "pitch": 1.0, "language": "en"
+                }).encode("utf-8")
+                req = urllib.request.Request(BOOTSTRAP_URL + "/api/tts", data=payload, headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    wav = resp.read()
+                if len(wav) > 10000:
+                    os.makedirs(VOICES_DIR, exist_ok=True)
+                    tmp = target + ".part"
+                    with open(tmp, "wb") as f: f.write(wav)
+                    os.replace(tmp, target)
+                    log.info("Bootstrapped Chatterbox reference %s from %s", name, source)
+                    break
+            except Exception as exc:
+                if attempt == 11:
+                    log.warning("Could not bootstrap Chatterbox reference %s: %s", name, exc)
+                else:
+                    time.sleep(5)
 
 
 def list_voices():
@@ -270,4 +317,6 @@ def synthesize():
 
 
 if __name__ == "__main__":
+    os.makedirs(VOICES_DIR, exist_ok=True)
+    threading.Thread(target=bootstrap_reference_voices, daemon=True).start()
     app.run(host="0.0.0.0", port=5004)

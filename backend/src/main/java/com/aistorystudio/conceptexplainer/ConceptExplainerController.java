@@ -27,12 +27,12 @@ public class ConceptExplainerController {
     /** motion: REVEAL (elements appear with the narration, default) or STATIC. animationMode kept for old clients. */
     public record CreateRequest(String topic, String instructions, String language, String duration,
                                 String difficulty, String motion, String animationMode, String model,
-                                String track, String subject, Boolean examFocus) {}
+                                String track, String subject, Boolean examFocus, String voice) {}
 
     @PostMapping("/jobs")
     public ResponseEntity<Map<String, UUID>> create(@RequestBody CreateRequest r) {
         ConceptExplainerJob job = service.create(r.topic(), r.instructions(), r.language(), r.duration(), r.difficulty(),
-                r.motion() != null ? r.motion() : r.animationMode(), r.model(), r.track(), r.subject(), Boolean.TRUE.equals(r.examFocus()));
+                r.motion() != null ? r.motion() : r.animationMode(), r.model(), r.track(), r.subject(), Boolean.TRUE.equals(r.examFocus()), r.voice());
         service.generateAsync(job.getId());
         return ResponseEntity.accepted().body(Map.of("jobId", job.getId()));
     }
@@ -80,6 +80,20 @@ public class ConceptExplainerController {
         return serve(s == null ? null : s.getAudioPath(), MediaType.parseMediaType("audio/wav"));
     }
 
+    @GetMapping("/jobs/{id}/script")
+    public ResponseEntity<String> script(@PathVariable UUID id) {
+        ConceptExplainerJob job = jobs.get(id);
+        if (job == null) return ResponseEntity.notFound().build();
+        StringBuilder out = new StringBuilder();
+        out.append(job.getTitle() == null ? job.getTopic() : job.getTitle()).append("\n\n");
+        for (ConceptExplainerJob.Scene s : job.getScenes()) {
+            out.append("SCENE ").append(s.getSceneNumber()).append(" — ").append(s.getTitle()).append("\n");
+            for (String line : s.getSentences()) out.append(line).append("\n");
+            out.append("\n");
+        }
+        return ResponseEntity.ok().contentType(MediaType.TEXT_PLAIN).body(out.toString().trim());
+    }
+
     @GetMapping("/jobs/{id}/video")
     public ResponseEntity<FileSystemResource> video(@PathVariable UUID id) {
         ConceptExplainerJob job = jobs.get(id);
@@ -108,7 +122,7 @@ public class ConceptExplainerController {
     public record JobView(UUID id, String topic, String title, String summary, String language, String duration,
                           String difficulty, String motion, String track, String subject, boolean examFocus, ConceptExplainerJob.Status status, String stage,
                           String errorMessage, double totalDurationSeconds, int wordCount, String videoUrl,
-                          List<String> warnings, int estimatedMinutes, List<SceneView> scenes) {}
+                          List<String> warnings, int estimatedMinutes, String narratorVoice, String scriptUrl, List<SceneView> scenes) {}
 
     public record SceneView(int sceneNumber, String template, String title, String narration, String code,
                             double durationSeconds, int steps, String imageUrl, String audioUrl, boolean canRedraw) {}
@@ -128,6 +142,6 @@ public class ConceptExplainerController {
                 job.getDifficulty(), job.getMotion(), job.getTrack(), job.getSubject(), job.isExamFocus(), job.getStatus(), job.getStage(), job.getErrorMessage(),
                 job.getTotalDurationSeconds(), job.getWordCount(),
                 job.getVideoPath() == null ? null : base + "/video?v=" + job.getVideoVersion(),
-                List.copyOf(job.getWarnings()), estimate, scenes);
+                List.copyOf(job.getWarnings()), estimate, job.getVoice(), base + "/script", scenes);
     }
 }

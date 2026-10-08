@@ -67,11 +67,16 @@ public class ConceptExplainerService {
 
     public ConceptExplainerJob create(String topic, String instructions, String language, String duration,
                                       String difficulty, String motion, String model) {
-        return create(topic, instructions, language, duration, difficulty, motion, model, "GENERAL", "General", false);
+        return create(topic, instructions, language, duration, difficulty, motion, model, "GENERAL", "General", false, "narrator-male");
     }
 
     public ConceptExplainerJob create(String topic, String instructions, String language, String duration,
                                       String difficulty, String motion, String model, String track, String subject, boolean examFocus) {
+        return create(topic, instructions, language, duration, difficulty, motion, model, track, subject, examFocus, "narrator-male");
+    }
+
+    public ConceptExplainerJob create(String topic, String instructions, String language, String duration,
+                                      String difficulty, String motion, String model, String track, String subject, boolean examFocus, String voice) {
         if (topic == null || topic.isBlank()) throw new IllegalArgumentException("Enter a topic to explain.");
         String m = motion == null ? "REVEAL" : motion.trim().toUpperCase(Locale.ROOT);
         if (!m.equals("STATIC")) m = "REVEAL";
@@ -81,7 +86,8 @@ public class ConceptExplainerService {
         boolean exam = examFocus && (t.equals("JEE") || t.equals("NEET"));
         return jobs.create(topic.trim(), instructions == null ? "" : instructions.trim(),
                 blank(language) ? "English" : language.trim(), blank(duration) ? "1 minute" : duration.trim(),
-                blank(difficulty) ? "Complete Beginner" : difficulty.trim(), m, model == null ? "" : model.trim(), t, sub, exam);
+                blank(difficulty) ? "Complete Beginner" : difficulty.trim(), m, model == null ? "" : model.trim(), t, sub, exam,
+                blank(voice) ? "narrator-male" : voice.trim());
     }
 
     // =================================================================== generate
@@ -186,14 +192,14 @@ public class ConceptExplainerService {
         ConceptExplainerJob old = jobs.get(id);
         if (old == null) throw new IllegalArgumentException("Lesson not found (it may have expired).");
         return create(old.getTopic(), old.getInstructions(), old.getLanguage(), old.getDuration(), old.getDifficulty(),
-                old.getMotion(), old.getModel(), old.getTrack(), old.getSubject(), old.isExamFocus());
+                old.getMotion(), old.getModel(), old.getTrack(), old.getSubject(), old.isExamFocus(), old.getVoice());
     }
 
     // =================================================================== plan
 
     private JsonNode plan(ConceptExplainerJob job) {
         boolean deep = job.isDeepDive();
-        int minWords = deep ? 380 : 125, maxWords = deep ? 440 : 155;
+        int minWords = deep ? 430 : 145, maxWords = deep ? 520 : 180;
         String user = userPrompt(job, deep);
         JsonNode plan = readJson(gateway.llm().generateStructured(SYSTEM, user, blankToNull(job.getModel())));
         validate(plan);
@@ -262,10 +268,17 @@ public class ConceptExplainerService {
             Slide text and narration in the requested language; code stays in its original syntax.
             Typical order: hook/definition -> analogy -> code_anatomy or example -> details -> mistake (checklist) -> summary.
 
-            NARRATION
-            "narration" is an ARRAY of 2-5 short spoken sentences IN THE ORDER the slide builds up:
-            sentence 1 introduces the slide, later sentences explain the next element (next callout, part, row, item).
-            The app reveals each slide element when its sentence starts, so order matters.
+            NARRATION / VOICE PERFORMANCE
+            "narration" is an ARRAY of 2-5 short spoken sentences IN THE ORDER the slide builds up.
+            Write it exactly like an excellent human tutor speaking to one learner, not like a textbook or slide reader.
+            - Use natural contractions, varied sentence length, rhetorical questions, and conversational bridges such as "Now here's the interesting part" or "Think of it this way".
+            - Build in real breathing room with punctuation: commas for micro-pauses, em dashes for a beat, and an occasional ellipsis for a thoughtful pause. Do not overuse them.
+            - Use subtle pitch/energy cues through sentence shape: questions can rise, key conclusions can be short and confident, examples can be warmer.
+            - Add at most ONE light, topic-appropriate humorous aside in a 3-minute lesson, and only when it helps the learner remember the concept. Never force jokes.
+            - Use [chuckle], [laugh], [sigh] or [gasp] sparingly when a moment genuinely calls for it; these are spoken-performance cues, not narration to explain.
+            - Never say things like "as you can see on the slide" or read every label verbatim. The visual and voice should complement each other.
+            - sentence 1 introduces the idea; later sentences explain the next visual element. The app reveals each slide element when its sentence starts, so order matters.
+            - Prefer 10-18 spoken words per sentence for quick lessons and 12-22 for deep dives.
 
             Return JSON only:
             {"title":"...","summary":"...","scenes":[{"template":"...","title":"...","narration":["...","..."], ...template fields}]}
@@ -279,11 +292,11 @@ public class ConceptExplainerService {
                 + "\nLanguage: " + job.getLanguage()
                 + "\nDifficulty: " + job.getDifficulty()
                 + "\nUser instructions: " + (job.getInstructions().isBlank()
-                ? "Teach from zero using the simplest language, strong everyday analogies and memorable examples." : job.getInstructions())
+                ? "Teach from zero like a patient, witty human tutor: simple language, strong everyday analogies, natural pauses, a little warmth/humor where appropriate, and memorable examples." : job.getInstructions())
                 + "\n" + trackInstruction(job)
                 + "\n" + (deep
-                ? "3-minute Deep Dive: 18-22 scenes, 380-440 spoken words in total (about 175 seconds). Build intuition, explain the mechanism, several real examples, one beginner pitfall, recap + a tiny checkpoint question with its answer."
-                : "1-minute Quick Learn: 9-11 scenes, 125-155 spoken words in total (about 60 seconds). Core mental model, one or two great examples, one concrete code/example, memorable recap. No advanced edge cases.");
+                ? "3-minute Deep Dive: 16-20 scenes, 430-520 spoken words in total (about 180 seconds). Build intuition, explain the mechanism, several real examples, one beginner pitfall, recap + a tiny checkpoint question with its answer."
+                : "1-minute Quick Learn: 8-10 scenes, 145-180 spoken words in total (about 65 seconds). Core mental model, one or two great examples, one concrete code/example, memorable recap. No advanced edge cases.");
     }
 
     private String trackInstruction(ConceptExplainerJob job) {
@@ -418,10 +431,20 @@ public class ConceptExplainerService {
         List<Double> starts = new ArrayList<>();
         double t = 0;
         for (int i = 0; i < s.getSentences().size(); i++) {
+            String line = s.getSentences().get(i).trim();
+            boolean question = line.endsWith("?") || line.endsWith("？");
+            boolean excited = line.endsWith("!") || line.contains("[laugh]") || line.contains("[chuckle]");
+            double speed = question ? 0.96 : (excited ? 0.99 : (i % 3 == 1 ? 0.97 : 1.0));
+            double pitch = question ? 1.015 : (excited ? 1.01 : (i % 4 == 0 ? 0.99 : 1.0));
+            String emotion = question ? "curious" : (excited ? "happy" : "neutral");
+            double intensity = excited ? 0.68 : (question ? 0.58 : 0.50);
+            String acting = question ? "Warm, curious teacher; lift the question naturally, then pause briefly before the answer."
+                    : (excited ? "Warm, lightly playful teacher; smile in the voice without sounding like an announcer."
+                    : "Calm, conversational tutor; vary emphasis naturally and leave a small thinking beat after important ideas.");
             var audio = gateway.synthesizeForStoryLanguage(new TextToSpeechProvider.TtsRequest(
-                    s.getSentences().get(i), null, job.getLanguage(), 1.0, 1.0,
-                    "friendly", 0.55, "clear conversational teacher", List.of(), false, null,
-                    "Explain naturally, warmly and simply.", null));
+                    line, job.getVoice(), job.getLanguage(), speed, pitch,
+                    emotion, intensity, "natural conversational tutor", List.of(), true,
+                    (line.contains("[laugh]") || line.contains("[chuckle]")) ? "chuckle" : null, acting, null));
             if (audio.providerWarning() != null && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice:"))) {
                 job.getWarnings().add("Voice: " + audio.providerWarning());
             }
@@ -431,7 +454,8 @@ public class ConceptExplainerService {
             starts.add(t);
             double d = media.probeDurationSeconds(p);
             if (d <= 0) d = audio.durationSeconds();
-            t += d + (i < s.getSentences().size() - 1 ? SENTENCE_GAP : 0);
+            double gap = i < s.getSentences().size() - 1 ? sentenceGap(s.getSentences().get(i)) : 0.0;
+            t += d + gap;
         }
         // join sentences with short breaths, then the shared voice polish (length unchanged)
         Path joined = work.resolve("joined.wav");
@@ -440,7 +464,7 @@ public class ConceptExplainerService {
         StringBuilder g = new StringBuilder();
         for (int i = 0; i < parts.size(); i++) {
             g.append('[').append(i).append(":a]aresample=48000,aformat=channel_layouts=stereo")
-                    .append(i < parts.size() - 1 ? ",apad=pad_dur=" + fmt(SENTENCE_GAP) : "").append("[s").append(i).append("];");
+                    .append(i < parts.size() - 1 ? ",apad=pad_dur=" + fmt(sentenceGap(s.getSentences().get(i))) : "").append("[s").append(i).append("];");
         }
         for (int i = 0; i < parts.size(); i++) g.append("[s").append(i).append(']');
         g.append("concat=n=").append(parts.size()).append(":v=0:a=1[out]");
@@ -454,6 +478,16 @@ public class ConceptExplainerService {
         double speech = media.probeDurationSeconds(out);
         s.setDurationSeconds((speech > 0 ? speech : t) + SCENE_TAIL);
         s.setStepTimes(stepTimes(starts, s.getStepPaths().size(), speech > 0 ? speech : t, job));
+    }
+
+    private static double sentenceGap(String sentence) {
+        if (sentence == null) return SENTENCE_GAP;
+        String x = sentence.toLowerCase(Locale.ROOT);
+        if (x.contains("[chuckle]") || x.contains("[laugh]")) return 0.42;
+        if (x.endsWith("?") || x.endsWith("？")) return 0.38;
+        if (x.endsWith("!") || x.endsWith("！")) return 0.34;
+        if (x.contains("...") || x.contains("…")) return 0.44;
+        return SENTENCE_GAP;
     }
 
     /**
@@ -513,7 +547,7 @@ public class ConceptExplainerService {
         StringBuilder f = new StringBuilder();
         if (n == 1) {
             args.addAll(List.of("-loop", "1", "-framerate", "30", "-t", fmt(total), "-i", steps.get(steps.size() - 1)));
-            f.append("[0:v]fps=30,format=yuv420p,setsar=1[v]");
+            f.append("[0:v]scale=2000:1125:force_original_aspect_ratio=decrease,pad=2000:1125:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.0005,1.02)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=30,format=yuv420p,setsar=1[v]");
         } else {
             for (int k = 0; k < n; k++) {
                 double end = k + 1 < n ? t.get(k + 1) : total;
@@ -521,7 +555,7 @@ public class ConceptExplainerService {
                 if (k == 0) len = t.get(1);
                 if (k == n - 1 && k > 0) len = total - t.get(k) + FADE;
                 args.addAll(List.of("-loop", "1", "-framerate", "30", "-t", fmt(len), "-i", steps.get(k)));
-                f.append('[').append(k).append(":v]fps=30,format=yuv420p,setsar=1[i").append(k).append("];");
+                f.append('[').append(k).append(":v]scale=2000:1125:force_original_aspect_ratio=decrease,pad=2000:1125:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.0007,1.025)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=30,format=yuv420p,setsar=1[i").append(k).append("];" );
             }
             String prev = "i0";
             for (int k = 1; k < n; k++) {

@@ -106,10 +106,9 @@ studio:
     chatterbox:
       baseUrl: ${CHATTERBOX_TTS_BASE_URL:http://tts-chatterbox:5004}
       # Must match a reference clip filename (minus .wav) in
-      # tts-chatterbox/voices/ - see that folder's README. No default ships
-      # bundled, unlike Piper's preloaded voices, since cloning needs a real
-      # reference clip someone actually has rights to use.
-      voice: ${CHATTERBOX_VOICE:narrator}
+      # tts-chatterbox/voices/ - see that folder's README. The service bootstraps narrator-male/narrator-female from local Piper references on first start;
+      # users can replace them with their own permitted recordings.
+      voice: ${CHATTERBOX_VOICE:narrator-male}
     cosyvoice:
       baseUrl: ${COSYVOICE_TTS_BASE_URL:http://tts-cosyvoice:5005}
       voice: ${COSYVOICE_VOICE:default}

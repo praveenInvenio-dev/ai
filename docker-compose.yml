@@ -260,7 +260,7 @@ services:
       # Downloaded into the tts-data volume in the background on first start, so
       # the Voice lab has something to compare without a wait. Everything else in
       # the catalogue installs on demand when first selected.
-      TTS_PRELOAD_VOICES: ${TTS_PRELOAD_VOICES:-en_US-lessac-high,en_US-ryan-high}
+      TTS_PRELOAD_VOICES: ${TTS_PRELOAD_VOICES:-en_US-lessac-high,en_US-ryan-high,en_US-amy-medium}
     volumes:
       - tts-data:/voices
     ports:
@@ -310,7 +310,9 @@ services:
       context: ./tts-chatterbox
     environment:
       CHATTERBOX_DEVICE: ${CHATTERBOX_DEVICE:-auto}
-      CHATTERBOX_DEFAULT_VOICE: ${CHATTERBOX_VOICE:-narrator}
+      CHATTERBOX_DEFAULT_VOICE: ${CHATTERBOX_VOICE:-narrator-male}
+      CHATTERBOX_REFERENCE_BOOTSTRAP_URL: ${CHATTERBOX_REFERENCE_BOOTSTRAP_URL:-http://tts:5002}
+      CHATTERBOX_BOOTSTRAP_VOICES: ${CHATTERBOX_BOOTSTRAP_VOICES:-narrator-male:en_US-ryan-high,narrator-female:en_US-amy-medium}
       CHATTERBOX_MODEL_TYPE: ${CHATTERBOX_MODEL_TYPE:-standard}
       CHATTERBOX_DEFAULT_LANGUAGE: ${CHATTERBOX_DEFAULT_LANGUAGE:-en}
     volumes:

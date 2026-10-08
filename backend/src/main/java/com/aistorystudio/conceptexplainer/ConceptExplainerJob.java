@@ -12,7 +12,7 @@ public class ConceptExplainerJob {
     public enum Status { QUEUED, PLANNING, GENERATING_SCENES, ASSEMBLING, REGENERATING, SUCCEEDED, FAILED }
 
     private final UUID id;
-    private final String topic, instructions, language, duration, difficulty, motion, model, track, subject;
+    private final String topic, instructions, language, duration, difficulty, motion, model, track, subject, voice;
     private final boolean examFocus;
     private final Instant createdAt = Instant.now();
     private volatile Status status = Status.QUEUED;
@@ -28,7 +28,7 @@ public class ConceptExplainerJob {
     private final List<String> warnings = Collections.synchronizedList(new ArrayList<>());
 
     public ConceptExplainerJob(UUID id, String topic, String instructions, String language, String duration,
-                               String difficulty, String motion, String model, String track, String subject, boolean examFocus) {
+                               String difficulty, String motion, String model, String track, String subject, boolean examFocus, String voice) {
         this.id = id;
         this.topic = topic;
         this.instructions = instructions;
@@ -39,6 +39,7 @@ public class ConceptExplainerJob {
         this.model = model;
         this.track = track;
         this.subject = subject;
+        this.voice = voice == null || voice.isBlank() ? "narrator-male" : voice.trim();
         this.examFocus = examFocus;
     }
 
@@ -100,6 +101,7 @@ public class ConceptExplainerJob {
     public String getModel() { return model; }
     public String getTrack() { return track; }
     public String getSubject() { return subject; }
+    public String getVoice() { return voice; }
     public boolean isExamFocus() { return examFocus; }
     public Instant getCreatedAt() { return createdAt; }
     public Status getStatus() { return status; }

@@ -27,9 +27,9 @@ public class ConceptExplainerJobStore {
     }
 
     public ConceptExplainerJob create(String topic, String instructions, String language, String duration,
-                                      String difficulty, String animationMode, String model, String track, String subject, boolean examFocus) {
+                                      String difficulty, String animationMode, String model, String track, String subject, boolean examFocus, String voice) {
         ConceptExplainerJob job = new ConceptExplainerJob(UUID.randomUUID(), topic, instructions, language,
-                duration, difficulty, animationMode, model, track, subject, examFocus);
+                duration, difficulty, animationMode, model, track, subject, examFocus, voice);
         jobs.put(job.getId(), job);
         return job;
     }
@@ -37,7 +37,7 @@ public class ConceptExplainerJobStore {
     public ConceptExplainerJob create(String topic, String instructions, String language, String duration,
                                       String difficulty, String animationMode, String model) {
         return create(topic, instructions, language, duration, difficulty, animationMode, model,
-                "GENERAL", "General", false);
+                "GENERAL", "General", false, "narrator-male");
     }
 
     public ConceptExplainerJob get(UUID id) { return jobs.get(id); }

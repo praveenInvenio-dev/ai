@@ -342,6 +342,16 @@ public class ProviderGateway {
      */
     public TextToSpeechProvider.TtsResult synthesizeForStoryLanguage(TextToSpeechProvider.TtsRequest request) {
         if (demoMode) return synthesize(request);
+        // Concept Explainer's narrator-male/narrator-female voices are explicit Chatterbox
+        // selections. Do not silently replace them with the old female Edge voice for
+        // English / Indian English.
+        String requestedVoice = request.voice() == null ? "" : request.voice().trim();
+        String lang = request.language() == null ? "" : request.language().trim().toLowerCase(java.util.Locale.ROOT);
+        boolean englishFamily = lang.equals("english") || lang.equals("en") || lang.startsWith("english ")
+                || lang.equals("indian english") || lang.equals("en-in") || lang.startsWith("en-in-");
+        if (englishFamily && requestedVoice.startsWith("narrator-")) {
+            return synthesize(request);
+        }
         String edge = edgeVoiceForLanguage(request.language());
         String indic = indicVoiceForLanguage(request.language());
         String[] preferredVoices = edge == null ? new String[]{indic} : (indic == null ? new String[]{edge} : new String[]{edge, indic});
