@@ -352,6 +352,10 @@ public class ProviderGateway {
         if (englishFamily && requestedVoice.startsWith("narrator-")) {
             return synthesize(request);
         }
+        // An explicitly chosen IndicF5 voice is the user's decision: use it, don't swap to Edge.
+        if (requestedVoice.startsWith("indic:")) {
+            return synthesizeIndicVoice(request);
+        }
         String edge = edgeVoiceForLanguage(request.language());
         String indic = indicVoiceForLanguage(request.language());
         String[] preferredVoices = edge == null ? new String[]{indic} : (indic == null ? new String[]{edge} : new String[]{edge, indic});

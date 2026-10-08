@@ -410,10 +410,35 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** IndicF5 cannot speak English: give it a native sentence for the voice's language. */
+  private static readonly INDIC_SAMPLES: Record<string, string> = {
+    kn: 'ನಮಸ್ಕಾರ! ಇದು ನನ್ನ ಧ್ವನಿಯ ಮಾದರಿ. ಕಥೆ ಕೇಳಲು ಸಿದ್ಧರಾಗಿ.',
+    hi: 'नमस्ते! यह मेरी आवाज़ का एक नमूना है। चलिए एक कहानी सुनते हैं।',
+    mr: 'नमस्कार! हा माझ्या आवाजाचा नमुना आहे. चला एक गोष्ट ऐकूया.',
+    ta: 'வணக்கம்! இது என் குரலின் மாதிரி. ஒரு கதை கேட்கலாம் வாருங்கள்.',
+    te: 'నమస్కారం! ఇది నా గొంతు నమూనా. ఒక కథ విందాం రండి.',
+    ml: 'നമസ്കാരം! ഇത് എന്റെ ശബ്ദത്തിന്റെ ഒരു സാമ്പിൾ ആണ്. നമുക്ക് ഒരു കഥ കേൾക്കാം.',
+    bn: 'নমস্কার! এটি আমার কণ্ঠের একটি নমুনা। চলুন একটি গল্প শুনি।',
+    gu: 'નમસ્તે! આ મારા અવાજનો નમૂનો છે. ચાલો એક વાર્તા સાંભળીએ.',
+    pa: 'ਸਤ ਸ੍ਰੀ ਅਕਾਲ! ਇਹ ਮੇਰੀ ਆਵਾਜ਼ ਦਾ ਨਮੂਨਾ ਹੈ।',
+    or: 'ନମସ୍କାର! ଏହା ମୋ ସ୍ୱରର ଏକ ନମୁନା।'
+  };
+
   speak(): void {
     const voice = this.voices.find(v => v.id === this.selectedVoice);
     this.busy = true;
     this.error = '';
+    if (this.selectedVoice?.startsWith('indic:') && !/[\u0900-\u0DFF]/.test(this.text)) {
+      const lang = this.selectedVoice.slice('indic:'.length, 'indic:'.length + 2);
+      const sample = VoiceLabComponent.INDIC_SAMPLES[lang];
+      if (sample) {
+        this.text = sample;
+      } else {
+        this.error = 'IndicF5 voices speak Indian languages only (no English). Type the sample in an Indian script.';
+        this.busy = false;
+        return;
+      }
+    }
     // Downloading a voice takes far longer than synthesising a line, so say which
     // one is happening. Otherwise the first use of any voice looks like a freeze.
     this.busyLabel = voice && !voice.installed ? 'Installing voice...' : 'Speaking...';
@@ -426,8 +451,15 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
         this.busy = false;
         this.busyLabel = '';
       },
-      error: () => {
-        this.error = 'Synthesis failed. Check `docker compose logs tts` for the reason.';
+      error: async (e: any) => {
+        // The backend now passes the engine's own reason (e.g. IndicF5 "HF_TOKEN is not set",
+        // "still loading", "Indian languages only"). Fall back to the old hint if there is none.
+        let reason = '';
+        try {
+          const body = e?.error instanceof Blob ? JSON.parse(await e.error.text()) : e?.error;
+          reason = body?.error || body?.message || '';
+        } catch { /* not JSON */ }
+        this.error = reason ? `Synthesis failed: ${reason}` : 'Synthesis failed. Check `docker compose logs tts` for the reason.';
         this.busy = false;
         this.busyLabel = '';
       }

@@ -56,6 +56,9 @@ public class ConceptExplainerService {
     private final ConceptExplainerJobStore jobs;
     private final ConceptSlideRenderer renderer = new ConceptSlideRenderer();
     private final ObjectMapper mapper = new ObjectMapper();
+    /** Slow push-in over a whole scene (0.015 = 1.5 %). 0 disables motion entirely. */
+    @org.springframework.beans.factory.annotation.Value("${studio.concept-explainer.subtle-zoom:0.015}")
+    private double subtleZoom = 0.015;
 
     public ConceptExplainerService(ProviderGateway gateway, StorageProvider storage, MediaProcessor media,
                                    ConceptExplainerJobStore jobs) {
@@ -547,7 +550,7 @@ public class ConceptExplainerService {
         StringBuilder f = new StringBuilder();
         if (n == 1) {
             args.addAll(List.of("-loop", "1", "-framerate", "30", "-t", fmt(total), "-i", steps.get(steps.size() - 1)));
-            f.append("[0:v]scale=2000:1125:force_original_aspect_ratio=decrease,pad=2000:1125:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.0005,1.02)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=30,format=yuv420p,setsar=1[v]");
+            f.append("[0:v]fps=30,format=yuv420p,setsar=1[v0]");
         } else {
             for (int k = 0; k < n; k++) {
                 double end = k + 1 < n ? t.get(k + 1) : total;
@@ -555,16 +558,27 @@ public class ConceptExplainerService {
                 if (k == 0) len = t.get(1);
                 if (k == n - 1 && k > 0) len = total - t.get(k) + FADE;
                 args.addAll(List.of("-loop", "1", "-framerate", "30", "-t", fmt(len), "-i", steps.get(k)));
-                f.append('[').append(k).append(":v]scale=2000:1125:force_original_aspect_ratio=decrease,pad=2000:1125:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.0007,1.025)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=30,format=yuv420p,setsar=1[i").append(k).append("];" );
+                f.append('[').append(k).append(":v]fps=30,format=yuv420p,setsar=1[i").append(k).append("];");
             }
             String prev = "i0";
             for (int k = 1; k < n; k++) {
-                String out = k == n - 1 ? "v" : "x" + k;
+                String out = k == n - 1 ? "v0" : "x" + k;
                 f.append('[').append(prev).append("][i").append(k).append("]xfade=transition=fade:duration=").append(fmt(FADE))
                         .append(":offset=").append(fmt(t.get(k) - FADE)).append('[').append(out).append("];");
                 prev = out;
             }
             f.setLength(f.length() - 1);
+        }
+        // Subtle still-image motion, applied ONCE to the whole scene after the reveal cross-fades:
+        // a slow centred push-in of SUBTLE_ZOOM over the scene. (The old per-step zoompan restarted
+        // the zoom at every reveal - a visible jump - and its scale+pad to 2000x1125 could round to
+        // 2001 px, making pad fail with "Padded dimensions cannot be smaller than input dimensions",
+        // which surfaced as "Could not open encoder before EOF".)
+        if (subtleZoom > 0 && !"STATIC".equals(job.getMotion())) {
+            f.append(";[v0]scale=w='2*trunc(1920*(1+").append(fmt(subtleZoom)).append("*t/").append(fmt(Math.max(1, total)))
+                    .append(")/2)':h=-2:eval=frame:flags=bicubic,crop=1920:1080,setsar=1,format=yuv420p[v]");
+        } else {
+            f.append(";[v0]null[v]");
         }
         int audioIndex = n;
         args.addAll(List.of("-i", s.getAudioPath()));
@@ -631,7 +645,21 @@ public class ConceptExplainerService {
         }
         if (p.exitValue() != 0) {
             String s = new String(out, StandardCharsets.UTF_8);
-            throw new IllegalStateException("ffmpeg failed: " + (s.length() > 700 ? s.substring(s.length() - 700) : s));
+            // The useful line ("Padded dimensions cannot be smaller...", "No such file...") comes BEFORE
+            // the generic "Could not open encoder before EOF" tail, so surface the first real error lines.
+            StringBuilder cause = new StringBuilder();
+            for (String line : s.split("\\R")) {
+                String l = line.toLowerCase(Locale.ROOT);
+                if ((l.contains("error") || l.contains("invalid") || l.contains("cannot") || l.contains("no such file")
+                        || l.contains("failed") || l.contains("not found")) && !l.contains("could not open encoder before eof")
+                        && !l.contains("terminating thread") && !l.contains("task finished")) {
+                    if (cause.length() > 0) cause.append(" | ");
+                    cause.append(line.trim());
+                    if (cause.length() > 600) break;
+                }
+            }
+            String tail = s.length() > 400 ? s.substring(s.length() - 400) : s;
+            throw new IllegalStateException("ffmpeg failed: " + (cause.length() > 0 ? cause : tail));
         }
     }
 

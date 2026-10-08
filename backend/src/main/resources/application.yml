@@ -167,6 +167,10 @@ studio:
   video-generation:
     retention-hours: ${VIDEO_GENERATION_RETENTION_HOURS:24}
   # Motion & Effects Studio (Higgsfield-style tools, local)
+  concept-explainer:
+    retention-hours: ${CONCEPT_EXPLAINER_RETENTION_HOURS:24}
+    # slow push-in over each scene (0.015 = 1.5 %); 0 = no motion, slides stay pin-sharp
+    subtle-zoom: ${CONCEPT_EXPLAINER_SUBTLE_ZOOM:0.015}
   motion-studio:
     retention-hours: ${MOTION_STUDIO_RETENTION_HOURS:48}
     motion:

@@ -87,7 +87,7 @@ public class TtsController {
 
     public record PreviewRequest(String text, String voice, Double speed, Double pitch) {}
 
-    @PostMapping(value = "/preview", produces = "audio/wav")
+    @PostMapping(value = "/preview")
     public ResponseEntity<byte[]> preview(@RequestBody PreviewRequest request) {
         String text = request.text() == null ? "" : request.text().trim();
         if (text.isEmpty()) {
@@ -112,7 +112,9 @@ public class TtsController {
             }
         }
 
-        byte[] wav = tts.post().uri("/api/tts")
+        byte[] wav;
+        try {
+            wav = tts.post().uri("/api/tts")
                 .bodyValue(Map.of(
                         "text", text,
                         "voice", voice,
@@ -120,7 +122,15 @@ public class TtsController {
                         // Pitch is a post-process (ffmpeg), not a Piper setting - it is how
                         // child voices are made without also speeding the narration up.
                         "pitch", request.pitch() == null || request.pitch() <= 0 ? 1.0 : request.pitch()))
-                .retrieve().bodyToMono(byte[].class).block(SPEAK_TIMEOUT);
+                .retrieve().bodyToMono(byte[].class).block(voice.startsWith("indic:") ? Duration.ofMinutes(10) : SPEAK_TIMEOUT);
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+            // Pass the TTS service's JSON reason through so Voice Lab can show it.
+            return ResponseEntity.status(e.getStatusCode()).contentType(MediaType.APPLICATION_JSON)
+                    .body(e.getResponseBodyAsByteArray());
+        } catch (RuntimeException e) {
+            String msg = "{\"error\":\"" + String.valueOf(e.getMessage()).replace("\\", "/").replace("\"", "'") + "\"}";
+            return ResponseEntity.status(504).contentType(MediaType.APPLICATION_JSON).body(msg.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
 
         if (wav == null || wav.length == 0) {
             return ResponseEntity.status(502).build();

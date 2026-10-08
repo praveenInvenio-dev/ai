@@ -28,6 +28,7 @@ import json
 import threading
 import wave
 
+import urllib.error
 import urllib.request
 from flask import Flask, request, Response, jsonify
 
@@ -300,8 +301,25 @@ def indic_synthesize(text: str, voice: str) -> bytes:
         f"{INDIC_BASE_URL}/api/tts", data=payload,
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=900) as response:
-        return response.read()
+    try:
+        with urllib.request.urlopen(req, timeout=900) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        # tts-indic answers with JSON {"error": "..."} - pass the real reason on
+        # (gated model / missing token / still loading / non-Indic text) instead of a generic 502.
+        detail = exc.read().decode("utf-8", "replace")
+        try:
+            detail = json.loads(detail).get("error", detail)
+        except Exception:  # noqa: BLE001
+            pass
+        raise IndicError(exc.code, detail) from exc
+
+
+class IndicError(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+        self.message = message
 
 
 def shift_pitch(wav_bytes: bytes, pitch: float) -> bytes:
@@ -472,6 +490,8 @@ def synthesize():
     if voice.startswith(INDIC_PREFIX):
         try:
             wav_bytes = indic_synthesize(text, voice)
+        except IndicError as exc:
+            return jsonify({"error": f"IndicF5: {exc.message}"}), exc.status
         except Exception as exc:  # noqa: BLE001
             return jsonify({"error": f"IndicF5 service unavailable ({exc}). "
                                      "Start it with: docker compose --profile indic up -d tts-indic"}), 502

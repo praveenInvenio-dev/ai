@@ -39,6 +39,9 @@ REPO_ID = os.environ.get("INDICF5_REPO", "ai4bharat/IndicF5")
 PROMPTS_DIR = os.environ.get("INDICF5_PROMPTS_DIR", "/prompts")
 SAMPLE_RATE = 24000
 DEVICE = os.environ.get("INDICF5_DEVICE", "auto").strip().lower()
+PRELOAD = os.environ.get("INDICF5_PRELOAD", "true").strip().lower() in ("1", "true", "yes")
+_device = "cpu"
+_loading = False
 
 # Languages IndicF5 covers. English is deliberately absent - it is not supported
 # and asking for it produces garbled output rather than an error.
@@ -61,12 +64,13 @@ def get_model():
     should not block on it, and a load failure should be reportable rather than
     crash-looping the container.
     """
-    global _model, _load_error
+    global _model, _load_error, _device, _loading
     if _model is not None:
         return _model
     with _model_lock:
         if _model is not None:
             return _model
+        _loading = True
         try:
             from transformers import AutoModel
             app.logger.info("Loading %s (this takes a few minutes on first run)", REPO_ID)
@@ -95,14 +99,20 @@ def get_model():
             if requested == "cuda":
                 try:
                     _model = _model.to("cuda")
+                    _device = "cuda"
                     app.logger.info("Loaded %s on CUDA", REPO_ID)
                 except Exception as exc:
                     app.logger.warning("CUDA load failed (%s); keeping IndicF5 on CPU", exc)
-            app.logger.info("Loaded %s", REPO_ID)
+            _model.eval()
+            _load_error = None
+            app.logger.info("Loaded %s on %s", REPO_ID, _device)
             return _model
         except Exception as exc:  # noqa: BLE001
-            _load_error = str(exc)
+            _load_error = f"{type(exc).__name__}: {exc}"
+            app.logger.exception("IndicF5 load failed")
             raise
+        finally:
+            _loading = False
 
 
 def list_prompts() -> list[dict]:
@@ -137,6 +147,8 @@ def health():
         "status": "ok",
         "repo": REPO_ID,
         "modelLoaded": _model is not None,
+        "loading": _loading,
+        "device": _device,
         "loadError": _load_error,
         "prompts": [p["id"] for p in list_prompts()],
     })
@@ -190,6 +202,9 @@ def synthesize():
     with open(prompt["transcript"], "r", encoding="utf-8") as f:
         ref_text = f.read().strip()
 
+    if _loading and _model is None:
+        return jsonify({"error": "IndicF5 is still loading (first start downloads ~1.6 GB). "
+                                 "Try again in a minute; GET /health shows progress."}), 503
     try:
         model = get_model()
     except Exception as exc:  # noqa: BLE001
@@ -200,11 +215,18 @@ def synthesize():
     # Synthesis is single-threaded on purpose: two concurrent flow-matching runs
     # on a CPU-only box contend for the same cores and both end up slower than
     # if they had queued.
+    # IndicF5 has no English: Latin-only text comes out as garbage (or crashes on unknown
+    # characters), so refuse it with a useful message instead.
+    if not any(ord(ch) > 0x0900 for ch in text):
+        return jsonify({"error": "IndicF5 speaks Indian languages only. Send text in an Indian script "
+                                 "(e.g. Kannada, Hindi, Tamil) or pick an English voice."}), 400
+
     with _model_lock:
         try:
-            audio = model(text, ref_audio_path=prompt["wav"], ref_text=ref_text)
+            audio = _synthesize(model, text, prompt["wav"], ref_text)
         except Exception as exc:  # noqa: BLE001
-            return jsonify({"error": f"IndicF5 synthesis failed: {exc}"}), 500
+            app.logger.exception("IndicF5 synthesis failed")
+            return jsonify({"error": f"IndicF5 synthesis failed: {type(exc).__name__}: {exc}"}), 500
 
     audio = np.asarray(audio)
     # The model returns int16 in some paths and float in others; soundfile needs
@@ -219,6 +241,45 @@ def synthesize():
     return Response(buffer.getvalue(), mimetype="audio/wav")
 
 
+def _synthesize(model, text, ref_wav, ref_text):
+    """Run IndicF5; on a CUDA problem (out of memory while ComfyUI holds the GPU, device
+    mismatch) retry once on CPU instead of failing the whole narration."""
+    global _model, _device
+    try:
+        import torch
+        with torch.inference_mode():
+            return model(text, ref_audio_path=ref_wav, ref_text=ref_text)
+    except Exception as exc:  # noqa: BLE001
+        msg = str(exc).lower()
+        if _device == "cuda" and ("cuda" in msg or "out of memory" in msg or "device" in msg):
+            app.logger.warning("IndicF5 CUDA synthesis failed (%s); retrying on CPU", exc)
+            import torch
+            _model = model.to("cpu")
+            _device = "cpu"
+            torch.cuda.empty_cache()
+            with torch.inference_mode():
+                return _model(text, ref_audio_path=ref_wav, ref_text=ref_text)
+        raise
+    finally:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()  # give VRAM back to ComfyUI between lines
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _preload():
+    try:
+        get_model()
+    except Exception:  # noqa: BLE001 - reported via /health and on the next request
+        pass
+
+
 if __name__ == "__main__":
     os.makedirs(PROMPTS_DIR, exist_ok=True)
-    app.run(host="0.0.0.0", port=5003)
+    if PRELOAD:
+        # Load in the background so the first "Play sample" does not wait minutes for the
+        # 1.6 GB download + load (and time out in the backend). /health shows progress.
+        threading.Thread(target=_preload, daemon=True).start()
+    app.run(host="0.0.0.0", port=5003, threaded=True)

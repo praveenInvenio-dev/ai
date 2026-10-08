@@ -284,6 +284,9 @@ services:
       HF_TOKEN: ${HF_TOKEN:-}
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
       INDICF5_REPO: ${INDICF5_REPO:-ai4bharat/IndicF5}
+      # Load the model in the background at start-up so the first "Play sample" does not
+      # time out while 1.6 GB downloads/loads. GET http://localhost:5003/health shows progress.
+      INDICF5_PRELOAD: ${INDICF5_PRELOAD:-true}
       OMP_NUM_THREADS: ${INDICF5_THREADS:-6}
     volumes:
       # Reference clips. Each voice is <name>.wav plus <name>.txt holding that

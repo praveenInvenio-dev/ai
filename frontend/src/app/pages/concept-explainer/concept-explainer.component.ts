@@ -69,8 +69,12 @@ interface LessonSummary { id: string; title: string; duration: string; language:
             <select [(ngModel)]="voice">
               <option value="narrator-male">Arjun — Natural Male Tutor</option>
               <option value="narrator-female">Maya — Natural Female Tutor</option>
+              <optgroup *ngIf="indicForLanguage().length" [label]="'IndicF5 — native ' + language">
+                <option *ngFor="let v of indicForLanguage()" [value]="v.id">{{ v.label }}</option>
+              </optgroup>
             </select>
-            <small class="sync-note">Chatterbox + local open-source reference voice. Replace it later with your own permitted recording in Voice Lab.</small>
+            <small class="sync-note" *ngIf="!voice.startsWith('indic:')">Chatterbox + local open-source reference voice (English). For Indian languages without an IndicF5 voice the native Edge voice is used.</small>
+            <small class="sync-note" *ngIf="voice.startsWith('indic:')">IndicF5 near-human {{ language }} voice (needs the tts-indic service). Slower than Edge — about a few seconds per sentence on GPU.</small>
           </div>
           <div>
             <label>Learning track</label>
@@ -129,7 +133,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
           </div>
           <div>
             <label>Language</label>
-            <select [(ngModel)]="language">
+            <select [(ngModel)]="language" (ngModelChange)="onLanguageChange()">
               <option *ngFor="let l of languages">{{ l }}</option>
             </select>
           </div>
@@ -276,7 +280,26 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
   busyScene: number | null = null;
   busyKind = '';
 
+  /** IndicF5 voices from the TTS service ("indic:kn-in-sapna" ...). */
+  indicVoices: { id: string; label: string }[] = [];
+  private static readonly LANG_CODE: Record<string, string> = {
+    Kannada: 'kn', Hindi: 'hi', Hinglish: 'hi', Telugu: 'te', Tamil: 'ta', Malayalam: 'ml', Marathi: 'mr',
+    Bengali: 'bn', Gujarati: 'gu', Punjabi: 'pa', Odia: 'or'
+  };
+
   constructor(private http: HttpClient, private route: ActivatedRoute, private router: Router) {}
+
+  indicForLanguage(): { id: string; label: string }[] {
+    const code = ConceptExplainerComponent.LANG_CODE[this.language];
+    return code ? this.indicVoices.filter(v => v.id.startsWith('indic:' + code + '-')) : [];
+  }
+
+  onLanguageChange(): void {
+    // IndicF5 voices are per language (and never English): reset an invalid choice.
+    if (this.voice.startsWith('indic:') && !this.indicForLanguage().some(v => v.id === this.voice)) {
+      this.voice = 'narrator-male';
+    }
+  }
 
   trackChanged(): void {
     this.examFocus = this.track === 'JEE' || this.track === 'NEET' ? this.examFocus : false;
@@ -287,6 +310,14 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    this.http.get<any>(`${this.base}/tts/voices`).subscribe({
+      next: r => {
+        const list: any[] = r?.voices || [];
+        this.indicVoices = list.filter(v => String(v.id).startsWith('indic:') && v.installed !== false)
+          .map(v => ({ id: v.id, label: String(v.id).replace('indic:', '').replace(/-in-/, ' · ') }));
+      },
+      error: () => {}
+    });
     this.http.get<any>(`${this.base}/models/ollama`).subscribe({ next: r => this.models = r?.models || [], error: () => {} });
     this.loadLessons();
     const id = this.route.snapshot.queryParamMap.get('job');
