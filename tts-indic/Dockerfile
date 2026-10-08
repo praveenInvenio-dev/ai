@@ -15,21 +15,32 @@ RUN apt-get update \
        libsndfile1 ffmpeg git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir \
-      --index-url https://download.pytorch.org/whl/cu128 \
-      torch==2.7.1 torchaudio==2.7.1
+# Old pip (23.x in python:3.10-slim) rejects the PyTorch index's "Jinja2"/"typing_extensions"
+# file names ("inconsistent Name") and then tries to BUILD typing_extensions from source, which
+# needs flit_core - not on the PyTorch index -> build fails. A current pip fixes the name check,
+# and PyPI as extra index serves every non-torch dependency.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# IndicF5 runtime dependencies (from the fork's setup.py), with the upstream pins.
-RUN pip install --no-cache-dir \
-      "transformers==4.49.0" "numpy==1.26.4" "accelerate>=0.33.0" cached_path click \
-      "ema_pytorch>=0.5.2" "hydra-core>=1.3.0" jieba librosa matplotlib pydub pypinyin \
+# Exact CUDA 12.8 builds (the +cu128 suffix only exists on the PyTorch index, so pip cannot
+# silently pick a PyPI build). The constraints file stops any later package from replacing them.
+RUN printf 'torch==2.7.1+cu128\ntorchaudio==2.7.1+cu128\nnumpy==1.26.4\ntransformers==4.49.0\n' > /constraints.txt \
+    && pip install --no-cache-dir \
+      --index-url https://download.pytorch.org/whl/cu128 \
+      --extra-index-url https://pypi.org/simple \
+      "torch==2.7.1+cu128" "torchaudio==2.7.1+cu128"
+
+# IndicF5 runtime dependencies (the fork's setup.py), versions from IndicF5's release period
+# (resolution checked for Python 3.10 against this torch).
+RUN pip install --no-cache-dir -c /constraints.txt \
+      "transformers==4.49.0" "numpy==1.26.4" "accelerate==1.5.2" cached_path click \
+      "ema_pytorch>=0.5.2" "hydra-core>=1.3.0" jieba "librosa==0.10.2.post1" matplotlib pydub pypinyin \
       safetensors soundfile tomli torchdiffeq "tqdm>=4.65.0" transformers_stream_generator \
-      vocos "x_transformers>=1.31.14" wandb datasets \
+      "vocos==0.1.0" "x_transformers==1.44.4" wandb "datasets==3.5.0" \
       flask==3.0.3 scipy==1.14.1
 
 # The IndicF5 fork of f5_tts itself. --no-deps so it cannot pull a different torch.
 RUN pip install --no-cache-dir --no-deps "git+https://github.com/ai4bharat/IndicF5.git" \
-    && python -c "import torch, torchaudio, transformers, f5_tts; print('torch', torch.__version__, 'torchaudio', torchaudio.__version__, 'transformers', transformers.__version__)"
+    && python -c "import torch, torchaudio, transformers, f5_tts; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'torchaudio', torchaudio.__version__, 'transformers', transformers.__version__)"
 
 # Model weights are NOT baked into the image (gated repo, HF_TOKEN at runtime).
 ENV HF_HOME=/hf-cache

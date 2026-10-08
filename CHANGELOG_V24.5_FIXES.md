@@ -39,3 +39,13 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile indic b
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile indic up -d --force-recreate tts-indic tts backend frontend
 curl -s localhost:5003/health   # wait for "modelLoaded": true
 ```
+
+## v24.5.1 - tts-indic build fix
+Build failed at the torch step: python:3.10-slim ships pip 23, which rejects the PyTorch index's
+"Jinja2"/"typing_extensions" file names ("inconsistent Name") and then tries to build typing_extensions
+from source, needing flit_core, which the PyTorch-only index does not have.
+- pip/setuptools/wheel upgraded first.
+- torch/torchaudio pinned as `2.7.1+cu128` from the PyTorch index with PyPI as extra index.
+- `/constraints.txt` keeps torch/torchaudio/numpy/transformers fixed for every later pip step.
+- Dependencies pinned to IndicF5's release period (accelerate 1.5.2, datasets 3.5.0, librosa 0.10.2.post1,
+  x_transformers 1.44.4, vocos 0.1.0); the set was resolved for Python 3.10 against torch 2.7.1.
