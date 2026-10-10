@@ -428,15 +428,22 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
     const voice = this.voices.find(v => v.id === this.selectedVoice);
     this.busy = true;
     this.error = '';
-    if (this.selectedVoice?.startsWith('indic:') && !/[\u0900-\u0DFF]/.test(this.text)) {
-      const lang = this.selectedVoice.slice('indic:'.length, 'indic:'.length + 2);
-      const sample = VoiceLabComponent.INDIC_SAMPLES[lang];
-      if (sample) {
-        this.text = sample;
+    const isIndicF5 = !!this.selectedVoice?.startsWith('indic:');
+    const isSpeak = !!this.selectedVoice?.startsWith('speak:');
+    if ((isIndicF5 || isSpeak) && !/[\u0900-\u0DFF]/.test(this.text)) {
+      const prefix = isSpeak ? 'speak:' : 'indic:';
+      const lang = this.selectedVoice.slice(prefix.length, prefix.length + 2);
+      if (isSpeak && lang === 'en') {
+        // Indic-Speak English voices speak the typed English text as it is
       } else {
-        this.error = 'IndicF5 voices speak Indian languages only (no English). Type the sample in an Indian script.';
-        this.busy = false;
-        return;
+        const sample = VoiceLabComponent.INDIC_SAMPLES[lang];
+        if (sample) {
+          this.text = sample;                       // a native sentence shows the voice at its best
+        } else if (isIndicF5) {
+          this.error = 'IndicF5 voices speak Indian languages only (no English). Type the sample in an Indian script.';
+          this.busy = false;
+          return;
+        }                                           // Indic-Speak: no stored sample for this language, try the typed text
       }
     }
     // Downloading a voice takes far longer than synthesising a line, so say which
@@ -482,6 +489,7 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
       if (v.engine) { return v.engine; }
       if (v.id.startsWith('edge:')) { return 'edge'; }
       if (v.id.startsWith('indic:')) { return 'indicf5'; }
+      if (v.id.startsWith('speak:')) { return 'indicspeak'; }
       return 'piper';
     };
 
@@ -531,6 +539,19 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
         voices: []
       },
       {
+        key: 'indicspeak',
+        title: 'Indic-Speak',
+        badge: 'offline · GPU',
+        chipClass: 'chip-teal',
+        note: '13 Indian languages (incl. Odia, Punjabi, Assamese, Urdu) and Indian-accent English. Built for teaching: reads maths, units and '
+            + 'chemical formulae the way a teacher does, and keeps Indian-language + English sentences in one voice. A 3.8B model: first use loads '
+            + 'it (~7.6 GB of GPU memory) and it frees the GPU again after 5 idle minutes. No voice cloning and no laughs or breaths. '
+            + 'Built with Indic-Speak from Bodhan AI / AI4Bharat.',
+        emptyHint: 'Not running. Start it with "docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile indicspeak up -d tts-indicspeak", '
+                 + 'set HF_TOKEN in .env and accept the licence at huggingface.co/bodhan-ai/indic-speak with that account.',
+        voices: []
+      },
+      {
         key: 'other',
         title: 'Other',
         badge: 'custom',
@@ -543,7 +564,7 @@ export class VoiceLabComponent implements OnInit, OnDestroy {
 
     for (const voice of this.voices) {
       const engine = engineOf(voice);
-      const group = this.groups.find(g => g.key === engine) ?? this.groups[3];
+      const group = this.groups.find(g => g.key === engine) ?? this.groups.find(g => g.key === 'other') ?? this.groups[0];
       group.voices.push(voice);
     }
     // Hide "Other" when empty; keep the three real engines visible even with no

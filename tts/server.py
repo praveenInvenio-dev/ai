@@ -24,6 +24,7 @@ import re
 import subprocess
 import tempfile
 import asyncio
+import io
 import json
 import threading
 import wave
@@ -151,6 +152,12 @@ OFFLINE_MODE = os.environ.get("OFFLINE_MODE", "false").lower() in ("1", "true", 
 # through here so the UI has one voice list instead of two, and so nothing
 # breaks when the profile is off - the voices simply do not appear.
 INDIC_BASE_URL = os.environ.get("INDICF5_BASE_URL", "http://tts-indic:5003")
+
+# Indic-Speak (Bodhan AI / AI4Bharat): 22 Indian languages + English, 95 voices, STEM + code-mixed speech.
+# Local sibling container (docker compose --profile indicspeak up -d tts-indicspeak); voices appear only while it runs.
+# Built with Indic-Speak from Bodhan AI / AI4Bharat (Indic Open Model License v1.0).
+SPEAK_PREFIX = "speak:"
+SPEAK_BASE_URL = os.environ.get("INDICSPEAK_BASE_URL", "http://tts-indicspeak:5006")
 
 EDGE_VOICE_CATALOG = {
     "edge:kn-IN-SapnaNeural": {
@@ -288,6 +295,95 @@ def indic_get_voices() -> list:
         return []
 
 
+def speak_get_voices() -> list:
+    """Voice list from the Indic-Speak service, or empty if the profile is not up."""
+    try:
+        with urllib.request.urlopen(f"{SPEAK_BASE_URL}/api/voices", timeout=5) as response:
+            return json.loads(response.read().decode("utf-8")).get("voices", [])
+    except Exception:  # noqa: BLE001 - absence is the normal case
+        return []
+
+
+SPEAK_CHUNK_CHARS = int(os.environ.get("INDICSPEAK_CHUNK_CHARS", "600"))
+
+
+def split_for_speak(text: str, limit: int = SPEAK_CHUNK_CHARS) -> list:
+    """Sentence-boundary chunks of at most `limit` characters (never mid-word); short text stays one chunk."""
+    text = text.strip()
+    if len(text) <= limit:
+        return [text]
+    sentences = re.split(r"(?<=[.!?\u0964\u0965\u061F])\s+", text)
+    chunks, cur = [], ""
+    for sent in sentences:
+        while len(sent) > limit:                        # one enormous sentence: break at the last space before the limit
+            cut = sent.rfind(" ", 0, limit)
+            cut = cut if cut > limit // 2 else limit
+            piece, sent = sent[:cut].strip(), sent[cut:].strip()
+            if cur:
+                chunks.append(cur)
+                cur = ""
+            chunks.append(piece)
+        if cur and len(cur) + 1 + len(sent) > limit:
+            chunks.append(cur)
+            cur = sent
+        else:
+            cur = f"{cur} {sent}".strip()
+    if cur:
+        chunks.append(cur)
+    return [c for c in chunks if c]
+
+
+def join_wavs(parts: list, gap_seconds: float = 0.18) -> bytes:
+    """Concatenate same-format WAV byte strings with a short breath between them."""
+    import wave
+    if len(parts) == 1:
+        return parts[0]
+    out = io.BytesIO()
+    writer = None
+    for i, raw in enumerate(parts):
+        with wave.open(io.BytesIO(raw), "rb") as r:
+            if writer is None:
+                writer = wave.open(out, "wb")
+                writer.setnchannels(r.getnchannels())
+                writer.setsampwidth(r.getsampwidth())
+                writer.setframerate(r.getframerate())
+                rate, width, channels = r.getframerate(), r.getsampwidth(), r.getnchannels()
+            if i:
+                writer.writeframes(b"\x00" * int(rate * gap_seconds) * width * channels)
+            writer.writeframes(r.readframes(r.getnframes()))
+    writer.close()
+    return out.getvalue()
+
+
+def _speak_one(text: str, voice: str, speed: float, style: str = "") -> bytes:
+    """
+    Forward to the Indic-Speak service. Generous timeout: the first call loads a 7.6 GB model (and may download it),
+    and a long line on a shared GPU is slower than on an idle one. Errors keep the service's own message.
+    """
+    payload = {"text": text, "voice": voice, "speed": speed}
+    if style:
+        payload["style"] = style
+    req = urllib.request.Request(
+        f"{SPEAK_BASE_URL}/api/tts", data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=900) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        try:
+            detail = json.loads(detail).get("error", detail)
+        except Exception:  # noqa: BLE001
+            pass
+        raise IndicError(exc.code, detail) from exc
+
+
+def speak_synthesize(text: str, voice: str, speed: float, style: str = "") -> bytes:
+    """Long text is spoken in sentence chunks (the model takes ~1200 characters per call) and joined."""
+    return join_wavs([_speak_one(c, voice, speed, style) for c in split_for_speak(text)])
+
+
 def indic_synthesize(text: str, voice: str) -> bytes:
     """
     Forward to the IndicF5 service.
@@ -404,6 +500,7 @@ def list_voices():
         })
 
     voices.extend(indic_get_voices())
+    voices.extend(speak_get_voices())
 
     # Anything dropped into the volume by hand still works - surface it too.
     manual = sorted(os.listdir(VOICES_DIR)) if os.path.isdir(VOICES_DIR) else []
@@ -486,6 +583,18 @@ def synthesize():
     text = re.sub(r"\s+", " ", re.sub(r"\[[^\]]{1,40}\]", " ", text)).strip()
     if not text.strip():
         text = " "  # piper needs non-empty input; caller sends a short pause
+
+    if voice.startswith(SPEAK_PREFIX):
+        try:
+            wav_bytes = speak_synthesize(text, voice, speed, str(body.get("style") or ""))
+        except IndicError as exc:
+            return jsonify({"error": f"Indic-Speak: {exc.message}"}), exc.status
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": f"Indic-Speak service unavailable ({exc}). "
+                                     "Start it with: docker compose --profile indicspeak up -d tts-indicspeak"}), 502
+        if abs(pitch - 1.0) > 0.01:
+            wav_bytes = shift_pitch(wav_bytes, pitch)
+        return Response(wav_bytes, mimetype="audio/wav")
 
     if voice.startswith(INDIC_PREFIX):
         try:

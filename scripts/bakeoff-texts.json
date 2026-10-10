@@ -1,0 +1,43 @@
+{
+  "_comment": "Edit freely. Each language has the same five kinds of sentence: plain narration, a STEM fact, a STEM fact with a chemical formula, code-mixed (Indian language + English technical words in Latin script), and numbers/time/money. Add your own lines or a 'long' entry (over 600 characters) to test long-line handling.",
+  "kn": {
+    "name": "Kannada",
+    "narr":    "ಒಂದಾನೊಂದು ಕಾಲದಲ್ಲಿ, ಹಸಿರು ಕಾಡಿನಲ್ಲಿ ಒಂದು ಪುಟ್ಟ ಮೊಲ ವಾಸಿಸುತ್ತಿತ್ತು.",
+    "stem":    "ಬೆಳಕು ಪ್ರತಿ ಸೆಕೆಂಡಿಗೆ ಸುಮಾರು ಮೂರು ಲಕ್ಷ ಕಿಲೋಮೀಟರ್ ವೇಗದಲ್ಲಿ ಚಲಿಸುತ್ತದೆ.",
+    "formula": "ನೀರಿನ ರಾಸಾಯನಿಕ ಸೂತ್ರ H2O, ಅದು ನೂರು ಡಿಗ್ರಿ ಸೆಲ್ಸಿಯಸ್‌ನಲ್ಲಿ ಕುದಿಯುತ್ತದೆ.",
+    "mixed":   "Load balancer ಅನೇಕ servers ನಡುವೆ traffic ಅನ್ನು ಹಂಚುತ್ತದೆ.",
+    "numbers": "ಟಿಕೆಟ್ ಬೆಲೆ 499 ರೂಪಾಯಿ, ರೈಲು ಬೆಳಿಗ್ಗೆ 6:30 ಕ್ಕೆ ಹೊರಡುತ್ತದೆ."
+  },
+  "hi": {
+    "name": "Hindi",
+    "narr":    "एक समय की बात है, हरे जंगल में एक छोटा सा खरगोश रहता था।",
+    "stem":    "प्रकाश की गति लगभग तीन लाख किलोमीटर प्रति सेकंड होती है।",
+    "formula": "पानी का रासायनिक सूत्र H2O है और यह सौ डिग्री सेल्सियस पर उबलता है।",
+    "mixed":   "Load balancer कई servers के बीच traffic को बाँट देता है।",
+    "numbers": "टिकट की कीमत 499 रुपये है और ट्रेन सुबह 6:30 बजे चलती है।"
+  },
+  "ta": {
+    "name": "Tamil",
+    "narr":    "ஒரு காலத்தில், பச்சை காட்டில் ஒரு சிறிய முயல் வாழ்ந்து வந்தது.",
+    "stem":    "ஒளி ஒரு வினாடிக்கு ஏறக்குறைய மூன்று லட்சம் கிலோமீட்டர் வேகத்தில் செல்கிறது.",
+    "formula": "நீரின் வேதியியல் சூத்திரம் H2O, அது நூறு டிகிரி செல்சியஸில் கொதிக்கும்.",
+    "mixed":   "Load balancer பல servers இடையே traffic ஐ பகிர்ந்து கொடுக்கிறது.",
+    "numbers": "டிக்கெட் விலை 499 ரூபாய், ரயில் காலை 6:30 மணிக்கு புறப்படும்."
+  },
+  "te": {
+    "name": "Telugu",
+    "narr":    "అనగనగా ఒక పచ్చని అడవిలో ఒక చిన్న కుందేలు ఉండేది.",
+    "stem":    "కాంతి సెకనుకు సుమారు మూడు లక్షల కిలోమీటర్ల వేగంతో ప్రయాణిస్తుంది.",
+    "formula": "నీటి రసాయన సూత్రం H2O, అది వంద డిగ్రీల సెల్సియస్ వద్ద మరుగుతుంది.",
+    "mixed":   "Load balancer అనేక servers మధ్య traffic ను పంచుతుంది.",
+    "numbers": "టికెట్ ధర 499 రూపాయలు, రైలు ఉదయం 6:30 కి బయలుదేరుతుంది."
+  },
+  "en": {
+    "name": "English",
+    "narr":    "Once upon a time, a little rabbit lived in a green forest.",
+    "stem":    "Light travels at about three lakh kilometres every second.",
+    "formula": "The chemical formula of water is H2O, and it boils at one hundred degrees Celsius.",
+    "mixed":   "A load balancer shares the traffic between many servers.",
+    "numbers": "The ticket costs 499 rupees and the train leaves at 6:30 in the morning."
+  }
+}

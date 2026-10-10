@@ -110,6 +110,8 @@ public class H3SceneRenderer {
     private final MediaProcessor mediaProcessor;
     private final String indicNarratorVoice;
     private final boolean ttsLipSyncReference;
+    private final String indicEngine;
+    private final boolean indicAutoTts;
     private final ObjectMapper mapper = new ObjectMapper();
     private final double configuredShotSeconds;
     private final double speechTailSeconds;
@@ -122,17 +124,21 @@ public class H3SceneRenderer {
     public H3SceneRenderer(ProviderGateway providerGateway, MediaProcessor mediaProcessor,
                            @Value("${studio.h3.scene.indic-narrator-voice:}") String indicNarratorVoice,
                            @Value("${studio.h3.scene.tts-lipsync-reference:true}") boolean ttsLipSyncReference,
+                           @Value("${studio.h3.scene.indic-auto-tts:true}") boolean indicAutoTts,
                            @Value("${studio.h3.scene.max-shot-seconds:${studio.animation.local-ai.minimax-h3-shot-seconds:8.0}}") double configuredShotSeconds,
                            @Value("${studio.h3.scene.speech-tail-seconds:0.8}") double speechTailSeconds,
                            @Value("${studio.h3.scene.music-intensity-cap:0.35}") double musicIntensityCap,
                            @Value("${studio.h3.scene.narrator-voice:warm, clear, mature storyteller voice with gentle expression}") String narratorVoice,
                            @Value("${studio.h3.scene.loudness-lufs:-16}") double loudnessTarget,
                            @Value("${studio.audio.h3.turbo:true}") boolean audioTurbo,
-                           @Value("${studio.h3.scene.voice-over-tail-retry:true}") boolean voiceOverTailRetry) {
+                           @Value("${studio.h3.scene.voice-over-tail-retry:true}") boolean voiceOverTailRetry,
+                           @Value("${studio.tts.indic-engine:indicf5}") String indicEngine) {
+        this.indicEngine = indicEngine;
         this.providerGateway = providerGateway;
         this.mediaProcessor = mediaProcessor;
         this.indicNarratorVoice = indicNarratorVoice;
         this.ttsLipSyncReference = ttsLipSyncReference;
+        this.indicAutoTts = indicAutoTts;
         this.configuredShotSeconds = configuredShotSeconds;
         this.speechTailSeconds = speechTailSeconds;
         this.musicIntensityCap = musicIntensityCap;
@@ -168,6 +174,13 @@ public class H3SceneRenderer {
                 flags[0], flags[1]);
         long voiceSeed = stableSeed(spec.voiceSeedKey());
         SpeechEngine engine = spec.speechEngine() == null ? SpeechEngine.H3 : spec.speechEngine();
+        // H3 does not reliably speak Indian languages (a Kannada skit came out in another language).
+        // When the lines are in an Indian script that IndicF5 has voices for, IndicF5 speaks and H3 lip-syncs.
+        if (engine == SpeechEngine.H3 && indicAutoTts && lang.indic() && !lang.romanized() && !IndicSpeech.indicVoices(lang, indicEngine).isEmpty()
+                && spec.lines() != null && !spec.lines().isEmpty()) {
+            engine = SpeechEngine.INDIC_TTS;
+            warnings.add("H3 cannot speak " + lang.name() + " reliably - " + (IndicSpeech.isIndicSpeak(indicEngine) ? "Indic-Speak" : "IndicF5") + " " + lang.name() + " voice used, H3 lip-syncs to it.");
+        }
         Map<String, String> voices = engine == SpeechEngine.INDIC_TTS ? assignIndicVoices(plan, lang) : Map.of();
         Run run = new Run(ctx, engine, lang, voices, opt.characterReference(), voiceSeed, opt.workDir(), warnings);
         log.info("H3 scene: speech engine {}{}", engine, voices.isEmpty() ? "" : " voices " + voices);
@@ -491,19 +504,19 @@ public class H3SceneRenderer {
 
     /** First speaker of each role keeps a stable voice for the whole scene. */
     private Map<String, String> assignIndicVoices(List<Shot> plan, IndicSpeech.Language lang) {
-        List<String> pool = IndicSpeech.indicVoices(lang);
+        List<String> pool = IndicSpeech.indicVoices(lang, indicEngine);
         Map<String, String> out = new LinkedHashMap<>();
         int characterIndex = 0;
         for (Shot shot : plan) {
             for (Piece p : shot.pieces()) {
                 if (out.containsKey(p.speaker())) continue;
-                String voice = p.voice() != null && p.voice().startsWith("indic:") ? p.voice() : null;
+                String voice = IndicSpeech.isIndicEngineVoice(p.voice()) ? p.voice() : null;
                 boolean narrator = shot.kind() == ShotKind.VOICE_OVER;
                 if (voice == null && narrator && indicNarratorVoice != null && !indicNarratorVoice.isBlank()) voice = indicNarratorVoice.trim();
                 if (voice == null) {
                     if (pool.isEmpty()) {
-                        throw new IllegalStateException("No IndicF5 voice for " + lang.name()
-                                + ". Supported: Hindi, Kannada, Tamil, Telugu, Malayalam, Marathi, Bengali, Gujarati, English - or untick 'Indic TTS voice' to let H3 speak.");
+                        throw new IllegalStateException("The " + (IndicSpeech.isIndicSpeak(indicEngine) ? "Indic-Speak" : "IndicF5") + " engine has no voice for " + lang.name()
+                                + " - or untick 'Indic TTS voice' to let H3 speak.");
                     }
                     // narrator = first (female) voice; characters alternate male / female
                     voice = narrator ? pool.get(0) : pool.get((1 + characterIndex++) % pool.size());

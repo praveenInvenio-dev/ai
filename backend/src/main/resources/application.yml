@@ -87,6 +87,8 @@ studio:
     # to fail the job loudly instead of silently shipping placeholders.
     fallbackToPlaceholder: ${COMFYUI_FALLBACK_PLACEHOLDER:false}
   tts:
+    # Which engine "Indic TTS" means everywhere (auto voice picks, Indic TTS checkboxes): indicf5 (default) | indicspeak
+    indic-engine: ${INDIC_ENGINE:indicf5}
     # piper       = fully offline, free, but no Kannada / Indian English / child voices
     # sarvam      = hosted API, costs per character, covers all of the above
     # chatterbox  = expressive English (paralinguistic tags, voice cloning) - see
@@ -211,6 +213,8 @@ studio:
       # Dialogue shots pass the TTS clip to H3 as reference audio so the lips follow it
       # (uses the ref2va model, LOCAL_AI_ANIMATION_MINIMAX_H3_REF2VA_MODEL).
       tts-lipsync-reference: ${H3_SCENE_TTS_LIPSYNC_REFERENCE:true}
+      # H3 cannot speak Kannada/Tamil/... reliably: IndicF5 speaks, H3 lip-syncs (false = always let H3 speak)
+      indic-auto-tts: ${H3_SCENE_INDIC_AUTO_TTS:true}
   audio:
     h3:
       # Classic Story Production is image-only; H3 supplies the soundtrack.

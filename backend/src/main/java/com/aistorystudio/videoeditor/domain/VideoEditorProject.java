@@ -49,6 +49,21 @@ public class VideoEditorProject {
     @Column(name = "custom_instructions", columnDefinition = "TEXT")
     private String customInstructions;
 
+    /** Colour look: null/"auto" = the template's own grade, "none", or an id from TimelineRenderer.LOOKS. */
+    @Column(name = "look", length = 32)
+    private String look;
+
+    /** Title shown over the first seconds of the final render (null/blank = no title). */
+    @Column(name = "title_text", length = 160)
+    private String titleText;
+
+    @Column(name = "stabilize", nullable = false)
+    private boolean stabilize = false;
+
+    /** Film effects, comma separated ids from TimelineRenderer.EFFECTS (null/blank = none). */
+    @Column(name = "effects", length = 160)
+    private String effects;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private VideoEditorState state = VideoEditorState.DRAFT;

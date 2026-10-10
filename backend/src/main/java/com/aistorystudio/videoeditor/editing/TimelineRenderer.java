@@ -73,7 +73,9 @@ public class TimelineRenderer {
             int threads,
             boolean audioEnhancement,
             boolean smartReframing,
-            String colorGrade) {}
+            String colorGrade,
+            boolean stabilize,
+            String effects) {}
 
     /**
      * Fixed, built-in color grade presets, each a plain FFmpeg eq/colorbalance
@@ -83,20 +85,57 @@ public class TimelineRenderer {
      * applies here, so a grade can never carry filter syntax from a project's
      * custom instructions or an LLM response.
      */
-    private static final Map<String, String> COLOR_GRADE_PRESETS = Map.of(
-            "none", "",
-            // Lifted shadows toward teal, warm highlights, slightly desaturated
-            // and higher contrast - the standard "cinematic" look.
-            "cinematic_teal_orange",
-                "eq=contrast=1.12:saturation=0.90:gamma=0.96,"
-              + "colorbalance=rs=-0.06:gs=0.02:bs=0.10:rm=-0.02:bm=0.04:rh=0.08:bh=-0.06",
-            // Punchy and saturated for short-form vertical video.
-            "punchy_reel", "eq=contrast=1.20:saturation=1.32:brightness=0.02:gamma=1.02",
-            // Slightly warm and gently lifted, close to a natural talking-head look.
-            "warm_vlog", "eq=contrast=1.05:saturation=1.08:gamma=1.03,colorbalance=rm=0.05:bm=-0.03",
-            // Softer contrast, mildly boosted saturation, nothing harsh or flashing.
-            "soft_kids", "eq=contrast=0.97:saturation=1.10:brightness=0.03"
-    );
+    private static final Map<String, String> COLOR_GRADE_PRESETS = new java.util.LinkedHashMap<>();
+    /** User-selectable looks (CapCut-style filters): id -> label, in menu order. */
+    public static final Map<String, String> LOOKS = new java.util.LinkedHashMap<>();
+    static {
+        // template grades (kept) ------------------------------------------------
+        COLOR_GRADE_PRESETS.put("none", "");
+        COLOR_GRADE_PRESETS.put("cinematic_teal_orange",
+                "eq=contrast=1.12:saturation=0.90:gamma=0.96,colorbalance=rs=-0.06:gs=0.02:bs=0.10:rm=-0.02:bm=0.04:rh=0.08:bh=-0.06");
+        COLOR_GRADE_PRESETS.put("punchy_reel", "eq=contrast=1.20:saturation=1.32:brightness=0.02:gamma=1.02");
+        COLOR_GRADE_PRESETS.put("warm_vlog", "eq=contrast=1.05:saturation=1.08:gamma=1.03,colorbalance=rm=0.05:bm=-0.03");
+        COLOR_GRADE_PRESETS.put("soft_kids", "eq=contrast=0.97:saturation=1.10:brightness=0.03");
+        // selectable looks ----------------------------------------------------------
+        look("vivid", "Vivid", "eq=contrast=1.12:saturation=1.45:gamma=1.0");
+        look("warm", "Warm", "eq=contrast=1.04:saturation=1.10,colorbalance=rs=0.04:rm=0.06:rh=0.04:bs=-0.04:bm=-0.06:bh=-0.05");
+        look("cool", "Cool", "eq=contrast=1.05:saturation=1.0,colorbalance=rs=-0.05:rm=-0.04:bs=0.06:bm=0.07:bh=0.05");
+        look("golden_hour", "Golden hour", "eq=contrast=1.06:saturation=1.20:brightness=0.02,colorbalance=rs=0.08:rm=0.10:rh=0.06:bs=-0.08:bm=-0.10:bh=-0.08");
+        look("moody", "Moody", "eq=contrast=1.22:saturation=0.78:brightness=-0.04:gamma=0.92,colorbalance=bs=0.05:bm=0.03");
+        look("vintage", "Vintage film", "eq=contrast=0.94:saturation=0.78:brightness=0.03,colorbalance=rs=0.05:rm=0.04:bh=-0.07:gh=0.02,noise=alls=7:allf=t");
+        look("bw", "Black & white", "hue=s=0,eq=contrast=1.18");
+        look("soft_pastel", "Soft pastel", "eq=contrast=0.92:saturation=0.90:brightness=0.06:gamma=1.06");
+        look("fresh", "Fresh & bright", "eq=contrast=1.08:saturation=1.18:brightness=0.05:gamma=1.04");
+        look("drama", "Dramatic", "eq=contrast=1.35:saturation=1.05:brightness=-0.03:gamma=0.90");
+    }
+
+    /**
+     * Film effects (Cardboard: blur, film grain, vignette, scanlines, halation ...). Fixed, built-in fragments applied
+     * after the colour look, in this order. Labels inside a fragment are unique to it so several can be chained.
+     */
+    public static final Map<String, String> EFFECTS = new java.util.LinkedHashMap<>();
+    public static final Map<String, String> EFFECT_LABELS = new java.util.LinkedHashMap<>();
+    static {
+        effect("soft_blur", "Soft blur", "gblur=sigma=1.6");
+        effect("glow", "Soft glow", "split[gl_a][gl_b];[gl_b]gblur=sigma=14[gl_g];[gl_a][gl_g]blend=all_mode=screen:all_opacity=0.30");
+        effect("halation", "Halation (warm highlight glow)",
+                "split[ha_a][ha_b];[ha_b]lutrgb=r='if(gt(val,170),val,0)':g='if(gt(val,170),val*0.7,0)':b='if(gt(val,170),val*0.5,0)',"
+              + "gblur=sigma=18[ha_g];[ha_a][ha_g]blend=all_mode=screen:all_opacity=0.55");
+        effect("vignette", "Vignette", "vignette=angle=PI/4");
+        effect("film_grain", "Film grain", "noise=alls=14:allf=t+u");
+        effect("scanlines", "Scanlines", "drawgrid=width=0:height=4:thickness=1:color=black@0.30");
+        effect("letterbox", "Cinematic bars", "drawbox=x=0:y=0:w=iw:h=ih*0.09:color=black:t=fill,drawbox=x=0:y=ih*0.91:w=iw:h=ih*0.09:color=black:t=fill");
+    }
+
+    private static void effect(String id, String label, String filter) {
+        EFFECTS.put(id, filter);
+        EFFECT_LABELS.put(id, label);
+    }
+
+    private static void look(String id, String label, String filter) {
+        COLOR_GRADE_PRESETS.put(id, filter);
+        LOOKS.put(id, label);
+    }
 
     /** Resolves a template's colorGrade id to its FFmpeg filter fragment, or
      *  null if there is nothing to apply. Unknown ids fail open to no grade
@@ -181,6 +220,11 @@ public class TimelineRenderer {
 
         List<String> filters = new ArrayList<>();
 
+        // Stabilise shaky handheld footage before anything else touches the pixels (FFmpeg deshake, edges mirrored)
+        if (request.stabilize()) {
+            filters.add("deshake=rx=32:ry=32:edge=mirror");
+        }
+
         // Scale to fit, pad to exact frame. Cover-crop would silently discard
         // the sides of a landscape shot in a 9:16 output; letterboxing keeps
         // the whole frame until smart reframing exists to do it deliberately.
@@ -200,6 +244,12 @@ public class TimelineRenderer {
         String grade = colorGradeFilter(request.colorGrade());
         if (grade != null) {
             filters.add(grade);
+        }
+        if (request.effects() != null && !request.effects().isBlank()) {
+            java.util.Set<String> chosen = new java.util.HashSet<>(java.util.Arrays.asList(request.effects().split(",")));
+            for (var e : EFFECTS.entrySet()) {          // canonical order, only known ids
+                if (chosen.contains(e.getKey())) filters.add(e.getValue());
+            }
         }
 
         // ZOOM is a motion technique on the incoming side of a shot.

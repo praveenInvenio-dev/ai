@@ -58,6 +58,9 @@ public class VideoEditorController {
     private final ProgressReporter progress;
     private final RenderJobStateService jobState;
     private final Executor editorExecutor;
+    private final com.aistorystudio.videoeditor.service.SpeechCleanupService cleanupService;
+    private final com.aistorystudio.videoeditor.service.HighlightService highlightService;
+    private final com.aistorystudio.videoeditor.service.TranscriptSearchService searchService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
     public VideoEditorController(VideoEditorProjectService service,
@@ -69,7 +72,10 @@ public class VideoEditorController {
                                  VideoRenderService renderService,
                                  ProgressReporter progress,
                                  RenderJobStateService jobState,
-                                 @Qualifier("videoEditorExecutor") Executor editorExecutor) {
+                                 @Qualifier("videoEditorExecutor") Executor editorExecutor,
+                                 com.aistorystudio.videoeditor.service.SpeechCleanupService cleanupService,
+                                 com.aistorystudio.videoeditor.service.HighlightService highlightService,
+                                 com.aistorystudio.videoeditor.service.TranscriptSearchService searchService) {
         this.service = service;
         this.storage = storage;
         this.properties = properties;
@@ -80,6 +86,9 @@ public class VideoEditorController {
         this.progress = progress;
         this.jobState = jobState;
         this.editorExecutor = editorExecutor;
+        this.cleanupService = cleanupService;
+        this.highlightService = highlightService;
+        this.searchService = searchService;
     }
 
     // ---- capability discovery ---------------------------------------------
@@ -126,7 +135,7 @@ public class VideoEditorController {
         implemented.put("render", true);
         // Whisper transcription and beat detection are not built yet; the UI
         // keeps those two options disabled rather than offering them.
-        implemented.put("captions", false);
+        implemented.put("captions", true); // auto captions: faster-whisper in video-worker + libass burn-in
         implemented.put("music", true);
         capabilities.put("implemented", implemented);
 
@@ -399,6 +408,162 @@ public class VideoEditorController {
         return Map.of("jobId", job.getId(), "status", "PLANNING");
     }
 
+    // ---- Cardboard-style smart jobs ------------------------------------------
+    // These fail softly: a problem such as "run Analyse first" is reported on the job only and
+    // never flips the whole project to FAILED.
+
+    public record CleanupRequest(Boolean jumpZoom) {}
+
+    /** Cuts dead air, filler words and retakes from the speech in every clip and builds the timeline from the rest. */
+    @PostMapping("/projects/{id}/cleanup")
+    public Map<String, Object> cleanup(@PathVariable UUID id, @RequestBody(required = false) CleanupRequest request) {
+        service.get(id);
+        RenderJob job = renderService.createJob(id, RenderKind.PREVIEW);
+        boolean jumpZoom = request == null || request.jumpZoom() == null || request.jumpZoom();
+        editorExecutor.execute(() -> {
+            try {
+                String summary = cleanupService.run(id, job.getId(), jumpZoom);
+                jobState.completeOperation(job.getId());
+                progress.finish(job.getId(), summary);
+            } catch (Exception e) {
+                progress.fail(job.getId(), message(e));
+            }
+        });
+        return Map.of("jobId", job.getId());
+    }
+
+    /** Finds the best 15-60 s moments of long recordings (results via GET /highlights). */
+    @PostMapping("/projects/{id}/highlights")
+    public Map<String, Object> findHighlights(@PathVariable UUID id) {
+        service.get(id);
+        RenderJob job = renderService.createJob(id, RenderKind.PREVIEW);
+        editorExecutor.execute(() -> {
+            try {
+                String summary = highlightService.find(id, job.getId());
+                jobState.completeOperation(job.getId());
+                progress.finish(job.getId(), summary);
+            } catch (Exception e) {
+                progress.fail(job.getId(), message(e));
+            }
+        });
+        return Map.of("jobId", job.getId());
+    }
+
+    public record MomentView(int index, String clipName, double startSec, double endSec, double durationSec,
+                             String title, String reason, int score) {}
+
+    @GetMapping("/projects/{id}/highlights")
+    public List<MomentView> highlights(@PathVariable UUID id) {
+        service.get(id);
+        List<com.aistorystudio.videoeditor.service.HighlightService.Moment> list = highlightService.results(id);
+        List<MomentView> out = new java.util.ArrayList<>();
+        for (int i = 0; i < list.size(); i++) {
+            var m = list.get(i);
+            out.add(new MomentView(i, m.clipName(), m.start(), m.end(), m.end() - m.start(), m.title(), m.reason(), m.score()));
+        }
+        return out;
+    }
+
+    /** Turns moment {index} into the timeline (optionally vertical + captions). */
+    @PostMapping("/projects/{id}/highlights/{index}/use")
+    public Map<String, Object> useHighlight(@PathVariable UUID id, @PathVariable int index,
+                                            @RequestParam(defaultValue = "true") boolean vertical,
+                                            @RequestParam(defaultValue = "true") boolean captions) {
+        return Map.of("summary", highlightService.use(id, index, vertical, captions));
+    }
+
+    // ---- search what was said ---------------------------------------------------
+
+    /** Transcribes every clip (cached) so its speech becomes searchable. */
+    @PostMapping("/projects/{id}/transcribe")
+    public Map<String, Object> transcribe(@PathVariable UUID id) {
+        service.get(id);
+        RenderJob job = renderService.createJob(id, RenderKind.PREVIEW);
+        editorExecutor.execute(() -> {
+            try {
+                String summary = searchService.index(id, job.getId());
+                jobState.completeOperation(job.getId());
+                progress.finish(job.getId(), summary);
+            } catch (Exception e) {
+                progress.fail(job.getId(), message(e));
+            }
+        });
+        return Map.of("jobId", job.getId());
+    }
+
+    @GetMapping("/projects/{id}/transcript/status")
+    public com.aistorystudio.videoeditor.service.TranscriptSearchService.Status transcriptStatus(@PathVariable UUID id) {
+        service.get(id);
+        return searchService.status(id);
+    }
+
+    @GetMapping("/projects/{id}/transcript/search")
+    public List<com.aistorystudio.videoeditor.service.TranscriptSearchService.Hit> searchTranscript(
+            @PathVariable UUID id, @RequestParam("q") String q, @RequestParam(defaultValue = "20") int limit) {
+        service.get(id);
+        return searchService.search(id, q, limit);
+    }
+
+    public record InsertRequest(UUID clipId, double startSec, double endSec, Integer afterIndex) {}
+
+    /** Adds a source range to the timeline as a new shot (used by search results). */
+    @PostMapping("/projects/{id}/timeline/insert")
+    public List<TimelineClipView> insertSegment(@PathVariable UUID id, @RequestBody InsertRequest r) {
+        return service.insertSegment(id, r.clipId(), r.startSec(), r.endSec(), r.afterIndex())
+                .stream().map(TimelineClipView::of).toList();
+    }
+
+    // ---- export for professional editors ------------------------------------------
+
+    /** format: edl (CMX3600) or fcpxml (Final Cut Pro / DaVinci Resolve / Premiere import). */
+    @GetMapping("/projects/{id}/export/{format}")
+    public ResponseEntity<byte[]> exportTimeline(@PathVariable UUID id, @PathVariable String format) {
+        VideoEditorProject project = service.get(id);
+        List<TimelineClip> rows = service.timeline(id);
+        if (rows.isEmpty()) throw new IllegalStateException("There is no timeline to export yet. Create an edit first.");
+        Map<UUID, VideoClip> clips = new java.util.HashMap<>();
+        service.listClips(id).forEach(c -> clips.put(c.getId(), c));
+        List<com.aistorystudio.videoeditor.editing.TimelineExporter.Row> out = new java.util.ArrayList<>();
+        for (TimelineClip r : rows) {
+            VideoClip c = clips.get(r.getClipId());
+            if (c == null) continue;
+            out.add(new com.aistorystudio.videoeditor.editing.TimelineExporter.Row(c.getDisplayName(), c.getId().toString(),
+                    c.getDurationSec() == null ? r.getSourceEndSec() : c.getDurationSec(), r.getSourceStartSec(), r.getSourceEndSec(),
+                    r.getSpeed(), c.isHasAudio(), r.isMuted(), c.getFps() == null ? 30.0 : c.getFps(),
+                    c.getWidth() == null ? 1920 : c.getWidth(), c.getHeight() == null ? 1080 : c.getHeight()));
+        }
+        String title = project.getName();
+        String safe = title.replaceAll("[^A-Za-z0-9._-]+", "_");
+        com.aistorystudio.videoeditor.editing.TimelineExporter.Result res;
+        String type, ext;
+        switch (format.toLowerCase(java.util.Locale.ROOT)) {
+            case "edl" -> {
+                res = com.aistorystudio.videoeditor.editing.TimelineExporter.edl(title, out);
+                StringBuilder notes = new StringBuilder("* NOTE: looks, effects, captions and titles are not part of an EDL; they are baked into the MP4 render.\n");
+                res.warnings().forEach(w -> notes.append("* WARNING: ").append(w).append('\n'));
+                String t = res.text();
+                int at = t.indexOf("FCM:");
+                at = t.indexOf('\n', at) + 1;
+                res = new com.aistorystudio.videoeditor.editing.TimelineExporter.Result(t.substring(0, at) + notes + t.substring(at), res.warnings());
+                type = "text/plain; charset=utf-8"; ext = "edl";
+            }
+            case "fcpxml" -> {
+                res = com.aistorystudio.videoeditor.editing.TimelineExporter.fcpxml(title, out,
+                        project.getAspectRatio().width(), project.getAspectRatio().height());
+                StringBuilder notes = new StringBuilder("<!-- NOTE: looks, effects, captions and titles are baked into the MP4 render, not this file. Media is linked by file name: relink to your originals if asked. -->\n");
+                res.warnings().forEach(w -> notes.append("<!-- WARNING: ").append(w.replace("--", "-")).append(" -->\n"));
+                String t = res.text();
+                int at = t.indexOf("<fcpxml ");
+                res = new com.aistorystudio.videoeditor.editing.TimelineExporter.Result(t.substring(0, at) + notes + t.substring(at), res.warnings());
+                type = "application/xml; charset=utf-8"; ext = "fcpxml";
+            }
+            default -> throw new IllegalArgumentException("Unknown export format '" + format + "'. Use edl or fcpxml.");
+        }
+        return ResponseEntity.ok().header("Content-Type", type)
+                .header("Content-Disposition", "attachment; filename=\"" + safe + "." + ext + "\"")
+                .body(res.text().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     @PostMapping("/projects/{id}/preview")
     public Map<String, Object> preview(@PathVariable UUID id) {
         return startRender(id, RenderKind.PREVIEW);
@@ -537,13 +702,15 @@ public class VideoEditorController {
                               EditIntensity intensity, AspectRatio aspectRatio, Integer targetDurationSec,
                               String customInstructions, VideoEditorState state, String errorMessage,
                               boolean smartCuts, boolean beatSync, boolean smartTransitions,
-                              boolean autoCaptions, boolean audioEnhancement, boolean smartReframing) {
+                              boolean autoCaptions, boolean audioEnhancement, boolean smartReframing,
+                              String look, String titleText, boolean stabilize, String effects) {
         static ProjectView of(VideoEditorProject p) {
             return new ProjectView(p.getId(), p.getName(), p.getCategory(), p.getEditingStyle(),
                     p.getIntensity(), p.getAspectRatio(), p.getTargetDurationSec(),
                     p.getCustomInstructions(), p.getState(), p.getErrorMessage(),
                     p.isSmartCuts(), p.isBeatSync(), p.isSmartTransitions(),
-                    p.isAutoCaptions(), p.isAudioEnhancement(), p.isSmartReframing());
+                    p.isAutoCaptions(), p.isAudioEnhancement(), p.isSmartReframing(),
+                    p.getLook(), p.getTitleText(), p.isStabilize(), p.getEffects());
         }
     }
 

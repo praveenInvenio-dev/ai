@@ -26,6 +26,17 @@ services:
               count: 1
               capabilities: [gpu]
 
+  tts-indicspeak:
+    environment:
+      INDICSPEAK_DEVICE: ${INDICSPEAK_DEVICE:-cuda}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   tts-indic:
     environment:
       INDICF5_DEVICE: ${INDICF5_DEVICE:-cuda}

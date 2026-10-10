@@ -255,6 +255,40 @@ export class ApiService {
     return this.http.post<VideoJobStart>(`${this.base}/video-editor/projects/${projectId}/analyze`, {});
   }
 
+  /** Search what was said: index the speech of every clip, search it, insert a hit on the timeline, export for other editors. */
+  transcribeVideoProject(projectId: string): Observable<VideoJobStart> {
+    return this.http.post<VideoJobStart>(`${this.base}/video-editor/projects/${projectId}/transcribe`, {});
+  }
+  videoTranscriptStatus(projectId: string): Observable<{ indexedClips: number; totalClips: number }> {
+    return this.http.get<{ indexedClips: number; totalClips: number }>(`${this.base}/video-editor/projects/${projectId}/transcript/status`);
+  }
+  searchVideoTranscript(projectId: string, q: string): Observable<VideoSpeechHit[]> {
+    return this.http.get<VideoSpeechHit[]>(`${this.base}/video-editor/projects/${projectId}/transcript/search`, { params: { q, limit: 20 } });
+  }
+  insertVideoSegment(projectId: string, body: { clipId: string; startSec: number; endSec: number; afterIndex?: number }): Observable<any> {
+    return this.http.post<any>(`${this.base}/video-editor/projects/${projectId}/timeline/insert`, body);
+  }
+  /** format: edl | fcpxml */
+  videoExportUrl(projectId: string, format: 'edl' | 'fcpxml'): string {
+    return `${this.base}/video-editor/projects/${projectId}/export/${format}`;
+  }
+  /** Cardboard-style smart jobs: cut dead air / filler words / retakes, and find the best moments. */
+  cleanupVideoSpeech(projectId: string, jumpZoom = true): Observable<VideoJobStart> {
+    return this.http.post<VideoJobStart>(`${this.base}/video-editor/projects/${projectId}/cleanup`, { jumpZoom });
+  }
+  findVideoHighlights(projectId: string): Observable<VideoJobStart> {
+    return this.http.post<VideoJobStart>(`${this.base}/video-editor/projects/${projectId}/highlights`, {});
+  }
+  videoHighlights(projectId: string): Observable<VideoMoment[]> {
+    return this.http.get<VideoMoment[]>(`${this.base}/video-editor/projects/${projectId}/highlights`);
+  }
+  useVideoHighlight(projectId: string, index: number, vertical = true, captions = true): Observable<{ summary: string }> {
+    return this.http.post<{ summary: string }>(`${this.base}/video-editor/projects/${projectId}/highlights/${index}/use`, {}, { params: { vertical, captions } });
+  }
+  /** Auto-caption look: CLEAN | BOLD_REEL | KIDS | CINEMATIC | MINIMAL. */
+  updateVideoCaptions(projectId: string, stylePreset: string, burnIn = true): Observable<any> {
+    return this.http.put(`${this.base}/video-editor/projects/${projectId}/captions`, { stylePreset, burnIn });
+  }
   aiEditVideoProject(projectId: string, useAiDirector = true): Observable<VideoJobStart> {
     return this.http.post<VideoJobStart>(
       `${this.base}/video-editor/projects/${projectId}/ai-edit`, { useAiDirector });
@@ -393,19 +427,30 @@ export class ApiService {
     return this.http.post<{ jobId: string }>(`${this.base}/video-generation/jobs`, form);
   }
 
-  createFunnySkitJob(character: File | null, idea: string, language: string, tone: string, speaker = 'Ira', characterId?: string, referenceId?: string): Observable<{jobId: string}> {
+  createFunnySkitJob(character: File | null, idea: string, language: string, tone: string, speaker = 'Ira', characterId?: string, referenceId?: string, style = 'realistic'): Observable<{jobId: string}> {
     const form = new FormData();
     if (character) form.append('character', character, character.name);
     form.append('idea', idea); form.append('language', language); form.append('tone', tone); form.append('speaker', speaker);
     if (characterId) form.append('characterId', characterId);
     if (referenceId) form.append('referenceId', referenceId);
+    form.append('style', style);
     return this.http.post<{jobId: string}>(`${this.base}/funny-skits/jobs`, form);
   }
   getFunnySkitJob(jobId: string): Observable<{id:string,status:string,errorMessage:string|null,language:string,script:string|null,visualPrompts:string[],dialogues:string[],imageUrls:(string|null)[],soundscape:string,resultVideoPath:string|null,characterId?:string,characterReferenceId?:string}> {
     return this.http.get<any>(`${this.base}/funny-skits/jobs/${jobId}`);
   }
   funnySkitResultUrl(jobId: string): string { return `${this.base}/funny-skits/jobs/${jobId}/video`; }
-  regenerateFunnySkitImage(jobId: string, scene: number): Observable<any> { return this.http.post(`${this.base}/funny-skits/jobs/${jobId}/images/${scene}/regenerate`, {}); }
+  regenerateFunnySkitImage(jobId: string, scene: number, cascade = false): Observable<any> { return this.http.post(`${this.base}/funny-skits/jobs/${jobId}/images/${scene}/regenerate`, {}, { params: { cascade } }); }
+  updateFunnySkitPart(jobId: string, scene: number, visualPrompt: string, dialogue: string): Observable<any> { return this.http.put(`${this.base}/funny-skits/jobs/${jobId}/parts/${scene}`, { visualPrompt, dialogue }); }
+  rewriteFunnySkit(jobId: string, style?: string): Observable<any> { return this.http.post(`${this.base}/funny-skits/jobs/${jobId}/script/regenerate`, {}, { params: style ? { style } : {} }); }
+  /** Every locked character from Create Story, Character Studio or saved uploads. */
+  characterLibrary(includeUnlocked = false): Observable<{ characterId: string; name: string; description: string; origin: string; referenceId: string; locked: boolean }[]> {
+    return this.http.get<any[]>(`${this.base}/character-library`, { params: { includeUnlocked } });
+  }
+  saveCharacterToLibrary(image: File, name: string, description?: string): Observable<{ characterId: string; referenceId: string; name: string }> {
+    const f = new FormData(); f.append('image', image, image.name); f.append('name', name); if (description) f.append('description', description);
+    return this.http.post<any>(`${this.base}/character-library`, f);
+  }
   renderFunnySkit(jobId: string, tone: string, speaker = "Ira", speechEngine: SpeechEngine = 'H3'): Observable<any> { return this.http.post(`${this.base}/funny-skits/jobs/${jobId}/render?tone=${encodeURIComponent(tone)}&speaker=${encodeURIComponent(speaker)}&speechEngine=${speechEngine}`, {}); }
   funnySkitImageUrl(jobId: string, scene: number): string { return `${this.base}/funny-skits/jobs/${jobId}/images/${scene}`; }
 
@@ -684,6 +729,9 @@ export interface VideoEditorCapabilities {
 }
 
 export interface VideoEditorProject {
+  look?: string | null;
+  titleText?: string | null;
+  stabilize?: boolean;
   id: string;
   name: string;
   category: string;
@@ -882,3 +930,6 @@ export interface StudioStatus { comfyAvailable: boolean; comfyReason?: string; m
 export interface CameraPreset { id: string; name: string; category: string; prompt: string; }
 export interface StudioSource { video?: File; image?: File; sourceJobId?: string; episodeId?: string; sequenceId?: string; }
 export interface StudioJobView { report?: string; resultExtension?: string; id: string; tool: 'MOTION_CONTROL' | 'UPSCALE' | 'REFRAME' | 'BACKGROUND' | 'DUB' | 'ANALYZE'; status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'; stage: string; errorMessage?: string; resultSeconds?: number; summary?: string; resultUrl?: string; }
+
+export interface VideoMoment { index: number; clipName: string; startSec: number; endSec: number; durationSec: number; title: string; reason: string; score: number; }
+export interface VideoSpeechHit { clipId: string; clipName: string; start: number; end: number; text: string; score: number; }

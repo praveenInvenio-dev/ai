@@ -5,6 +5,13 @@ import com.aistorystudio.provider.ImageGenerationProvider;
 import com.aistorystudio.provider.MediaProcessor;
 import com.aistorystudio.provider.StorageProvider;
 import com.aistorystudio.provider.TextToSpeechProvider;
+import com.aistorystudio.conceptexplainer.teaching.Destination;
+import com.aistorystudio.conceptexplainer.teaching.LessonValidator;
+import com.aistorystudio.conceptexplainer.teaching.SceneDraft;
+import com.aistorystudio.conceptexplainer.teaching.SectionType;
+import com.aistorystudio.conceptexplainer.teaching.TeachingPlanner;
+import com.aistorystudio.conceptexplainer.teaching.TeachingStyle;
+import com.aistorystudio.conceptexplainer.teaching.VoiceDirection;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -102,21 +109,26 @@ public class ConceptExplainerService {
         try {
             job.setStatus(ConceptExplainerJob.Status.PLANNING);
             job.setStage("Writing the lesson plan");
-            JsonNode plan = plan(job);
-            job.setTitle(text(plan, "title", job.getTopic()));
-            job.setSummary(text(plan, "summary", "A visual lesson on " + job.getTopic()));
-            JsonNode scenes = plan.path("scenes");
+            Lesson lesson = plan(job);
+            job.setTitle(lesson.title());
+            job.setSummary(lesson.summary());
+            JsonNode scenes = lesson.scenes();
             job.getScenes().clear();
             for (int i = 0; i < scenes.size(); i++) {
                 ConceptExplainerJob.Scene s = new ConceptExplainerJob.Scene();
                 JsonNode n = scenes.get(i);
+                SceneDraft d = lesson.drafts().get(i);
                 s.setSceneNumber(i + 1);
-                s.setTemplate(template(n));
-                s.setTitle(text(n, "title", "Scene " + (i + 1)));
-                s.setSentences(sentences(n.path("narration")));
+                s.setTemplate(d.template);
+                s.setTitle(blank(d.title) ? "Scene " + (i + 1) : d.title);
+                s.setSentences(new ArrayList<>(d.narration));          // validated + repaired narration
                 s.setNarration(String.join(" ", s.getSentences()));
                 s.setCode(text(n, "code", null));
-                s.setIllustrationPrompt(text(n, "illustration", null));
+                s.setIllustrationPrompt(d.imagePrompt);                // derived from this scene's narration
+                s.setSectionType(d.sectionType);
+                s.setLearningObjective(d.objective);
+                s.setVisualDescription(d.visualDescription);
+                s.setVoiceDirection(d.emotion, d.pace, d.delivery);
                 s.setPlanJson(n.toString());
                 job.getScenes().add(s);
             }
@@ -197,117 +209,179 @@ public class ConceptExplainerService {
         ConceptExplainerJob copy = create(old.getTopic(), old.getInstructions(), old.getLanguage(), old.getDuration(), old.getDifficulty(),
                 old.getMotion(), old.getModel(), old.getTrack(), old.getSubject(), old.isExamFocus(), old.getVoice());
         copy.setStyle(old.getStyle());
+        copy.setTeachingStyle(old.getTeachingStyle());
+        copy.setDestination(old.getDestination());
         return copy;
     }
 
     // =================================================================== plan
 
-    private JsonNode plan(ConceptExplainerJob job) {
+    // =================================================================== plan (adaptive teaching framework)
+
+    /** The finished lesson: slide JSON per scene + the validated/repaired drafts (narration, voice, alignment). */
+    private record Lesson(String title, String summary, JsonNode scenes, List<SceneDraft> drafts, int words) { }
+
+    private TeachingPlanner.Request planRequest(ConceptExplainerJob job) {
         boolean deep = job.isDeepDive();
-        int minWords = deep ? 430 : 145, maxWords = deep ? 520 : 180;
-        String user = userPrompt(job, deep);
-        JsonNode plan = readJson(gateway.llm().generateStructured(SYSTEM, user, blankToNull(job.getModel())));
-        validate(plan);
-        int words = countWords(plan);
-        // One correction round if the lesson is clearly too short / too long for the chosen mode.
-        if (words < minWords * 0.75 || words > maxWords * 1.3) {
-            job.setStage("Adjusting the lesson length (" + words + " words, target " + minWords + "-" + maxWords + ")");
-            String fix = user + "\n\nYour previous plan had " + words + " spoken words in total. The target is "
-                    + minWords + "-" + maxWords + ". Return the COMPLETE plan again in the same JSON format, "
-                    + (words < minWords ? "adding scenes/sentences with real teaching value" : "removing the least important scenes/sentences")
-                    + ". Previous plan:\n" + plan;
+        return new TeachingPlanner.Request(job.getTopic(), job.getLanguage(), job.getDifficulty(), job.getTrack(), job.getSubject(),
+                job.isExamFocus(), job.getInstructions(), trackInstruction(job), deep,
+                TeachingStyle.parse(job.getTeachingStyle()), Destination.parse(job.getDestination()),
+                deep ? 16 : 8, deep ? 20 : 10, deep ? 430 : 145, deep ? 520 : 180);
+    }
+
+    /**
+     * 1) PLAN: outline with a learning objective, teaching section and slide template per scene (audience, hook, analogy,
+     *    real-world example and humour chosen for THIS topic).  2) WRITE: narration -> slide -> visual description ->
+     *    image prompt -> voice direction, each derived from the same scene.  3) VALIDATE: deterministic repairs (opening line,
+     *    stage directions, voice values, closing) + one targeted LLM repair for what is still wrong.  4) length correction.
+     */
+    private Lesson plan(ConceptExplainerJob job) {
+        TeachingPlanner.Request req = planRequest(job);
+        String model = blankToNull(job.getModel());
+
+        job.setStage("Planning the lesson (audience, analogy, objectives per scene)");
+        JsonNode outline = readJson(gateway.llm().generateStructured(TeachingPlanner.planSystemPrompt(), TeachingPlanner.planUserPrompt(req), model));
+        if (!outline.path("scenes").isArray() || outline.path("scenes").size() < 3) {
+            throw new IllegalStateException("The lesson planner returned no usable outline (needs at least 3 scenes).");
+        }
+        List<String> outlineSections = new ArrayList<>(), outlineObjectives = new ArrayList<>();
+        for (JsonNode o : outline.path("scenes")) {
+            SectionType st = SectionType.parse(text(o, "sectionType", null));
+            outlineSections.add(st == null ? text(o, "sectionType", "CONCEPT") : st.name());
+            outlineObjectives.add(text(o, "learningObjective", text(o, "keyIdea", null)));
+        }
+
+        job.setStage("Writing the narration, slides and voice directions");
+        JsonNode written = readJson(gateway.llm().generateStructured(TeachingPlanner.writeSystemPrompt(), TeachingPlanner.writeUserPrompt(req, outline.toString()), model));
+        validate(written);
+        LessonValidator.Context ctx = new LessonValidator.Context(job.getTopic(), job.getLanguage(), req.destination(), req.kind(), req.style(),
+                outlineSections, outlineObjectives);
+        LessonValidator validator = new LessonValidator();
+        List<SceneDraft> drafts = drafts(written);
+        LessonValidator.Report report = validator.check(drafts, ctx);
+
+        if (report.hasErrors()) {
+            job.setStage("Fixing " + report.errors().size() + " problem(s) in the lesson");
             try {
-                JsonNode second = readJson(gateway.llm().generateStructured(SYSTEM, fix, blankToNull(job.getModel())));
+                JsonNode fixed = readJson(gateway.llm().generateStructured(TeachingPlanner.writeSystemPrompt(),
+                        TeachingPlanner.repairUserPrompt(req, written.toString(), report.errorMessages()), model));
+                validate(fixed);
+                List<SceneDraft> fixedDrafts = drafts(fixed);
+                LessonValidator.Report fixedReport = validator.check(fixedDrafts, ctx);
+                if (fixedReport.errors().size() < report.errors().size()) { written = fixed; drafts = fixedDrafts; report = fixedReport; }
+            } catch (Exception e) {
+                job.getWarnings().add("Lesson repair failed: " + e.getMessage());
+            }
+        }
+        // Length correction (one round): too short / too long for the chosen mode.
+        int words = words(drafts);
+        if (words < req.minWords() * 0.75 || words > req.maxWords() * 1.3) {
+            job.setStage("Adjusting the lesson length (" + words + " words, target " + req.minWords() + "-" + req.maxWords() + ")");
+            try {
+                JsonNode second = readJson(gateway.llm().generateStructured(TeachingPlanner.writeSystemPrompt(),
+                        TeachingPlanner.lengthFixPrompt(req, written.toString(), words), model));
                 validate(second);
-                int w2 = countWords(second);
-                if (Math.abs(w2 - (minWords + maxWords) / 2) < Math.abs(words - (minWords + maxWords) / 2)) {
-                    plan = second;
-                    words = w2;
+                List<SceneDraft> secondDrafts = drafts(second);
+                LessonValidator.Report secondReport = validator.check(secondDrafts, ctx);
+                int w2 = words(secondDrafts), mid = (req.minWords() + req.maxWords()) / 2;
+                if (Math.abs(w2 - mid) < Math.abs(words - mid) && secondReport.errors().size() <= report.errors().size()) {
+                    written = second; drafts = secondDrafts; report = secondReport; words = w2;
                 }
             } catch (Exception e) {
                 job.getWarnings().add("Length correction failed: " + e.getMessage());
             }
         }
-        job.setWordCount(words);
-        if (words < minWords * 0.75 || words > maxWords * 1.3) {
-            job.getWarnings().add("Lesson has " + words + " spoken words (target " + minWords + "-" + maxWords + "), so it will run "
-                    + (words < minWords ? "short" : "long") + ".");
+        for (SceneDraft d : drafts) {
+            if (d.narration.isEmpty()) throw new IllegalStateException("Scene " + d.number + " has no narration after validation - try again or choose another model.");
         }
-        return plan;
+        job.setWordCount(words);
+        if (words < req.minWords() * 0.75 || words > req.maxWords() * 1.3) {
+            job.getWarnings().add("Lesson has " + words + " spoken words (target " + req.minWords() + "-" + req.maxWords() + "), so it will run "
+                    + (words < req.minWords() ? "short" : "long") + ".");
+        }
+        int shown = 0;
+        for (LessonValidator.Issue i : report.issues()) {
+            if (i.level() == LessonValidator.Level.FIXED) continue;
+            if (shown++ < 6) job.getWarnings().add("Alignment: " + i);
+        }
+        int fixes = report.count(LessonValidator.Level.FIXED);
+        if (fixes > 0) job.getWarnings().add("Auto-corrected " + fixes + " small thing(s) (opening line, stage directions, voice values...).");
+        return new Lesson(text(written, "title", text(outline, "title", job.getTopic())),
+                text(written, "summary", text(outline, "summary", "A visual lesson on " + job.getTopic())), written.path("scenes"), drafts, words);
     }
 
-    private static final String SYSTEM = """
-            You are the chief instructional designer for a premium visual learning product.
-            Turn the topic into a BEST-IN-CLASS mini lesson a complete beginner understands after one viewing.
-            Accuracy is mandatory.
+    private List<SceneDraft> drafts(JsonNode lesson) {
+        List<SceneDraft> out = new ArrayList<>();
+        int i = 0;
+        for (JsonNode n : lesson.path("scenes")) out.add(draftOf(n, i++));
+        return out;
+    }
 
-            TEACHING
-            - Start with a curiosity hook or a familiar problem; build a simple mental model before jargon.
-            - ONE idea per scene. Explain why the concept exists, not just what it is.
-            - Use natural day-to-day analogies, Indian context where it fits (kirana shelf, Swiggy/Zomato order,
-              UPI/bank balance, petrol pump, parking, train ticket, tiffin box ...). Do not reuse one analogy everywhere.
-            - Technical topics: small, CORRECT code; explain every important part. Never invent syntax.
-            - Include one common beginner mistake. End with a memorable recap.
-            - Warm, simple, conversational - an excellent teacher talking to a smart friend. No filler.
-            - For JEE/NEET topics, prioritize scientifically/mathematically correct reasoning, standard notation, units and exam-relevant misconceptions. Never fabricate a fact, formula, derivation, reaction, diagram relationship or answer.
-            - For exam-focused lessons, include a small checkpoint/question only when it can be answered unambiguously from the lesson.
+    /** JSON scene -> the plain draft the validator understands (what is spoken, what is on the slide, how it sounds). */
+    private SceneDraft draftOf(JsonNode n, int index) {
+        SceneDraft d = new SceneDraft();
+        d.number = index + 1;
+        d.sectionType = text(n, "sectionType", null);
+        d.objective = text(n, "learningObjective", text(n, "objective", null));
+        d.template = template(n);
+        d.title = text(n, "title", null);
+        d.narration = rawSentences(n.path("narration"));
+        d.visualDescription = text(n, "visualDescription", null);
+        d.imagePrompt = text(n, "imagePrompt", text(n, "illustration", null));
+        JsonNode vd = n.path("voiceDirection");
+        d.emotion = text(vd, "emotion", null);
+        d.pace = text(vd, "pace", null);
+        d.delivery = text(vd, "delivery", null);
+        term(d, n, "text"); term(d, n, "caption"); term(d, n, "statement"); term(d, n, "formula"); term(d, n, "formulaResult");
+        if (!blank(text(n, "text", null))) d.counts.put("text", 1);
+        if (!blank(text(n, "statement", null))) d.counts.put("statement", 1);
+        if (!blank(text(n, "code", null))) d.counts.put("code", 1);
+        JsonNode box = n.path("box");
+        if (!blank(text(box, "label", null))) { d.counts.put("box", 1); term(d, box, "label"); term(d, box, "value"); }
+        JsonNode after = n.path("after");
+        if (after.isObject()) { term(d, after, "label"); term(d, after, "value"); }
+        int callouts = 0;
+        for (JsonNode c : n.path("callouts")) { callouts++; term(d, c, "label"); term(d, c, "detail"); }
+        d.counts.put("callouts", callouts);
+        int parts = 0;
+        for (JsonNode c : n.path("parts")) { parts++; term(d, c, "label"); term(d, c, "detail"); term(d, c, "token"); }
+        d.counts.put("parts", parts);
+        int cols = 0;
+        for (JsonNode c : n.path("columns")) { cols++; if (!blank(c.asText(""))) d.slideTerms.add(c.asText("")); }
+        d.counts.put("columns", cols);
+        int rows = 0;
+        for (JsonNode r : n.path("rows")) {
+            rows++;
+            if (r.isArray()) for (JsonNode c : r) { if (!blank(c.asText(""))) d.slideTerms.add(c.asText("")); }
+        }
+        d.counts.put("rows", rows);
+        int items = 0, left = 0, right = 0;
+        for (JsonNode c : n.path("items")) {
+            items++;
+            term(d, c, "label"); term(d, c, "text");
+            if (d.template.equals("flow") && !blank(text(c, "label", null))) d.flowLabels.add(text(c, "label", ""));
+            boolean ok = !c.has("ok") || c.path("ok").asBoolean(true);
+            if (ok) left++; else right++;
+        }
+        d.counts.put("items", items);
+        d.counts.put("nodes", d.flowLabels.size());
+        d.counts.put("left", left);
+        d.counts.put("right", right);
+        int maps = 0;
+        for (JsonNode c : n.path("mappings")) { maps++; term(d, c, "left"); term(d, c, "right"); }
+        d.counts.put("mappings", maps);
+        return d;
+    }
 
-            SCENES ARE NEON INFOGRAPHIC SLIDES (one panel each, like a premium neon technical whiteboard).
-            The app draws every slide itself from your data, so text and code are always crisp and correct.
-            Pick ONE template per scene and fill ONLY its fields:
-            - "definition": text, box {label, value}, callouts [3 x {label, detail}]  (e.g. Box=Variable, Label=Name, Content=Value)
-            - "analogy": text, illustration, callouts [2-3 x {label, detail}], caption
-                 illustration = ONE real-world object to draw, e.g. "water bottle on a supermarket shelf with a price tag"
-            - "analogy_code": text, illustration, code (3-6 lines)
-            - "code_anatomy": code (ONE line), parts [2-4 x {token (exact substring of code), label, detail}]
-            - "table": columns [2-3], rows [3-6 x [cells]]
-            - "code_visual": text, code (1-3 lines), box {label, value}, after {label, value} ONLY when a value changes, caption
-            - "code_block": text (optional), code (3-8 lines)
-            - "example_list": text (optional), items [3-5 x {icon, code, label}]
-                 icon is one of: bank, fuel, calendar, parking, cart, phone, wallet, bag, clock, home, bulb, car, book, money, chart, lock, cloud, box, ticket, food
-            - "checklist": items [3-6 x {ok: true|false, text}]
-            - "summary": statement, mappings [2-4 x {left, right}], formula, formulaResult
-            Non-programming topics: use code/formula fields for short formulas or facts (e.g. "speed = distance / time"),
-            or prefer definition / analogy / table / example_list / checklist / summary.
-            Keep slide text SHORT (text <= 25 words, labels <= 4 words) - the narration carries the detail.
-            Slide text and narration in the requested language; code stays in its original syntax.
-            Typical order: hook/definition -> analogy -> code_anatomy or example -> details -> mistake (checklist) -> summary.
-            VARIETY (important - lessons must not all look the same):
-            - use at least 5 different templates per lesson and never the same template twice in a row;
-            - vary the order to fit the topic (start with a question, a surprising fact, an analogy or a table);
-            - code / code_anatomy / code_block / code_visual / analogy_code ONLY when the topic is about programming;
-              for every other topic leave "code" empty, and example_list "code" holds a short name or fact (e.g. "Malleus");
-            - "definition" may add formula + formulaResult as a one-line REMEMBER rule that fits THIS topic (optional).
+    private static void term(SceneDraft d, JsonNode n, String field) {
+        String v = text(n, field, null);
+        if (!blank(v)) d.slideTerms.add(v);
+    }
 
-            NARRATION / VOICE PERFORMANCE
-            "narration" is an ARRAY of 2-5 short spoken sentences IN THE ORDER the slide builds up.
-            Write it exactly like an excellent human tutor speaking to one learner, not like a textbook or slide reader.
-            - Use natural contractions, varied sentence length, rhetorical questions, and conversational bridges such as "Now here's the interesting part" or "Think of it this way".
-            - Build in real breathing room with punctuation: commas for micro-pauses, em dashes for a beat, and an occasional ellipsis for a thoughtful pause. Do not overuse them.
-            - Use subtle pitch/energy cues through sentence shape: questions can rise, key conclusions can be short and confident, examples can be warmer.
-            - Add at most ONE light, topic-appropriate humorous aside in a 3-minute lesson, and only when it helps the learner remember the concept. Never force jokes.
-            - Use [chuckle], [laugh], [sigh] or [gasp] sparingly when a moment genuinely calls for it; these are spoken-performance cues, not narration to explain.
-            - Never say things like "as you can see on the slide" or read every label verbatim. The visual and voice should complement each other.
-            - sentence 1 introduces the idea; later sentences explain the next visual element. The app reveals each slide element when its sentence starts, so order matters.
-            - Prefer 10-18 spoken words per sentence for quick lessons and 12-22 for deep dives.
-
-            Return JSON only:
-            {"title":"...","summary":"...","scenes":[{"template":"...","title":"...","narration":["...","..."], ...template fields}]}
-            """;
-
-    private String userPrompt(ConceptExplainerJob job, boolean deep) {
-        return "Learning track: " + job.getTrack()
-                + "\nSubject: " + job.getSubject()
-                + "\nExam focus: " + job.isExamFocus()
-                + "\nTopic: " + job.getTopic()
-                + "\nLanguage: " + job.getLanguage()
-                + "\nDifficulty: " + job.getDifficulty()
-                + "\nUser instructions: " + (job.getInstructions().isBlank()
-                ? "Teach from zero like a patient, witty human tutor: simple language, strong everyday analogies, natural pauses, a little warmth/humor where appropriate, and memorable examples." : job.getInstructions())
-                + "\n" + trackInstruction(job)
-                + "\n" + (deep
-                ? "3-minute Deep Dive: 16-20 scenes, 430-520 spoken words in total (about 180 seconds). Build intuition, explain the mechanism, several real examples, one beginner pitfall, recap + a tiny checkpoint question with its answer."
-                : "1-minute Quick Learn: 8-10 scenes, 145-180 spoken words in total (about 65 seconds). Core mental model, one or two great examples, one concrete code/example, memorable recap. No advanced edge cases.");
+    private int words(List<SceneDraft> drafts) {
+        int w = 0;
+        for (SceneDraft d : drafts) for (String s : d.narration) w += s.trim().isEmpty() ? 0 : s.trim().split("\\s+").length;
+        return w;
     }
 
     private String trackInstruction(ConceptExplainerJob job) {
@@ -332,10 +406,15 @@ public class ConceptExplainerService {
         }
     }
 
-    private int countWords(JsonNode plan) {
-        int words = 0;
-        for (JsonNode s : plan.path("scenes")) for (String sentence : sentences(s.path("narration"))) words += sentence.split("\\s+").length;
-        return words;
+    /** Spoken sentences exactly as written (no placeholder), so validation can see a missing narration. */
+    private List<String> rawSentences(JsonNode narration) {
+        List<String> out = new ArrayList<>();
+        if (narration.isArray()) {
+            for (JsonNode n : narration) { String c = NarrationScrub.clean(clean(n.asText(""))); if (!c.isBlank()) out.add(c); }
+        } else if (!narration.asText("").isBlank()) {
+            for (String s : SENTENCE.split(narration.asText().trim())) { String c = NarrationScrub.clean(clean(s)); if (!c.isBlank()) out.add(c); }
+        }
+        return out;
     }
 
     private String template(JsonNode n) {
@@ -348,9 +427,9 @@ public class ConceptExplainerService {
     private List<String> sentences(JsonNode narration) {
         List<String> out = new ArrayList<>();
         if (narration.isArray()) {
-            for (JsonNode n : narration) if (!n.asText("").isBlank()) out.add(clean(n.asText()));
+            for (JsonNode n : narration) { String c = NarrationScrub.clean(clean(n.asText(""))); if (!c.isBlank()) out.add(c); }
         } else if (!narration.asText("").isBlank()) {
-            for (String s : SENTENCE.split(narration.asText().trim())) if (!s.isBlank()) out.add(clean(s));
+            for (String s : SENTENCE.split(narration.asText().trim())) { String c = NarrationScrub.clean(clean(s)); if (!c.isBlank()) out.add(c); }
         }
         if (out.isEmpty()) out.add("...");
         return out;
@@ -451,16 +530,19 @@ public class ConceptExplainerService {
             String v = job.getVoice() == null ? "" : job.getVoice();
             if (v.startsWith("edge:")) speed *= 0.94;          // Edge is brisk; a calmer teacher pace sounds more human
             else if (v.startsWith("indic:")) speed *= 0.98;    // IndicF5 is already natural; tiny breath room
+            else if (v.startsWith("speak:")) speed *= 1.0;     // Indic-Speak is paced for explanation already (unhurried by design)
             double pitch = question ? 1.015 : (excited ? 1.01 : (i % 4 == 0 ? 0.99 : 1.0));
-            String emotion = question ? "curious" : (excited ? "happy" : "neutral");
-            double intensity = excited ? 0.68 : (question ? 0.58 : 0.50);
-            String acting = question ? "Warm, curious teacher; lift the question naturally, then pause briefly before the answer."
-                    : (excited ? "Warm, lightly playful teacher; smile in the voice without sounding like an announcer."
-                    : "Calm, conversational tutor; vary emphasis naturally and leave a small thinking beat after important ideas.");
+            VoiceDirection vdir = VoiceDirection.of(s.getVoiceEmotion(), s.getVoicePace(), s.getVoiceDelivery(),
+                    TeachingStyle.parse(job.getTeachingStyle()).baseEmotion());
+            VoiceDirection.TtsParams tp = vdir.toTts(job.getVoice(), speed, pitch, question, excited);
+            if (!tp.engineUnderstandsEmotion() && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice style:"))) {
+                job.getWarnings().add("Voice style: this voice has no emotion model, so the teaching tone is applied through pace and pitch only. "
+                        + "Pick a Chatterbox or cloned voice for fuller expression.");
+            }
             var audio = gateway.synthesizeForStoryLanguage(new TextToSpeechProvider.TtsRequest(
-                    line, job.getVoice(), job.getLanguage(), speed, pitch,
-                    emotion, intensity, "natural conversational tutor", List.of(), true,
-                    (line.contains("[laugh]") || line.contains("[chuckle]")) ? "chuckle" : null, acting, null));
+                    line, job.getVoice(), job.getLanguage(), tp.speed(), tp.pitch(),
+                    tp.emotion(), tp.intensity(), "natural conversational tutor, " + vdir.delivery(), List.of(), true,
+                    (line.contains("[laugh]") || line.contains("[chuckle]")) ? "chuckle" : null, tp.acting(), null));
             if (audio.providerWarning() != null && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice:"))) {
                 job.getWarnings().add("Voice: " + audio.providerWarning());
             }

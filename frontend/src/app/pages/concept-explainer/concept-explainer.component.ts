@@ -88,11 +88,15 @@ interface LessonSummary { id: string; title: string; duration: string; language:
               <optgroup *ngIf="clonedVoices.length" label="My voices (Voice Lab clones — expressive + your accent)">
                 <option *ngFor="let v of clonedVoices" [value]="v.id">{{ v.label }}</option>
               </optgroup>
+              <optgroup *ngIf="speakForLanguage().length" [label]="'Indic-Speak — ' + language + ' (teaching voice, GPU)'">
+                <option *ngFor="let v of speakForLanguage()" [value]="v.id">{{ v.label }}</option>
+              </optgroup>
               <optgroup *ngIf="indicForLanguage().length" [label]="'IndicF5 — native ' + language">
                 <option *ngFor="let v of indicForLanguage()" [value]="v.id">{{ v.label }}</option>
               </optgroup>
             </select>
             <small class="sync-note" *ngIf="!voice.startsWith('indic:')">Chatterbox + local open-source reference voice (English). For Indian languages without an IndicF5 voice the native Edge voice is used.</small>
+            <small class="sync-note" *ngIf="voice.startsWith('speak:')">Indic-Speak (Bodhan AI / AI4Bharat): built for teaching — maths, units and mixed Indian-language + English sentences in one voice. Needs the tts-indicspeak service; the first line loads the model (about a minute), later lines are quick. Built with Indic-Speak from Bodhan AI / AI4Bharat.</small>
             <small class="sync-note" *ngIf="voice.startsWith('indic:')">IndicF5 near-human {{ language }} voice (needs the tts-indic service). Slower than Edge — about a few seconds per sentence on GPU.</small>
           </div>
           <div>
@@ -167,6 +171,23 @@ interface LessonSummary { id: string; title: string; duration: string; language:
             <select [(ngModel)]="motion">
               <option value="REVEAL">Synced reveal — each element appears as the voice explains it</option>
               <option value="STATIC">Static — full slide for the whole scene</option>
+            </select>
+          </div>
+          <div>
+            <label>Teaching style</label>
+            <select [(ngModel)]="teachingStyle">
+              <option value="ENGAGING_TECH_TUTOR">Engaging tech tutor (friendly, light humour) — default</option>
+              <option value="STORYTELLING_TEACHER">Storytelling teacher</option>
+              <option value="PROFESSIONAL_INSTRUCTOR">Professional instructor</option>
+              <option value="SIMPLE_BEGINNER">Simple beginner-friendly</option>
+            </select>
+            <small class="sync-note">Changes tone and humour only; slides, pictures and voice always explain the same point at the same time.</small>
+          </div>
+          <div>
+            <label>Where will it be used?</label>
+            <select [(ngModel)]="destination">
+              <option value="SOCIAL">YouTube / social video (ends with a subscribe line)</option>
+              <option value="CLASSROOM">Classroom / internal training (no subscribe line)</option>
             </select>
           </div>
           <div>
@@ -288,6 +309,8 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
   track = 'TECHNOLOGY';
   subject = 'Java / Programming';
   examFocus = false;
+  teachingStyle = 'ENGAGING_TECH_TUTOR';
+  destination = 'SOCIAL';
   motion = 'REVEAL';
   voice = 'narrator-male';
   model = '';
@@ -301,6 +324,7 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
 
   /** IndicF5 voices from the TTS service ("indic:kn-in-sapna" ...). */
   indicVoices: { id: string; label: string }[] = [];
+  speakVoices: { id: string; label: string }[] = [];
   edgeVoices: { id: string; label: string }[] = [];
   clonedVoices: { id: string; label: string }[] = [];
   style = 'neon';
@@ -325,6 +349,13 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
     return code ? this.edgeVoices.filter(v => v.id.startsWith('edge:' + code + '-')) : [];
   }
 
+  /** Indic-Speak voices for the chosen language; English / Indian English get its Indian-accent English teaching voices. */
+  speakForLanguage(): { id: string; label: string }[] {
+    const english = ['English', 'Indian English'].includes(this.language);
+    const code = english ? 'en' : (ConceptExplainerComponent.LANG_CODE[this.language] || '');
+    return code ? this.speakVoices.filter(v => v.id.startsWith('speak:' + code + '-')) : [];
+  }
+
   indicForLanguage(): { id: string; label: string }[] {
     const code = ConceptExplainerComponent.LANG_CODE[this.language];
     return code ? this.indicVoices.filter(v => v.id.startsWith('indic:' + code + '-')) : [];
@@ -332,7 +363,8 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
 
   onLanguageChange(): void {
     // IndicF5 voices are per language (and never English): reset an invalid choice.
-    if ((this.voice.startsWith('indic:') && !this.indicForLanguage().some(v => v.id === this.voice))
+    if ((this.voice.startsWith('speak:') && !this.speakForLanguage().some(v => v.id === this.voice))
+        || (this.voice.startsWith('indic:') && !this.indicForLanguage().some(v => v.id === this.voice))
         || (this.voice.startsWith('edge:') && !this.voice.startsWith('edge:en-IN') && !this.edgeForLanguage().some(v => v.id === this.voice))) {
       this.voice = 'narrator-male';
     }
@@ -352,6 +384,8 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
         const list: any[] = r?.voices || [];
         this.indicVoices = list.filter(v => String(v.id).startsWith('indic:') && v.installed !== false)
           .map(v => ({ id: v.id, label: String(v.id).replace('indic:', '').replace(/-in-/, ' · ') }));
+        this.speakVoices = list.filter(v => String(v.id).startsWith('speak:'))
+          .map(v => ({ id: v.id, label: v.label || String(v.id).replace('speak:', '') }));
         this.edgeVoices = list.filter(v => String(v.id).startsWith('edge:') && !String(v.id).startsWith('edge:en-'))
           .map(v => ({ id: v.id, label: v.label || String(v.id).replace('edge:', '').replace('Neural', '') }));
         this.clonedVoices = list.filter(v => String(v.id).startsWith('profile:'))
@@ -386,7 +420,8 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
     this.http.post<{ jobId: string }>(`${this.base}/concept-explainer/jobs`, {
       topic: this.topic.trim(), instructions: this.instructions, language: this.language,
       duration: this.duration, difficulty: this.difficulty, motion: this.motion, model: this.model, voice: this.voice, style: this.style,
-      track: this.track, subject: this.subject, examFocus: this.examFocus
+      track: this.track, subject: this.subject, examFocus: this.examFocus,
+      teachingStyle: this.teachingStyle, destination: this.destination
     }).subscribe({
       next: r => { this.loading = false; this.open(r.jobId); this.loadLessons(); },
       error: e => { this.loading = false; this.formError = e?.error?.message || e?.message || 'Could not start the concept explainer.'; }

@@ -19,4 +19,10 @@ public class FunnySkitJob {
     public String[] getDialogues(){return dialogues;} public void setDialogues(String[] v){dialogues=v;}
     public String[] getImagePaths(){return imagePaths;} public void setImagePaths(String[] v){imagePaths=v;}
     public String getSoundscape(){return soundscape;} public void setSoundscape(String v){soundscape=v;}
+
+    // v24.8: look of the skit + what is needed to rewrite the script later
+    private volatile String style = "realistic"; private volatile String idea; private volatile String tone;
+    public String getStyle(){return style;} public void setStyle(String v){style=FunnySkitService.styleId(v);}
+    public String getIdea(){return idea;} public void setIdea(String v){idea=v;}
+    public String getTone(){return tone;} public void setTone(String v){tone=v;}
 }

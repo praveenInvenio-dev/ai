@@ -27,13 +27,16 @@ public class ConceptExplainerController {
     /** motion: REVEAL (elements appear with the narration, default) or STATIC. animationMode kept for old clients. */
     public record CreateRequest(String topic, String instructions, String language, String duration,
                                 String difficulty, String motion, String animationMode, String model,
-                                String track, String subject, Boolean examFocus, String voice, String style) {}
+                                String track, String subject, Boolean examFocus, String voice, String style,
+                                String teachingStyle, String destination) {}
 
     @PostMapping("/jobs")
     public ResponseEntity<Map<String, UUID>> create(@RequestBody CreateRequest r) {
         ConceptExplainerJob job = service.create(r.topic(), r.instructions(), r.language(), r.duration(), r.difficulty(),
                 r.motion() != null ? r.motion() : r.animationMode(), r.model(), r.track(), r.subject(), Boolean.TRUE.equals(r.examFocus()), r.voice());
         job.setStyle(r.style());
+        job.setTeachingStyle(r.teachingStyle());   // ENGAGING_TECH_TUTOR (default) | STORYTELLING_TEACHER | PROFESSIONAL_INSTRUCTOR | SIMPLE_BEGINNER
+        job.setDestination(r.destination());       // SOCIAL (default, subscribe closing) | CLASSROOM
         service.generateAsync(job.getId());
         return ResponseEntity.accepted().body(Map.of("jobId", job.getId()));
     }
@@ -123,10 +126,12 @@ public class ConceptExplainerController {
     public record JobView(UUID id, String topic, String title, String summary, String language, String duration,
                           String difficulty, String motion, String track, String subject, boolean examFocus, ConceptExplainerJob.Status status, String stage,
                           String errorMessage, double totalDurationSeconds, int wordCount, String videoUrl,
-                          List<String> warnings, int estimatedMinutes, String narratorVoice, String scriptUrl, List<SceneView> scenes) {}
+                          List<String> warnings, int estimatedMinutes, String narratorVoice, String scriptUrl, String teachingStyle, String destination,
+                          List<SceneView> scenes) {}
 
     public record SceneView(int sceneNumber, String template, String title, String narration, String code,
-                            double durationSeconds, int steps, String imageUrl, String audioUrl, boolean canRedraw) {}
+                            double durationSeconds, int steps, String imageUrl, String audioUrl, boolean canRedraw,
+                            String sectionType, String learningObjective, String visualDescription, String voiceEmotion, String voicePace, String voiceDelivery) {}
 
     private JobView toView(ConceptExplainerJob job) {
         String base = "/api/concept-explainer/jobs/" + job.getId();
@@ -136,13 +141,14 @@ public class ConceptExplainerController {
                 // only hand out a URL once the file exists; the version makes the browser fetch it exactly once
                 s.getImagePath() == null ? null : base + "/scenes/" + s.getSceneNumber() + "/image?v=" + s.getImageVersion(),
                 s.getAudioPath() == null ? null : base + "/scenes/" + s.getSceneNumber() + "/audio?v=" + s.getAudioVersion(),
-                "analogy".equals(s.getTemplate()) || "analogy_code".equals(s.getTemplate())
+                "analogy".equals(s.getTemplate()) || "analogy_code".equals(s.getTemplate()),
+                s.getSectionType(), s.getLearningObjective(), s.getVisualDescription(), s.getVoiceEmotion(), s.getVoicePace(), s.getVoiceDelivery()
         )).toList();
         int estimate = job.isDeepDive() ? 15 : 6;
         return new JobView(job.getId(), job.getTopic(), job.getTitle(), job.getSummary(), job.getLanguage(), job.getDuration(),
                 job.getDifficulty(), job.getMotion(), job.getTrack(), job.getSubject(), job.isExamFocus(), job.getStatus(), job.getStage(), job.getErrorMessage(),
                 job.getTotalDurationSeconds(), job.getWordCount(),
                 job.getVideoPath() == null ? null : base + "/video?v=" + job.getVideoVersion(),
-                List.copyOf(job.getWarnings()), estimate, job.getVoice(), base + "/script", scenes);
+                List.copyOf(job.getWarnings()), estimate, job.getVoice(), base + "/script", job.getTeachingStyle(), job.getDestination(), scenes);
     }
 }

@@ -89,6 +89,9 @@ public class StudioService {
     private final String workerBaseUrl;
     private final double mcMaxTotalSeconds;
     private final ObjectMapper mapper = new ObjectMapper();
+    /** Which engine "Indic TTS" means (INDIC_ENGINE): indicf5 | indicspeak. */
+    @org.springframework.beans.factory.annotation.Value("${studio.tts.indic-engine:indicf5}")
+    private String indicEngine = "indicf5";
 
     public StudioService(ComfyUIVideoProvider comfy, StorageProvider storage,
                          @Value("${studio.motion-studio.retention-hours:48}") long retentionHours,
@@ -384,9 +387,9 @@ public class StudioService {
             }
             // REVOICE
             IndicSpeech.Language lang = IndicSpeech.resolve(target, report.toString());
-            List<String> pool = IndicSpeech.indicVoices(lang);
+            List<String> pool = IndicSpeech.indicVoices(lang, indicEngine);
             if (pool.isEmpty() && (voice == null || voice.isBlank())) {
-                throw new IllegalStateException("No IndicF5 voice for " + lang.name() + ". Use Re-animate (H3 speech) instead.");
+                throw new IllegalStateException("The Indic TTS engine has no voice for " + lang.name() + ". Use Re-animate (H3 speech) instead.");
             }
             Map<String, String> voices = new LinkedHashMap<>();
             int ci = 0;

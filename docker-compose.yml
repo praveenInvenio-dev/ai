@@ -52,6 +52,8 @@ x-app-env: &app-env
   MOTION_CONTROL_MODEL: ${MOTION_CONTROL_MODEL:-Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors}
   MOTION_CONTROL_STEPS: ${MOTION_CONTROL_STEPS:-6}
   MOTION_CONTROL_MAX_SECONDS: ${MOTION_CONTROL_MAX_SECONDS:-4.8}
+  # Which engine "Indic TTS" means everywhere (auto voice picks, the Indic TTS checkboxes): indicf5 (default) | indicspeak
+  INDIC_ENGINE: ${INDIC_ENGINE:-indicf5}
   H3_SCENE_INDIC_NARRATOR_VOICE: ${H3_SCENE_INDIC_NARRATOR_VOICE:-}
   H3_SCENE_TTS_LIPSYNC_REFERENCE: ${H3_SCENE_TTS_LIPSYNC_REFERENCE:-true}
   WAN14B_WIDTH: ${WAN14B_WIDTH:-480}
@@ -274,6 +276,29 @@ services:
       - ai-story-studio-net
   # replacing it. Start it with:
   #   docker compose --profile indic up -d tts-indic
+  # Indic-Speak (Bodhan AI / AI4Bharat): 22 Indian languages + English, 95 voices, built for STEM and code-mixed speech.
+  # 3.8B-parameter model (~7.6 GB VRAM). Loads on first use and frees the GPU after INDICSPEAK_IDLE_UNLOAD_SECONDS so ComfyUI can use it.
+  # Gated model: accept the licence at https://huggingface.co/bodhan-ai/indic-speak with the account that owns HF_TOKEN.
+  #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile indicspeak up -d tts-indicspeak
+  # Licence note: free to self-host; running it as a service OTHER people call needs Bodhan AI's written sign-off.
+  tts-indicspeak:
+    profiles: ["indicspeak"]
+    build:
+      context: ./tts-indicspeak
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+      INDICSPEAK_REPO: ${INDICSPEAK_REPO:-bodhan-ai/indic-speak}
+      INDICSPEAK_PRELOAD: ${INDICSPEAK_PRELOAD:-false}
+      INDICSPEAK_IDLE_UNLOAD_SECONDS: ${INDICSPEAK_IDLE_UNLOAD_SECONDS:-300}
+    volumes:
+      - indicspeak-cache:/hf-cache
+    ports:
+      - "127.0.0.1:5006:5006"
+    networks:
+      - ai-story-studio-net
+    restart: unless-stopped
+
   tts-indic:
     profiles: ["indic"]
     build:
@@ -430,6 +455,7 @@ volumes:
   # Name is pinned so existing downloads are reused, never recreated.
   comfyui-gpu-root:
     name: ${COMFYUI_GPU_VOLUME:-ai-story-studio_comfyui-gpu-root}
+  indicspeak-cache:
   indicf5-cache:
   chatterbox-cache:
   cosyvoice-cache:

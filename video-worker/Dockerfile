@@ -12,11 +12,15 @@ RUN pip install --no-cache-dir \
       "numpy<2" \
       scenedetect==0.6.4 \
       "rembg[cpu]==2.0.59" \
-      pillow==10.4.0
+      pillow==10.4.0 \
+      faster-whisper==1.0.3
 
 # rembg downloads its ONNX models (isnet / birefnet / u2net) on first use into
 # U2NET_HOME, which is a named volume so they survive rebuilds.
 ENV U2NET_HOME=/models/rembg
+# Auto captions (video editor): faster-whisper model cache, model size via WHISPER_MODEL
+ENV HF_HOME=/models/hf
+ENV WHISPER_MODEL=small
 COPY server.py /app/server.py
 WORKDIR /app
 

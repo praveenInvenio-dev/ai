@@ -147,7 +147,7 @@ public class StoryRevealService {
                 List<Layer> layers = layers(img, work.resolve("s" + i), W, H, job);
                 job.stage = tag + ": animating";
                 Path clip = work.resolve(String.format(Locale.ROOT, "scene-%02d.mp4", i + 1));
-                renderScene(img, layers, tn, speech, dur, showCaptions, W, H, work.resolve("s" + i), clip);
+                renderScene(img, layers, tn, speech, dur, showCaptions, W, H, work.resolve("s" + i), clip, i);
                 clips.add(clip);
                 durations.add(dur);
                 for (int k = 0; k < tn.segmentStarts().size(); k++) {
@@ -278,14 +278,14 @@ public class StoryRevealService {
     // ================================================================== one scene
 
     private void renderScene(Path image, List<Layer> layers, StoryboardService.TimedNarration tn, double speech, double dur,
-                             boolean showCaptions, int W, int H, Path dir, Path out) throws Exception {
+                             boolean showCaptions, int W, int H, Path dir, Path out, int sceneIndex) throws Exception {
         List<Double> starts = tn.segmentStarts();
         int segs = starts.size();
         List<String> args = new ArrayList<>(List.of("ffmpeg", "-nostdin", "-y"));
         StringBuilder f = new StringBuilder();
         args.addAll(List.of("-loop", "1", "-framerate", "30", "-t", fmt(dur), "-i", image.toString()));
         f.append("[0:v]scale=").append(W).append(':').append(H).append(":force_original_aspect_ratio=increase,crop=")
-                .append(W).append(':').append(H).append(",setsar=1,format=rgba[b0]");
+                .append(W).append(':').append(H).append(",unsharp=5:5:0.45:5:5:0.0,setsar=1,format=rgba[b0]");
         int input = 1;
         String base = "b0";
         // objects lift one by one, each when its spoken segment starts
@@ -322,9 +322,26 @@ public class StoryRevealService {
                 input++;
             }
         }
-        // slow push-in on the whole frame, applied once (no zoom restarts)
-        f.append(";[").append(base).append("]scale=w='2*trunc(").append(W).append("*(1+0.03*t/").append(fmt(dur))
-                .append(")/2)':h=-2:eval=frame:flags=bicubic,crop=").append(W).append(':').append(H).append(",setsar=1,format=yuv420p[v]");
+        // Camera, varied per scene: push in towards the main character (largest lifted object), or a
+        // slow sideways pan across the scene (alternating direction). Applied once, no restarts.
+        double fx = 0.5, fy = 0.42;
+        if (!layers.isEmpty()) {
+            Layer main = layers.stream().max(Comparator.comparingInt(l -> l.w() * l.h())).orElse(layers.get(0));
+            fx = Math.max(0.15, Math.min(0.85, (main.x() + main.w() / 2.0) / W));
+            fy = Math.max(0.15, Math.min(0.85, (main.y() + main.h() / 3.0) / H));
+        }
+        int move = layers.isEmpty() ? (sceneIndex % 2 == 0 ? 1 : 2) : (sceneIndex % 3 == 2 ? 2 : 0);
+        if (move == 0) { // push-in towards the character
+            f.append(";[").append(base).append("]scale=w='2*trunc(").append(W).append("*(1+0.07*t/").append(fmt(dur))
+                    .append(")/2)':h=-2:eval=frame:flags=bicubic,crop=").append(W).append(':').append(H)
+                    .append(":x='(iw-").append(W).append(")*").append(fmt(fx)).append("':y='(ih-").append(H).append(")*").append(fmt(fy))
+                    .append("',setsar=1,format=yuv420p[v]");
+        } else { // slow pan, left->right on even scenes, right->left on odd
+            String from = sceneIndex % 2 == 0 ? "0.15" : "0.85", sign = sceneIndex % 2 == 0 ? "+" : "-";
+            f.append(";[").append(base).append("]scale=").append(W * 110 / 100 / 2 * 2).append(":-2:flags=bicubic,crop=").append(W).append(':').append(H)
+                    .append(":x='(iw-").append(W).append(")*(").append(from).append(sign).append("0.7*t/").append(fmt(dur))
+                    .append(")':y='(ih-").append(H).append(")*0.5',setsar=1,format=yuv420p[v]");
+        }
         args.addAll(List.of("-i", tn.wav().toString()));
         f.append(";[").append(input).append(":a]aresample=48000,aformat=channel_layouts=stereo,apad[a]");
         args.addAll(List.of("-filter_complex", f.toString(), "-map", "[v]", "-map", "[a]", "-t", fmt(dur),

@@ -60,6 +60,9 @@ public class VideoRenderService {
     private final TechniqueLibrary library;
     private final Semaphore slot;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private AutoCaptionService autoCaptions;
+
     public VideoRenderService(VideoEditorProperties properties,
                               VideoEditorProjectService projectService,
                               VideoClipRepository clips,
@@ -124,6 +127,13 @@ public class VideoRenderService {
      * and stall the rest of the application. Every write it needs is a short
      * transaction on another bean.
      */
+    /** The user's look wins; "auto"/unknown falls back to the template's own grade. */
+    private String effectiveGrade(VideoEditorProject project) {
+        String look = project.getLook();
+        if (look != null && (look.equals("none") || TimelineRenderer.LOOKS.containsKey(look))) return look;
+        return library.templateFor(project.getCategory().name()).colorGrade();
+    }
+
     private void doRender(UUID projectId, UUID jobId, RenderKind kind) {
         VideoEditorProject project = projectService.get(projectId);
         List<TimelineClip> rows = timeline.findByProjectIdOrderBySortOrderAsc(projectId);
@@ -139,7 +149,9 @@ public class VideoRenderService {
         projectService.transition(projectId,
                 kind == RenderKind.PREVIEW ? VideoEditorState.PREVIEW_RENDERING : VideoEditorState.RENDERING);
 
-        String hash = VideoEditorProjectService.hashTimeline(rows);
+        // the preview cache key must change with look / stabilise (same cuts, different pixels)
+        String hash = VideoEditorProjectService.hashTimeline(rows)
+                + Integer.toHexString((String.valueOf(project.getLook()) + project.isStabilize() + project.getEffects()).hashCode());
         Path output = kind == RenderKind.PREVIEW
                 ? storage.resolveWithin(storage.previewsDir(projectId), hash + ".mp4")
                 : storage.resolveWithin(storage.rendersDir(projectId), jobId + ".mp4");
@@ -198,12 +210,34 @@ public class VideoRenderService {
                 properties.getAnalysisThreads(),
                 project.isAudioEnhancement(),
                 project.isSmartReframing(),
-                library.templateFor(project.getCategory().name()).colorGrade());
+                effectiveGrade(project),
+                project.isStabilize(),
+                project.getEffects());
 
         Path result = renderer.render(request,
                 (percent, stage) -> progress.report(jobId, stage, percent, null));
 
-        finish(jobId, projectId, result, kind, null);
+        String note = null;
+        // Title text (CapCut "Text"): animated title over the first seconds of the final cut
+        if (project.getTitleText() != null && !project.getTitleText().isBlank() && kind == RenderKind.FINAL && autoCaptions != null) {
+            try {
+                autoCaptions.addTitle(projectId, result, project.getTitleText(), String.valueOf(project.getAspectRatio()).contains("9_16"));
+            } catch (Exception e) {
+                log.warn("Title overlay failed for project {}: {}", projectId, e.getMessage());
+                note = "Rendered without the title (" + e.getMessage() + ")";
+            }
+        }
+        // Auto captions (Higgsfield/CapCut style): transcribe the finished cut, burn in word-highlight captions.
+        if (project.isAutoCaptions() && kind == RenderKind.FINAL && autoCaptions != null) {
+            progress.report(jobId, "Captions", 96, "Transcribing speech and adding captions");
+            try {
+                note = autoCaptions.apply(projectId, result, String.valueOf(project.getAspectRatio()).contains("9_16"));
+            } catch (Exception e) {
+                log.warn("Auto captions failed for project {}: {}", projectId, e.getMessage());
+                note = "Rendered without captions (captions failed: " + e.getMessage() + ")";
+            }
+        }
+        finish(jobId, projectId, result, kind, note);
     }
 
     private void finish(UUID jobId, UUID projectId, Path output, RenderKind kind, String note) {

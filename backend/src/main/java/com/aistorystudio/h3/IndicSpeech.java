@@ -146,6 +146,60 @@ public final class IndicSpeech {
         return bestCount >= latin ? best : "Latin";
     }
 
+    // ------------------------------------------------------------------ engine-aware Indic TTS voices
+
+    /** Engine ids for {@code studio.tts.indic-engine} / INDIC_ENGINE. */
+    public static final String ENGINE_INDICF5 = "indicf5", ENGINE_INDICSPEAK = "indicspeak";
+
+    /** True for voices served by an Indic engine sidecar ("indic:..." IndicF5, "speak:..." Indic-Speak). */
+    public static boolean isIndicEngineVoice(String voice) {
+        return voice != null && (voice.startsWith("indic:") || voice.startsWith("speak:"));
+    }
+
+    public static boolean isIndicSpeak(String engine) {
+        return engine != null && engine.trim().equalsIgnoreCase(ENGINE_INDICSPEAK);
+    }
+
+    /**
+     * Indic-Speak (Bodhan AI / AI4Bharat) voices: [female, male] for the languages it ships in production.
+     * Unlike IndicF5 it also speaks English and code-mixed text, and needs no reference clips.
+     */
+    public static List<String> indicSpeakVoices(Language lang) {
+        if (lang == null) return List.of();
+        return switch (lang.name()) {
+            case "Hindi" -> List.of("speak:hi-Kavya", "speak:hi-Amit");
+            case "Kannada" -> List.of("speak:kn-Deepika", "speak:kn-Adarsh");
+            case "Tamil" -> List.of("speak:ta-Anitha", "speak:ta-Arun");
+            case "Telugu" -> List.of("speak:te-Sravani", "speak:te-Vamsi");
+            case "Malayalam" -> List.of("speak:ml-Lakshmi", "speak:ml-Kiran");
+            case "Marathi" -> List.of("speak:mr-Anagha", "speak:mr-Chinmay");
+            case "Bengali" -> List.of("speak:bn-Ishita", "speak:bn-Sourav");
+            case "Gujarati" -> List.of("speak:gu-Dhara", "speak:gu-Parth");
+            case "Punjabi" -> List.of("speak:pa-Kaur", "speak:pa-Manpreet");
+            case "Odia" -> List.of("speak:or-Itishree", "speak:or-Akash");
+            case "English" -> List.of("speak:en-Kavya", "speak:en-Amit");
+            default -> List.of();
+        };
+    }
+
+    /**
+     * Automatic narrator voice for a story language setting ("Kannada", "Hinglish", "ta" ...) from the chosen engine,
+     * or null: English, unknown languages and languages the engine lacks never get a guessed voice
+     * (an unknown language name resolves to English, so it is checked against what was declared).
+     */
+    public static String autoVoice(String declaredLanguage, String engine) {
+        if (declaredLanguage == null || declaredLanguage.isBlank()) return null;
+        Language l = resolve(declaredLanguage, "");
+        if (!l.indic()) return null;                                        // English / unknown
+        List<String> v = indicVoices(l, engine);
+        return v.isEmpty() ? null : v.get(0);                               // female voice first
+    }
+
+    /** The voices the chosen Indic engine offers for this language ([female, male]); empty = not supported by it. */
+    public static List<String> indicVoices(Language lang, String engine) {
+        return isIndicSpeak(engine) ? indicSpeakVoices(lang) : indicVoices(lang);
+    }
+
     // ------------------------------------------------------------------ IndicF5 voices
 
     /** IndicF5 reference voices shipped in tts-indic/prompts: [female, male]. Empty = none. */

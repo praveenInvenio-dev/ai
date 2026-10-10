@@ -54,6 +54,7 @@ public class EditPlannerService {
     private final ProviderGateway gateway;
     private final VideoEditorProjectService projectService;
     private final ProgressReporter progress;
+    private final BeatSyncService beatSync;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public EditPlannerService(VideoClipRepository clips,
@@ -64,7 +65,8 @@ public class EditPlannerService {
                               TechniqueLibrary library,
                               ProviderGateway gateway,
                               VideoEditorProjectService projectService,
-                              ProgressReporter progress) {
+                              ProgressReporter progress,
+                              BeatSyncService beatSync) {
         this.clips = clips;
         this.scenes = scenes;
         this.timeline = timeline;
@@ -74,6 +76,7 @@ public class EditPlannerService {
         this.gateway = gateway;
         this.projectService = projectService;
         this.progress = progress;
+        this.beatSync = beatSync;
     }
 
     @Transactional
@@ -129,6 +132,11 @@ public class EditPlannerService {
         if (!lockedRows.isEmpty()) {
             rows = mergeLockedRows(lockedRows, rows);
             rationale = lockedRows.size() + " locked shot(s) kept in place.\n" + rationale;
+        }
+        if (project.isBeatSync() && !rows.isEmpty()) {
+            progress.report(jobId, "Planning", 80, "Finding the beat of the music");
+            String note = beatSync.apply(projectId, rows);
+            if (note != null && !note.isBlank()) rationale = note + "\n" + rationale;
         }
         for (int i = 0; i < rows.size(); i++) {
             rows.get(i).setSortOrder(i);

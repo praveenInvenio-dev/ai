@@ -60,7 +60,7 @@ public final class ConceptSlideRenderer {
                         String formula, String formulaResult, BufferedImage illustration) {
     }
 
-    public static final Set<String> TEMPLATES = Set.of("definition", "analogy", "analogy_code", "code_anatomy",
+    public static final Set<String> TEMPLATES = Set.of("flow", "compare", "definition", "analogy", "analogy_code", "code_anatomy",
             "table", "code_visual", "code_block", "example_list", "checklist", "summary");
 
     public static final Set<String> ICONS = Set.of("bank", "fuel", "calendar", "parking", "cart", "phone", "wallet",
@@ -241,6 +241,8 @@ public final class ConceptSlideRenderer {
             case "code_block" -> Math.max(1, Math.min(5, lines(s.code()).size()));
             case "example_list" -> 1 + Math.min(5, size(s.items()));
             case "checklist" -> Math.max(1, Math.min(6, size(s.items())));
+            case "flow" -> 1 + Math.min(6, Math.max(1, size(s.items())));      // step 0 = intro, step k = node k
+            case "compare" -> 1 + Math.min(8, Math.max(1, size(s.items())));   // step k = item k, in spoken order
             default -> 1;
         };
     }
@@ -297,6 +299,8 @@ public final class ConceptSlideRenderer {
             case "code_block" -> codeBlock(c, s, step, steps);
             case "example_list" -> exampleList(c, s, step);
             case "checklist" -> checklist(c, s, step, steps);
+            case "flow" -> flow(c, s, step);
+            case "compare" -> compare(c, s, step);
             case "summary" -> summary(c, s, step);
             default -> paragraph(c, s.text(), 120, 260, W - 240, 44, 12);
         }
@@ -559,6 +563,86 @@ public final class ConceptSlideRenderer {
                 centered(c, l, x + cw / 2, ty, mediumFont, 40, WHITE, cw - 40);
                 ty += 46;
             }
+        }
+    }
+
+    /**
+     * Ordered diagram (request flow, pipeline, process): node k appears with spoken sentence k, joined by
+     * arrows in the same order the narrator explains them. 1 row up to 4 nodes, 2 rows (snake) for 5-6.
+     */
+    private void flow(Canvas c, Slide s, int step) {
+        int y = 215;
+        if (s.text() != null && !s.text().isBlank()) y = paragraph(c, s.text(), 120, 235, W - 240, 48, 2, WHITE, bodyFont) + 20;
+        List<Item> nodes = s.items() == null ? List.of() : s.items();
+        int n = Math.min(6, nodes.size());
+        if (n == 0) return;
+        int perRow = n <= 4 ? n : 3, rows = (n + perRow - 1) / perRow;
+        int gap = 110, cw = Math.min(380, (W - 220 - gap * (perRow - 1)) / perRow);
+        int ch = rows == 1 ? 440 : 300, rowGap = 90;
+        int totalH = rows * ch + (rows - 1) * rowGap;
+        int top = y + Math.max(10, (H - 80 - y - totalH) / 2);
+        int rowW = perRow * cw + (perRow - 1) * gap;
+        for (int i = 0; i < Math.min(n, step); i++) {
+            Item it = nodes.get(i);
+            int row = i / perRow, col = i % perRow;
+            int x = (W - rowW) / 2 + col * (cw + gap), yy = top + row * (ch + rowGap);
+            Color col2 = ACCENT[i % ACCENT.length];
+            c.panel(x, yy, cw, ch, 26, col2);
+            c.neonCircle(x + 38, yy + 38, 26, col2, 3f);
+            centered(c, String.valueOf(i + 1), x + 38, yy + 50, titleFont, 34, WHITE, 40);
+            icon(c, it.icon(), x + cw / 2, yy + (int) (ch * 0.30), Math.min(cw, ch) * 0.30f, col2);
+            int ts = 46;
+            while (ts > 26 && widthOf(nz(it.label()), titleFont, ts) > cw - 36) ts -= 2;
+            centered(c, nz(it.label()), x + cw / 2, yy + (int) (ch * 0.60), titleFont, ts, col2, cw - 30);
+            List<String> ws = wrap(nz(it.text()), bodyFont, 32, cw - 44);
+            int ty = yy + (int) (ch * 0.60) + 46;
+            for (String l : ws.subList(0, Math.min(rows == 1 ? 4 : 3, ws.size()))) {
+                centered(c, l, x + cw / 2, ty, bodyFont, 32, WHITE, cw - 30);
+                ty += 38;
+            }
+            if (i > 0) {
+                if (col > 0) { // arrow from the previous card in the same row
+                    c.arrow(x - gap + 14, yy + ch / 2, x - 14, yy + ch / 2, WHITE, 5f);
+                } else { // snake: down from the end of the previous row to the start of this one
+                    int px = (W - rowW) / 2 + (perRow - 1) * (cw + gap) + cw / 2, py = yy - rowGap - ch + ch;
+                    int midY = yy - rowGap / 2;
+                    c.line(px, py, px, midY, WHITE, 5f);
+                    c.line(px, midY, x + cw / 2, midY, WHITE, 5f);
+                    c.arrow(x + cw / 2, midY, x + cw / 2, yy - 10, WHITE, 5f);
+                }
+            }
+        }
+    }
+
+    /** Advantages vs limits (or "use it" vs "avoid it"): items with ok=true go left, ok=false right, revealed in spoken order. */
+    private void compare(Canvas c, Slide s, int step) {
+        int y = 215;
+        if (s.text() != null && !s.text().isBlank()) y = paragraph(c, s.text(), 120, 235, W - 240, 48, 2, WHITE, bodyFont) + 20;
+        List<String> cols = s.columns() == null ? List.of() : s.columns();
+        String lt = cols.size() > 0 && !cols.get(0).isBlank() ? cols.get(0) : "Advantages";
+        String rt = cols.size() > 1 && !cols.get(1).isBlank() ? cols.get(1) : "Trade-offs";
+        List<Item> items = s.items() == null ? List.of() : s.items();
+        int pw = (W - 300) / 2, ph = H - 90 - y, lx = 120, rx = lx + pw + 60;
+        c.panel(lx, y, pw, ph, 26, GREEN);
+        c.panel(rx, y, pw, ph, 26, ORANGE);
+        centered(c, lt, lx + pw / 2, y + 74, titleFont, 56, GREEN, pw - 60);
+        centered(c, rt, rx + pw / 2, y + 74, titleFont, 56, ORANGE, pw - 60);
+        c.line(lx + 40, y + 100, lx + pw - 40, y + 100, new Color(GREEN.getRed(), GREEN.getGreen(), GREEN.getBlue(), 120), 2f);
+        c.line(rx + 40, y + 100, rx + pw - 40, y + 100, new Color(ORANGE.getRed(), ORANGE.getGreen(), ORANGE.getBlue(), 120), 2f);
+        int leftY = y + 150, rightY = y + 150, shown = Math.min(Math.min(8, items.size()), step);
+        int rowH = Math.max(90, Math.min(130, (ph - 150) / 4));
+        for (int i = 0; i < shown; i++) {
+            Item it = items.get(i);
+            boolean left = it.ok() == null || it.ok();
+            int x = left ? lx : rx, cy = left ? leftY : rightY;
+            Color col = left ? GREEN : ORANGE;
+            c.neonCircle(x + 56, cy + 26, 24, col, 3.5f);
+            if (left) c.polyline(new int[]{x + 45, x + 54, x + 69}, new int[]{cy + 27, cy + 36, cy + 16}, col, 5f);
+            else { c.line(x + 46, cy + 16, x + 66, cy + 36, col, 5f); c.line(x + 66, cy + 16, x + 46, cy + 36, col, 5f); }
+            List<String> ws = wrap(nz(it.text()), bodyFont, 40, pw - 170);
+            int ty = cy + 38;
+            for (String l : ws.subList(0, Math.min(2, ws.size()))) { c.text(l, x + 100, ty, bodyFont, 40, WHITE, false); ty += 46; }
+            if (left) leftY += rowH; else rightY += rowH;
         }
     }
 
@@ -1283,19 +1367,19 @@ public final class ConceptSlideRenderer {
             sg.drawImage(img, 0, 0, w, h, null);
             sg.dispose();
             BufferedImage mask = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+            int[] corners = {scaled.getRGB(2, 2), scaled.getRGB(w - 3, 2), scaled.getRGB(2, h - 3), scaled.getRGB(w - 3, h - 3)};
+            int keyR = 0, keyG = 0, keyB = 0;
+            for (int cc : corners) { keyR += (cc >> 16) & 255; keyG += (cc >> 8) & 255; keyB += cc & 255; }
+            keyR /= 4; keyG /= 4; keyB /= 4;
             for (int yy = 0; yy < h; yy++) {
                 for (int xx = 0; xx < w; xx++) {
                     int p = scaled.getRGB(xx, yy);
                     int r = (p >> 16) & 255, gg = (p >> 8) & 255, b = p & 255;
                     // lift-the-blacks: near-black noise becomes fully transparent
-                    int alpha;
-                    if (style.dark()) { // black background of the image becomes transparent
-                        int lum = Math.max(r, Math.max(gg, b));
-                        alpha = Math.max(0, Math.min(255, (lum - 18) * 255 / 120));
-                    } else {            // white background becomes transparent
-                        int dark = 255 - Math.min(r, Math.min(gg, b));
-                        alpha = Math.max(0, Math.min(255, (dark - 14) * 255 / 70));
-                    }
+                    // key out the image's own background colour (sampled from its corners): works for
+                    // black, white, cream or pastel backgrounds instead of washing light drawings out
+                    int dist = Math.abs(r - keyR) + Math.abs(gg - keyG) + Math.abs(b - keyB);
+                    int alpha = Math.max(0, Math.min(255, (dist - 24) * 255 / 60));
                     // soft vignette so the illustration never shows a hard rectangular edge
                     double ex = Math.min(xx, w - 1 - xx) / (w * 0.08), ey = Math.min(yy, h - 1 - yy) / (h * 0.08);
                     alpha = (int) (alpha * Math.min(1.0, Math.min(ex, ey)));

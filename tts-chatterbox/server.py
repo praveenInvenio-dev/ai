@@ -160,12 +160,13 @@ def bootstrap_reference_voices():
         entries.append((name.strip(), source.strip()))
     for name, source in entries:
         target = os.path.join(VOICES_DIR, f"{name}.wav")
-        if os.path.isfile(target) and os.path.getsize(target) > 10000:
+        marker = target + ".ref2"  # reference text v2: v1 began with "Hello." and the cloned voice echoed it
+        if os.path.isfile(target) and os.path.getsize(target) > 10000 and (os.path.isfile(marker) or not name.startswith(("narrator-", "tutor-"))):
             continue
         for attempt in range(12):
             try:
                 payload = json.dumps({
-                    "text": "Hello. I am your tutor. Let's make this simple, practical, and a little fun.",
+                    "text": "Every big idea starts small, so we will take it one clear step at a time, keep it practical, and enjoy it along the way.",
                     "voice": source, "speed": 0.98, "pitch": 1.0, "language": "en"
                 }).encode("utf-8")
                 req = urllib.request.Request(BOOTSTRAP_URL + "/api/tts", data=payload, headers={"Content-Type": "application/json"})
@@ -176,6 +177,7 @@ def bootstrap_reference_voices():
                     tmp = target + ".part"
                     with open(tmp, "wb") as f: f.write(wav)
                     os.replace(tmp, target)
+                    open(marker, "w").write("2")
                     log.info("Bootstrapped Chatterbox reference %s from %s", name, source)
                     break
             except Exception as exc:

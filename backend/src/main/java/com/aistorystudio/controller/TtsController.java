@@ -36,6 +36,9 @@ import java.util.Map;
 public class TtsController {
 
     /** Long enough for a first-use voice download (~110 MB) plus synthesis. */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistorystudio.provider.ChatterboxTTSProvider chatterbox;
+
     private static final Duration INSTALL_TIMEOUT = Duration.ofMinutes(6);
     private static final Duration SPEAK_TIMEOUT = Duration.ofMinutes(3);
 
@@ -112,6 +115,18 @@ public class TtsController {
             }
         }
 
+        if (voice.startsWith("narrator-") || voice.startsWith("tutor-") || voice.startsWith("chatterbox:")) {
+            try { // Chatterbox voices are served by tts-chatterbox, not by the Piper/Edge tts service
+                var r = chatterbox.synthesize(new com.aistorystudio.provider.TextToSpeechProvider.TtsRequest(text,
+                        voice.startsWith("chatterbox:") ? voice.substring(11) : voice, null,
+                        request.speed() == null || request.speed() <= 0 ? 1.0 : request.speed(),
+                        request.pitch() == null || request.pitch() <= 0 ? 1.0 : request.pitch()));
+                return ResponseEntity.ok().contentType(MediaType.parseMediaType("audio/wav")).body(r.audioBytes());
+            } catch (RuntimeException e) {
+                String msg = "{\"error\":\"Chatterbox: " + String.valueOf(e.getMessage()).replace("\"", "'") + " - is tts-chatterbox running (COMPOSE_PROFILES=chatterbox)?\"}";
+                return ResponseEntity.status(503).contentType(MediaType.APPLICATION_JSON).body(msg.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+        }
         byte[] wav;
         try {
             wav = tts.post().uri("/api/tts")
@@ -122,7 +137,7 @@ public class TtsController {
                         // Pitch is a post-process (ffmpeg), not a Piper setting - it is how
                         // child voices are made without also speeding the narration up.
                         "pitch", request.pitch() == null || request.pitch() <= 0 ? 1.0 : request.pitch()))
-                .retrieve().bodyToMono(byte[].class).block(voice.startsWith("indic:") ? Duration.ofMinutes(10) : SPEAK_TIMEOUT);
+                .retrieve().bodyToMono(byte[].class).block(com.aistorystudio.h3.IndicSpeech.isIndicEngineVoice(voice) ? Duration.ofMinutes(10) : SPEAK_TIMEOUT);
         } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
             // Pass the TTS service's JSON reason through so Voice Lab can show it.
             return ResponseEntity.status(e.getStatusCode()).contentType(MediaType.APPLICATION_JSON)

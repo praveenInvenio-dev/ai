@@ -349,20 +349,30 @@ public class ProviderGateway {
         String lang = request.language() == null ? "" : request.language().trim().toLowerCase(java.util.Locale.ROOT);
         boolean englishFamily = lang.equals("english") || lang.equals("en") || lang.startsWith("english ")
                 || lang.equals("indian english") || lang.equals("en-in") || lang.startsWith("en-in-");
-        if (englishFamily && (requestedVoice.startsWith("narrator-") || requestedVoice.startsWith("tutor-"))) {
-            return synthesize(request);
+        if (requestedVoice.startsWith("narrator-") || requestedVoice.startsWith("tutor-") || requestedVoice.startsWith("chatterbox:")) {
+            // Chatterbox voices live in the tts-chatterbox sidecar, not in the Piper/Edge "tts" service
+            // (sending them there returned HTTP 500 "unknown voice" unless TTS_PROVIDER=chatterbox).
+            String v = requestedVoice.startsWith("chatterbox:") ? requestedVoice.substring("chatterbox:".length()) : requestedVoice;
+            return chatterboxTtsProvider.synthesize(new TextToSpeechProvider.TtsRequest(request.text(), v, request.language(),
+                    request.speed(), request.pitch(), request.emotion(), request.emotionIntensity(), request.delivery(),
+                    request.emphasis(), request.breath(), request.paralinguisticEvent(), request.actingDirection()));
         }
         // Explicit Edge voice or a Voice Lab clone chosen by the user: use exactly that voice.
         if (requestedVoice.startsWith("edge:") || requestedVoice.startsWith("profile:")) {
             return synthesize(request);
         }
-        // An explicitly chosen IndicF5 voice is the user's decision: use it, don't swap to Edge.
-        if (requestedVoice.startsWith("indic:")) {
+        // An explicitly chosen Indic engine voice (IndicF5 "indic:", Indic-Speak "speak:") is the user's decision: use it, don't swap to Edge.
+        if (com.aistorystudio.h3.IndicSpeech.isIndicEngineVoice(requestedVoice)) {
             return synthesizeIndicVoice(request);
         }
         String edge = edgeVoiceForLanguage(request.language());
         String indic = indicVoiceForLanguage(request.language());
         String[] preferredVoices = edge == null ? new String[]{indic} : (indic == null ? new String[]{edge} : new String[]{edge, indic});
+        if (com.aistorystudio.h3.IndicSpeech.isIndicSpeak(indicEngine)) {
+            // INDIC_ENGINE=indicspeak: Indic-Speak first (offline, built for teaching/STEM), the Edge cloud voice as the fallback
+            String speak = com.aistorystudio.h3.IndicSpeech.autoVoice(request.language(), indicEngine);
+            if (speak != null) preferredVoices = edge == null ? new String[]{speak} : new String[]{speak, edge};
+        }
         for (String preferred : preferredVoices) {
             if (preferred == null) continue;
             try {
@@ -389,14 +399,26 @@ public class ProviderGateway {
         try {
             return localTtsProvider.synthesize(request);
         } catch (Exception e) {
+            boolean speak = request.voice() != null && request.voice().startsWith("speak:");
             throw new IllegalStateException("Indic TTS voice '" + request.voice() + "' failed: " + e.getMessage()
-                    + " - is the tts-indic service running? Add 'indic' to COMPOSE_PROFILES (e.g. COMPOSE_PROFILES=chatterbox,indic).", e);
+                    + (speak ? " - is the tts-indicspeak service running? Add 'indicspeak' to COMPOSE_PROFILES (e.g. COMPOSE_PROFILES=chatterbox,indic,indicspeak),"
+                               + " set HF_TOKEN and accept the licence at huggingface.co/bodhan-ai/indic-speak."
+                             : " - is the tts-indic service running? Add 'indic' to COMPOSE_PROFILES (e.g. COMPOSE_PROFILES=chatterbox,indic)."), e);
         }
     }
 
-    /** Default IndicF5 voice for a language (null when IndicF5 has no voice for it). */
+    /** Which engine "Indic TTS" means (indicf5 | indicspeak), from INDIC_ENGINE. */
+    @org.springframework.beans.factory.annotation.Value("${studio.tts.indic-engine:indicf5}")
+    private String indicEngine = "indicf5";
+
+    public String indicEngine() {
+        return indicEngine;
+    }
+
+    /** Default Indic-engine voice for a language (null when the chosen engine has no voice for it). */
     public String defaultIndicVoice(String language) {
-        return indicVoiceForLanguage(language);
+        String v = com.aistorystudio.h3.IndicSpeech.autoVoice(language, indicEngine);
+        return v != null ? v : indicVoiceForLanguage(language);
     }
 
     public boolean isDemoMode() {

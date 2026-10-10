@@ -52,7 +52,19 @@ public class ConceptExplainerJob {
         private List<Double> stepTimes = new ArrayList<>();
         private double durationSeconds;
         private int imageVersion, audioVersion;
+        // adaptive teaching framework: why this scene exists and how it should sound
+        private String sectionType, learningObjective, visualDescription, voiceEmotion, voicePace, voiceDelivery;
 
+        public String getSectionType() { return sectionType; }
+        public void setSectionType(String v) { sectionType = v; }
+        public String getLearningObjective() { return learningObjective; }
+        public void setLearningObjective(String v) { learningObjective = v; }
+        public String getVisualDescription() { return visualDescription; }
+        public void setVisualDescription(String v) { visualDescription = v; }
+        public String getVoiceEmotion() { return voiceEmotion; }
+        public String getVoicePace() { return voicePace; }
+        public String getVoiceDelivery() { return voiceDelivery; }
+        public void setVoiceDirection(String emotion, String pace, String delivery) { voiceEmotion = emotion; voicePace = pace; voiceDelivery = delivery; }
         public int getSceneNumber() { return sceneNumber; }
         public void setSceneNumber(int v) { sceneNumber = v; }
         public String getTemplate() { return template; }
@@ -94,6 +106,15 @@ public class ConceptExplainerJob {
     private volatile String style = "neon";
     public String getStyle() { return style; }
     public void setStyle(String v) { style = ConceptSlideRenderer.style(v).id(); }
+
+    /** ENGAGING_TECH_TUTOR | STORYTELLING_TEACHER | PROFESSIONAL_INSTRUCTOR | SIMPLE_BEGINNER */
+    private volatile String teachingStyle = "ENGAGING_TECH_TUTOR";
+    /** SOCIAL (subscribe closing) | CLASSROOM */
+    private volatile String destination = "SOCIAL";
+    public String getTeachingStyle() { return teachingStyle; }
+    public void setTeachingStyle(String v) { teachingStyle = com.aistorystudio.conceptexplainer.teaching.TeachingStyle.parse(v).name(); }
+    public String getDestination() { return destination; }
+    public void setDestination(String v) { destination = com.aistorystudio.conceptexplainer.teaching.Destination.parse(v).name(); }
 
     public UUID getId() { return id; }
     public String getTopic() { return topic; }

@@ -101,6 +101,26 @@ public class VideoEditorProjectService {
 
     // ---- projects ----------------------------------------------------------
 
+    private static void applyLookTitleStabilize(VideoEditorProject project, CreateProjectRequest r) {
+        if (r.look() != null) {
+            String l = r.look().trim().toLowerCase(java.util.Locale.ROOT);
+            project.setLook(l.isEmpty() || l.equals("auto") ? null : l);
+        }
+        if (r.titleText() != null) {
+            String t = r.titleText().replaceAll("\\s+", " ").trim();
+            project.setTitleText(t.isEmpty() ? null : (t.length() > 120 ? t.substring(0, 120) : t));
+        }
+        if (r.stabilize() != null) project.setStabilize(r.stabilize());
+        if (r.effects() != null) {
+            // only known ids survive, in a stable order: the client can never smuggle filter syntax in
+            List<String> keep = new ArrayList<>();
+            for (String id : r.effects().toLowerCase(java.util.Locale.ROOT).split("[,\\s]+")) {
+                if (com.aistorystudio.videoeditor.editing.TimelineRenderer.EFFECTS.containsKey(id) && !keep.contains(id)) keep.add(id);
+            }
+            project.setEffects(keep.isEmpty() ? null : String.join(",", keep));
+        }
+    }
+
     public record CreateProjectRequest(
             String name,
             VideoCategory category,
@@ -114,7 +134,11 @@ public class VideoEditorProjectService {
             Boolean smartTransitions,
             Boolean autoCaptions,
             Boolean audioEnhancement,
-            Boolean smartReframing) {}
+            Boolean smartReframing,
+            String look,
+            String titleText,
+            Boolean stabilize,
+            String effects) {}
 
     @Transactional
     public VideoEditorProject create(CreateProjectRequest request) {
@@ -140,6 +164,7 @@ public class VideoEditorProjectService {
         if (request.autoCaptions() != null) project.setAutoCaptions(request.autoCaptions());
         if (request.audioEnhancement() != null) project.setAudioEnhancement(request.audioEnhancement());
         if (request.smartReframing() != null) project.setSmartReframing(request.smartReframing());
+        applyLookTitleStabilize(project, request);
 
         return projects.save(project);
     }
@@ -221,6 +246,15 @@ public class VideoEditorProjectService {
             project.setErrorMessage(userFacingMessage);
             projects.save(project);
         });
+    }
+
+    /** Short-form preset used by "best moments": optional vertical canvas + captions. The timeline is replaced right after. */
+    @Transactional
+    public void prepareShort(UUID projectId, boolean vertical, boolean captions) {
+        VideoEditorProject project = get(projectId);
+        if (vertical) project.setAspectRatio(com.aistorystudio.videoeditor.domain.enums.AspectRatio.VERTICAL_9_16);
+        if (captions) project.setAutoCaptions(true);
+        projects.save(project);
     }
 
     // ---- clips -------------------------------------------------------------
@@ -406,6 +440,8 @@ public class VideoEditorProjectService {
         if (request.autoCaptions() != null) { project.setAutoCaptions(request.autoCaptions()); }
         if (request.audioEnhancement() != null) { project.setAudioEnhancement(request.audioEnhancement()); }
         if (request.smartReframing() != null) { project.setSmartReframing(request.smartReframing()); planAffected = true; }
+        // look / title / stabilise change the pixels only, not the cuts: the plan stays valid, the preview cache key changes
+        applyLookTitleStabilize(project, request);
 
         if (planAffected && hasPlan(projectId)) {
             timeline.deleteByProjectId(projectId);
@@ -532,6 +568,24 @@ public class VideoEditorProjectService {
             transition(projectId, VideoEditorState.PLAN_READY);
         }
         return saved;
+    }
+
+    /**
+     * Inserts a source range as a new shot (after {@code afterIndex}, -1 = at the start, null/out of range = at the end).
+     * Used by "search what was said -> insert". Goes through replaceTimeline, so it is validated and versioned (undo works).
+     */
+    @Transactional
+    public List<TimelineClip> insertSegment(UUID projectId, UUID clipId, double startSec, double endSec, Integer afterIndex) {
+        List<TimelineClip> current = timeline.findByProjectIdOrderBySortOrderAsc(projectId);
+        List<TimelineEntry> entries = new ArrayList<>();
+        for (TimelineClip r : current) {
+            entries.add(new TimelineEntry(r.getClipId(), r.getSourceStartSec(), r.getSourceEndSec(), r.getTechniqueIn(),
+                    r.getTechniqueOut(), r.getTransitionSec(), r.getSpeed(), r.getVolume(), r.isMuted(), r.isLocked()));
+        }
+        TimelineEntry added = new TimelineEntry(clipId, Math.max(0, startSec), endSec, null, null, null, 1.0, 1.0, false, false);
+        int at = afterIndex == null || afterIndex >= entries.size() ? entries.size() : Math.max(0, afterIndex + 1);
+        entries.add(at, added);
+        return replaceTimeline(projectId, entries);
     }
 
     // ---- versions -----------------------------------------------------------
@@ -710,7 +764,7 @@ public class VideoEditorProjectService {
     public record CaptionSettings(String stylePreset, Boolean burnIn) {}
 
     private static final Set<String> CAPTION_PRESETS =
-            Set.of("CLEAN", "BOLD_REEL", "KIDS", "CINEMATIC", "MINIMAL");
+            Set.of("CLEAN", "BOLD_REEL", "KIDS", "CINEMATIC", "MINIMAL", "STACKED", "LINE_REVEAL");
 
     @Transactional
     public CaptionTrack updateCaptions(UUID projectId, CaptionSettings settings) {

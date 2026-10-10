@@ -43,7 +43,7 @@ public class LocalTTSProvider implements TextToSpeechProvider {
 
         // IndicF5 (flow matching) is far slower than Piper/Edge, and its first call may still be
         // loading the model; 60 s made every slow Indic line look like "synthesis failed".
-        Duration timeout = voice != null && voice.startsWith("indic:") ? Duration.ofMinutes(10) : Duration.ofSeconds(90);
+        Duration timeout = voice != null && com.aistorystudio.h3.IndicSpeech.isIndicEngineVoice(voice) ? Duration.ofMinutes(10) : Duration.ofSeconds(90);
         byte[] wav;
         try {
             wav = webClient.post()

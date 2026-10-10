@@ -433,6 +433,139 @@ def api_remove_background():
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 500
 
+
+# ---------------------------------------------------------------------------
+# Auto captions (video editor): word-level speech-to-text with faster-whisper
+# ---------------------------------------------------------------------------
+_WHISPER = {}
+
+
+def _whisper():
+    from faster_whisper import WhisperModel  # lazy: only loaded when captions are used
+    name = os.environ.get("WHISPER_MODEL", "small")
+    if name not in _WHISPER:
+        _WHISPER[name] = WhisperModel(name, device="cpu", compute_type="int8")
+    return _WHISPER[name]
+
+
+@app.post("/api/transcribe-upload")
+def api_transcribe_upload():
+    """multipart: file=<audio bytes>, language=<code, optional> -> {text, language}. Used by the TTS bake-off script
+    (the audio lives on the caller's machine, not on a path this container can see)."""
+    import tempfile
+    f = request.files.get("file")
+    if f is None:
+        return jsonify({"error": "No file uploaded."}), 400
+    lang = request.form.get("language") or None
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        f.save(tmp.name)
+        path = tmp.name
+    try:
+        segments, info = _whisper().transcribe(path, language=lang, vad_filter=False, condition_on_previous_text=False)
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        return jsonify({"text": text, "language": info.language})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+@app.post("/api/transcribe")
+def api_transcribe():
+    """{source, language?} -> {language, words:[{word,start,end}], segments:[{text,start,end}]}"""
+    body = request.get_json(force=True, silent=True) or {}
+    src = body.get("source")
+    if not src or not os.path.exists(src):
+        return jsonify({"error": f"File not found: {src}"}), 404
+    lang = body.get("language") or None
+    try:
+        # "prompt" biases whisper to keep fillers (um, uh) instead of tidying them away - needed by speech cleanup
+        prompt = body.get("prompt") or None
+        segments, info = _whisper().transcribe(src, language=lang, word_timestamps=True, vad_filter=True,
+                                               initial_prompt=prompt, condition_on_previous_text=False)
+        words, segs = [], []
+        for seg in segments:
+            segs.append({"text": seg.text.strip(), "start": round(seg.start, 3), "end": round(seg.end, 3)})
+            for w in (seg.words or []):
+                words.append({"word": w.word.strip(), "start": round(w.start, 3), "end": round(w.end, 3)})
+        return jsonify({"language": info.language, "words": words, "segments": segs})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Beat detection (video editor "beat sync"): tempo + beat grid from a music file, numpy only
+# ---------------------------------------------------------------------------
+def _decode_mono(path, sr=22050, max_seconds=600):
+    out = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-t", str(max_seconds), "-i", path, "-vn", "-ac", "1",
+                          "-ar", str(sr), "-f", "s16le", "-"], capture_output=True, check=True).stdout
+    return np.frombuffer(out, dtype=np.int16).astype(np.float32) / 32768.0
+
+
+def detect_beats(y, sr=22050, hop=512, n_fft=1024, bpm_min=70, bpm_max=170):
+    """Returns (tempo_bpm, beat_times, confidence). Spectral-flux onset envelope -> tempo by
+    autocorrelation -> phase by comb-filter fit, so the grid is regular like a real beat."""
+    if len(y) < sr * 3:
+        return 0.0, [], 0.0
+    win = np.hanning(n_fft).astype(np.float32)
+    frames = 1 + (len(y) - n_fft) // hop
+    idx = np.arange(n_fft)[None, :] + hop * np.arange(frames)[:, None]
+    mag = np.abs(np.fft.rfft(y[idx] * win, axis=1))
+    logmag = np.log1p(10.0 * mag)
+    flux = np.maximum(0.0, np.diff(logmag, axis=0)).sum(axis=1)
+    flux = np.concatenate([[0.0], flux])
+    flux = flux - np.convolve(flux, np.ones(31) / 31, mode="same")          # remove slow level changes
+    flux = np.maximum(flux, 0.0)
+    if flux.max() <= 0:
+        return 0.0, [], 0.0
+    flux /= flux.max()
+    fps = sr / hop
+    lag_min, lag_max = int(fps * 60 / bpm_max), int(fps * 60 / bpm_min)
+    ac = np.correlate(flux, flux, mode="full")[len(flux) - 1:]
+    seg = ac[lag_min:lag_max + 1]
+    if len(seg) == 0 or seg.max() <= 0:
+        return 0.0, [], 0.0
+    # prefer musically common tempi: weight with a broad log-Gaussian around 120 bpm
+    lags = np.arange(lag_min, lag_max + 1)
+    bpms = 60.0 * fps / lags
+    weight = np.exp(-0.5 * (np.log2(bpms / 120.0) / 0.9) ** 2)
+    best = lags[int(np.argmax(seg * weight))]
+    period = best                                           # frames per beat (float via refinement below)
+    # refine period with parabolic interpolation around the peak
+    k = best - lag_min
+    if 0 < k < len(seg) - 1:
+        a, b, c = seg[k - 1], seg[k], seg[k + 1]
+        denom = a - 2 * b + c
+        if denom != 0:
+            period = best + 0.5 * (a - c) / denom
+    # phase: offset with the largest summed onset energy on the grid
+    p_int = max(2, int(round(period)))
+    scores = [flux[o::p_int].sum() for o in range(p_int)]
+    offset = int(np.argmax(scores))
+    n = int((len(flux) - offset) / period)
+    beats = [round((offset + i * period) / fps, 3) for i in range(max(0, n))]
+    conf = float(max(scores) / (np.mean(scores) + 1e-9))
+    return float(60.0 * fps / period), beats, conf
+
+
+@app.post("/api/beats")
+def api_beats():
+    """{source} -> {tempo, beats:[seconds], confidence, duration}"""
+    body = request.get_json(force=True, silent=True) or {}
+    src = body.get("source")
+    if not src or not os.path.exists(src):
+        return jsonify({"error": f"File not found: {src}"}), 404
+    try:
+        y = _decode_mono(src)
+        tempo, beats, conf = detect_beats(y)
+        return jsonify({"tempo": round(tempo, 2), "beats": beats, "confidence": round(conf, 2),
+                        "duration": round(len(y) / 22050.0, 2)})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 500
+
 if __name__ == "__main__":
     cv2.setNumThreads(ANALYSIS_THREADS)
     app.run(host="0.0.0.0", port=5010)
