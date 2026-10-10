@@ -400,7 +400,14 @@ public class ProviderGateway {
             return localTtsProvider.synthesize(request);
         } catch (Exception e) {
             boolean speak = request.voice() != null && request.voice().startsWith("speak:");
-            throw new IllegalStateException("Indic TTS voice '" + request.voice() + "' failed: " + e.getMessage()
+            String m = String.valueOf(e.getMessage());
+            boolean gpuFull = m.contains("507") || m.toLowerCase(java.util.Locale.ROOT).contains("out of memory") || m.contains("GPU is full");
+            if (gpuFull) {
+                throw new IllegalStateException("Indic TTS voice '" + request.voice() + "' failed because the GPU is full: " + m
+                        + " - the service IS running but ComfyUI/Chatterbox/IndicF5 hold the VRAM. Free the GPU (docker compose stop tts-indic, "
+                        + "or POST /api/unload on the other TTS services) or pick an Edge voice.", e);
+            }
+            throw new IllegalStateException("Indic TTS voice '" + request.voice() + "' failed: " + m
                     + (speak ? " - is the tts-indicspeak service running? Add 'indicspeak' to COMPOSE_PROFILES (e.g. COMPOSE_PROFILES=chatterbox,indic,indicspeak),"
                                + " set HF_TOKEN and accept the licence at huggingface.co/bodhan-ai/indic-speak."
                              : " - is the tts-indic service running? Add 'indic' to COMPOSE_PROFILES (e.g. COMPOSE_PROFILES=chatterbox,indic)."), e);

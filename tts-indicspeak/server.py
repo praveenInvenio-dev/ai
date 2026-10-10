@@ -108,6 +108,23 @@ _load_error = None
 _last_used = 0.0
 
 
+def _is_oom(text: str) -> bool:
+    t = (text or "").lower()
+    return "out of memory" in t or "outofmemoryerror" in t
+
+
+def _free_gpu():
+    """Drop everything a half-finished load may still reference, so a retry (or ComfyUI) gets the VRAM back."""
+    try:
+        import gc
+        import torch
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _load():
     global _tts, _loading, _load_error
     _loading = True
@@ -126,7 +143,14 @@ def _load():
         app.logger.info("Indic-Speak loaded from %s", local)
     except Exception as exc:  # noqa: BLE001
         _load_error = f"{type(exc).__name__}: {exc}"
-        if "403" in _load_error or "gated" in _load_error.lower() or "401" in _load_error:
+        _tts = None
+        exc = None  # a held traceback keeps the partly loaded weights (and their VRAM) alive
+        _free_gpu()
+        if _is_oom(_load_error):
+            _load_error = ("the GPU is full - another service (ComfyUI, Chatterbox, IndicF5) is holding the VRAM and "
+                           "Indic-Speak needs ~8 GB free. Stop or unload them (e.g. docker compose stop tts-indic comfyui), "
+                           "or set INDICSPEAK_DEVICE=cpu (very slow). Original error: " + _load_error.split(". ")[0])
+        elif "403" in _load_error or "gated" in _load_error.lower() or "401" in _load_error:
             _load_error += (" - accept the licence at https://huggingface.co/" + REPO +
                             " with the account that owns HF_TOKEN, then restart this service.")
         app.logger.exception("Indic-Speak load failed")
@@ -138,7 +162,14 @@ def _load():
 def get_tts():
     global _tts
     if _tts is None:
-        _load()
+        try:
+            _load()
+        except Exception:  # noqa: BLE001 - one retry: the first attempt may only have lost a race with another process
+            if not _is_oom(_load_error or ""):
+                raise
+            _free_gpu()
+            time.sleep(3)
+            _load()
     return _tts
 
 
@@ -232,7 +263,8 @@ def api_tts():
         try:
             tts = get_tts()
         except Exception as exc:  # noqa: BLE001
-            return jsonify({"error": f"Indic-Speak could not load: {_load_error or exc}"}), 503
+            status = 507 if _is_oom(_load_error or str(exc)) else 503
+            return jsonify({"error": f"Indic-Speak could not load: {_load_error or exc}"}), status
         try:
             kwargs = {"speaker": speaker}
             if style:
@@ -241,7 +273,9 @@ def api_tts():
         except Exception as exc:  # noqa: BLE001
             app.logger.exception("Indic-Speak synthesis failed")
             msg = f"{type(exc).__name__}: {exc}"
-            status = 507 if "out of memory" in msg.lower() else 500
+            status = 507 if _is_oom(msg) else 500
+            if status == 507:
+                _free_gpu()
             return jsonify({"error": "Indic-Speak synthesis failed: " + msg + (" - the GPU is full (stop ComfyUI work or lower INDICSPEAK usage)." if status == 507 else "")}), status
         finally:
             _last_used = time.time()

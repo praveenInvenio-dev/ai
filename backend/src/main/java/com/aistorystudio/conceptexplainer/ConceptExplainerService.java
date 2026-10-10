@@ -539,10 +539,11 @@ public class ConceptExplainerService {
                 job.getWarnings().add("Voice style: this voice has no emotion model, so the teaching tone is applied through pace and pitch only. "
                         + "Pick a Chatterbox or cloned voice for fuller expression.");
             }
-            var audio = gateway.synthesizeForStoryLanguage(new TextToSpeechProvider.TtsRequest(
+            var request = new TextToSpeechProvider.TtsRequest(
                     line, job.getVoice(), job.getLanguage(), tp.speed(), tp.pitch(),
                     tp.emotion(), tp.intensity(), "natural conversational tutor, " + vdir.delivery(), List.of(), true,
-                    (line.contains("[laugh]") || line.contains("[chuckle]")) ? "chuckle" : null, tp.acting(), null));
+                    (line.contains("[laugh]") || line.contains("[chuckle]")) ? "chuckle" : null, tp.acting(), null);
+            var audio = synthesizeNeverSilent(request, num(s), i + 1);
             if (audio.providerWarning() != null && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice:"))) {
                 job.getWarnings().add("Voice: " + audio.providerWarning());
             }
@@ -576,6 +577,30 @@ public class ConceptExplainerService {
         double speech = media.probeDurationSeconds(out);
         s.setDurationSeconds((speech > 0 ? speech : t) + SCENE_TAIL);
         s.setStepTimes(stepTimes(starts, s.getStepPaths().size(), speech > 0 ? speech : t, job));
+    }
+
+    /**
+     * A narration line must never come out as silence: the gateway degrades a failed line to a silent placeholder
+     * (that is what produced videos with 25 s of nothing). Retry with a short backoff; if every attempt is still
+     * silent or failing, fail the lesson with the real reason so the user can fix the voice and re-run.
+     */
+    private TextToSpeechProvider.TtsResult synthesizeNeverSilent(TextToSpeechProvider.TtsRequest request, Object scene, int line) throws Exception {
+        Exception last = null;
+        String lastWarning = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                var audio = gateway.synthesizeForStoryLanguage(request);
+                String w = audio.providerWarning();
+                if (w == null || !w.contains("silent placeholder")) return audio;
+                lastWarning = w;
+            } catch (Exception e) {
+                last = e;
+            }
+            if (attempt < 3) Thread.sleep(2000L * attempt);
+        }
+        String why = lastWarning != null ? lastWarning : (last != null ? rootMessage(last) : "unknown error");
+        throw new IllegalStateException("Narration for scene " + scene + ", line " + line
+                + " could not be generated, so no silent video was produced: " + why, last);
     }
 
     private static double sentenceGap(String sentence) {
