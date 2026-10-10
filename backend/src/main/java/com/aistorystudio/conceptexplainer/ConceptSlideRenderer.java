@@ -86,24 +86,24 @@ public final class ConceptSlideRenderer {
         STYLES.put("neon", new Style("neon", "Neon glow", true, true, "neon",
                 new Color[]{c(0x00DCFF), c(0xFF3CDC), c(0xFFE13C), c(0x46FF78), c(0xFFA028), c(0xAA6EFF), c(0xF0F4FA), c(0xFF3C50), c(0x96A0B4)},
                 false, false, "premium glowing neon line art with subtle 3D depth, electric cyan, magenta, yellow and green outlines, isolated on a PURE BLACK background"));
-        STYLES.put("reference", new Style("reference", "Technical tutorial (reference style)", true, false, "reference",
-                new Color[]{c(0x52D8E8), c(0xA58BFA), c(0xF4C96B), c(0x6DD6A8), c(0xF3A879), c(0xB7A0FF), c(0xF1F6FA), c(0xFF8585), c(0x91A8B8)},
-                false, false, "premium cinematic technical tutorial art direction, deep teal navy canvas, richly detailed concept-specific technical illustrations, intricate but legible architecture diagrams, layered depth, precise cyan connectors, restrained violet highlights, beautifully composed code-editor panels, subtle volumetric lighting and texture, high contrast, no neon glow, no generic template cards or decorative clutter"));
         STYLES.put("sketchnote", new Style("sketchnote", "Sketchnote (hand-drawn)", false, false, "sketch",
                 new Color[]{c(0x2E9BB3), c(0xE07A5F), c(0xC9920E), c(0x4F9D5B), c(0xE8803A), c(0x8E6BC7), c(0x2A2A2A), c(0xD1495B), c(0x6B6B6B)},
-                true, false, "rich hand-drawn editorial sketchnote illustration, fine-liner ink, carefully layered doodles, crosshatching, paper grain, soft peach and teal marker shading, many meaningful concept-specific details, on a warm paper background"));
+                true, false, "simple hand-drawn sketchnote doodle, black fine-liner ink outlines with soft peach and teal marker fills, on a PLAIN WHITE background"));
         STYLES.put("storyboard", new Style("storyboard", "Clean storyboard (3D icons)", false, false, "card",
                 new Color[]{c(0x2F7AE5), c(0xD63384), c(0xE09A00), c(0x2FA84F), c(0xF2711C), c(0x7B4FD6), c(0x1D2B45), c(0xE03131), c(0x5C6B80)},
-                false, false, "richly detailed 3D clay editorial illustration, tactile material texture, carefully modeled shapes, soft cinematic studio lighting, ambient occlusion, multiple purposeful supporting details, polished educational film quality, on a clean light background"));
+                false, false, "glossy colourful 3D clay-style icon, soft studio lighting, rounded friendly shapes, on a PLAIN WHITE background"));
         STYLES.put("chalkboard", new Style("chalkboard", "Chalkboard classroom", true, false, "chalk",
                 new Color[]{c(0x8FD3E8), c(0xF59AC3), c(0xF7E07A), c(0xA5E39A), c(0xF6B57A), c(0xC4A8F0), c(0xF2F2EC), c(0xFF8A8A), c(0xB7C4BC)},
-                true, false, "detailed classroom chalk illustration with layered white and pastel chalk strokes, visible chalk dust, crosshatching and carefully drawn explanatory details on a deep green-black chalkboard"));
+                true, false, "white and pastel chalk drawing, loose hand-drawn chalk strokes, on a PURE BLACK background"));
         STYLES.put("blueprint", new Style("blueprint", "Blueprint (engineering)", true, true, "blueprint",
                 new Color[]{c(0x9FD8FF), c(0xFFB3D9), c(0xFFE08A), c(0xA8F0C0), c(0xFFC58A), c(0xD0B8FF), c(0xFFFFFF), c(0xFF9090), c(0xB8CDE8)},
-                false, false, "intricate engineering blueprint illustration with precise white and cyan technical linework, sectional details, measurement marks, construction guides and layered schematic detail on deep blueprint blue"));
+                false, false, "white technical blueprint line drawing with thin precise lines and measurement marks, on a PURE BLACK background"));
         STYLES.put("anime", new Style("anime", "Anime pop", false, false, "pop",
                 new Color[]{c(0x1C9BEF), c(0xFF4FA3), c(0xF5B700), c(0x22B573), c(0xFF7A1A), c(0x8A5CFF), c(0x1A1A2E), c(0xFF3B3B), c(0x55556A)},
-                false, true, "highly detailed anime educational illustration, expressive cel shading, bold clean outlines, rich environmental detail, dramatic but readable composition, vivid colors, polished anime key visual quality"));
+                false, true, "bright anime cel-shaded illustration, bold clean black outlines, vivid flat colours, cheerful, on a PLAIN WHITE background"));
+        STYLES.put("reference", new Style("reference", "Reference technical tutorial", true, false, "card",
+                new Color[]{c(0x53D8E8), c(0xB49BFF), c(0xF3D36A), c(0x70D6A4), c(0xF0A36B), c(0xA994F4), c(0xF2F6FC), c(0xFF7777), c(0x91A6B8)},
+                false, false, "cinematic technical explainer artwork with richly detailed software architecture, realistic interface panels, precise connected data-flow arrows, annotated components and layered depth, deep teal and charcoal palette with cyan and violet accents; no generic icon-only composition"));
     }
 
     private Style style = STYLES.get("neon");
@@ -258,7 +258,7 @@ public final class ConceptSlideRenderer {
     /** styleId: neon | sketchnote | storyboard | chalkboard | blueprint | anime. seed: per lesson. */
     public synchronized List<BufferedImage> render(Slide s, String styleId, long seed) {
         applyStyle(style(styleId), seed);
-        int n = stepCount(s);
+        int n = Math.max(4, stepCount(s));
         List<BufferedImage> out = new ArrayList<>();
         for (int k = 0; k < n; k++) out.add(renderStep(s, k, n));
         return out;
@@ -267,6 +267,7 @@ public final class ConceptSlideRenderer {
     // ---------------------------------------------------------------- frame
 
     private BufferedImage renderStep(Slide s, int step, int steps) {
+        if (richCompositionEnabled(style)) return renderReferenceStep(s, step, steps);
         BufferedImage sharp = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
         BufferedImage glow = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
         Canvas c = new Canvas(sharp.createGraphics(), glow.createGraphics());
@@ -308,6 +309,116 @@ public final class ConceptSlideRenderer {
             default -> paragraph(c, s.text(), 120, 260, W - 240, 44, 12);
         }
         c.dispose();
+        return style.glow() ? compose(sharp, glow) : sharp;
+    }
+
+    /**
+     * Rich scene composition shared by all visual styles: large scene-specific generated visual,
+     * explanatory copy, progressively revealed annotations and a code/flow evidence panel.
+     * Style palettes, typography and illustration art direction remain selectable. Text/code labels
+     * are Java-rendered for exact spelling.
+     */
+    private void illustrationCover(Canvas c, BufferedImage img, int x, int y, int w, int h) {
+        if (img == null) {
+            illustration(c, null, x, y, w, h);
+            return;
+        }
+        double scale = Math.max(w / (double) img.getWidth(), h / (double) img.getHeight());
+        int dw = (int) Math.round(img.getWidth() * scale);
+        int dh = (int) Math.round(img.getHeight() * scale);
+        int dx = x + (w - dw) / 2;
+        int dy = y + (h - dh) / 2;
+        java.awt.Shape oldClip = c.g.getClip();
+        c.g.setClip(x, y, w, h);
+        c.g.drawImage(img, dx, dy, dw, dh, null);
+        c.g.setClip(oldClip);
+    }
+
+    private boolean richCompositionEnabled(Style selectedStyle) {
+        // The rich scene renderer is shared across styles; each style still supplies its palette,
+        // typography, panel treatment and generated-art direction.
+        return true;
+    }
+
+    private BufferedImage renderReferenceStep(Slide s, int step, int steps) {
+        BufferedImage sharp = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
+        BufferedImage glow = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
+        Color canvasBg = style.dark() ? ("reference".equalsIgnoreCase(style.id()) ? new Color(8, 20, 29)
+                : style.id().equals("blueprint") ? new Color(9, 31, 65)
+                : style.id().equals("chalkboard") ? new Color(24, 53, 43) : new Color(10, 13, 23))
+                : style.id().equals("sketchnote") ? new Color(250, 247, 238) : new Color(246, 249, 253);
+        Graphics2D sg = sharp.createGraphics();
+        sg.setColor(canvasBg); sg.fillRect(0, 0, W, H); sg.dispose();
+        Graphics2D gg = glow.createGraphics();
+        gg.setColor(canvasBg); gg.fillRect(0, 0, W, H); gg.dispose();
+        Canvas c = new Canvas(sharp.createGraphics(), glow.createGraphics());
+        c.panel(28, 24, W - 56, H - 48, 26, CYAN);
+        c.text("CONCEPT EXPLAINER  /  " + String.format("%02d", s.number()), 76, 76, mediumFont, 24, CYAN, false);
+        c.text(fit(s.title(), titleFont, 58, W - 150), 76, 145, titleFont, 58, WHITE, false);
+        c.line(76, 174, W - 76, 174, new Color(83, 216, 232, 150), 2.2f);
+
+        // Main visual area: detailed AI-generated artwork or a clean explanatory diagram fallback.
+        c.panel(66, 210, 1120, 790, 24, new Color(56, 114, 137));
+        if (s.illustration() != null) {
+            illustrationCover(c, s.illustration(), 82, 226, 1088, 758);
+        } else {
+            // Useful fallback: render the structured diagram/code instead of leaving a blank scene.
+            c.text("VISUAL EXPLANATION", 110, 270, mediumFont, 27, CYAN, false);
+            if (s.items() != null && !s.items().isEmpty()) {
+                int count = Math.min(5, s.items().size());
+                int y = 330;
+                for (int i = 0; i < count; i++) {
+                    Item it = s.items().get(i);
+                    int x = 115 + (i % 2) * 500;
+                    int yy = y + (i / 2) * 190;
+                    c.panel(x, yy, 430, 132, 18, i <= step ? ACCENT[i % ACCENT.length] : DIM);
+                    c.text(fit(it.label(), mediumFont, 29, 380), x + 20, yy + 48, mediumFont, 29, WHITE, false);
+                    paragraph(c, it.text(), x + 20, yy + 85, 390, 22, 2, WHITE, bodyFont);
+                    if (i < count - 1) c.curveArrow(x + 430, yy + 65, x + 485, yy + 65, CYAN);
+                }
+            } else {
+                paragraph(c, s.text(), 110, 330, 1000, 42, 6, WHITE, bodyFont);
+            }
+        }
+
+        // Explanation rail: narratively useful content rather than decorative micro-labels.
+        c.panel(1210, 210, 644, 790, 24, VIOLET);
+        c.text("WHY THIS STEP MATTERS", 1250, 264, mediumFont, 25, CYAN, false);
+        paragraph(c, s.text(), 1250, 315, 560, 31, 5, WHITE, bodyFont);
+        int y = 505;
+        if (s.callouts() != null && !s.callouts().isEmpty()) {
+            int count = Math.min(s.callouts().size(), Math.max(1, step + 1));
+            for (int i = 0; i < count && y < 790; i++) {
+                Callout co = s.callouts().get(i);
+                c.dot(1262, y - 7, 7, i % 2 == 0 ? CYAN : VIOLET);
+                c.text(fit(co.label(), mediumFont, 25, 530), 1285, y, mediumFont, 25, i % 2 == 0 ? CYAN : YELLOW, false);
+                y = paragraph(c, co.detail(), 1285, y + 34, 520, 21, 2, WHITE, bodyFont) + 25;
+            }
+        } else if (s.items() != null && !s.items().isEmpty()) {
+            int count = Math.min(s.items().size(), Math.max(1, step + 1));
+            for (int i = 0; i < count && y < 790; i++) {
+                Item it = s.items().get(i);
+                c.dot(1262, y - 7, 7, CYAN);
+                c.text(fit(it.label(), mediumFont, 24, 520), 1285, y, mediumFont, 24, CYAN, false);
+                y = paragraph(c, it.text(), 1285, y + 32, 520, 20, 2, WHITE, bodyFont) + 20;
+            }
+        } else if (s.mappings() != null && !s.mappings().isEmpty()) {
+            int count = Math.min(s.mappings().size(), Math.max(1, step + 1));
+            for (int i = 0; i < count && y < 790; i++) {
+                Mapping m = s.mappings().get(i);
+                c.text(fit(m.left() + "  →  " + m.right(), mediumFont, 23, 540), 1250, y, mediumFont, 23, WHITE, false);
+                y += 45;
+            }
+        }
+        if (s.code() != null && !s.code().isBlank()) {
+            c.panel(1240, 820, 580, 145, 16, GREEN);
+            c.text("WORKED EXAMPLE", 1260, 852, mediumFont, 20, GREEN, false);
+            paragraph(c, s.code(), 1260, 890, 535, 22, 3, WHITE, monoFont);
+        } else if (s.formula() != null && !s.formula().isBlank()) {
+            c.panel(1240, 835, 580, 105, 16, YELLOW);
+            c.text(fit(s.formula() + ((s.formulaResult() == null || s.formulaResult().isBlank()) ? "" : "  =  " + s.formulaResult()), mediumFont, 24, 530),
+                    1260, 895, mediumFont, 24, WHITE, false);
+        }
         return style.glow() ? compose(sharp, glow) : sharp;
     }
 
@@ -1157,14 +1268,6 @@ public final class ConceptSlideRenderer {
                         g.fillOval(rnd.nextInt(W), rnd.nextInt(H), 200 + rnd.nextInt(400), 60 + rnd.nextInt(120));
                     }
                 }
-                case "reference" -> {
-                    g.setPaint(new java.awt.GradientPaint(0, 0, new Color(0x102B38), W, H, new Color(0x091923)));
-                    g.fillRect(0, 0, W, H);
-                    // Restrained technical grid: enough structure to feel engineered, never competing with labels.
-                    g.setStroke(new BasicStroke(1f));
-                    for (int x = 0; x < W; x += 48) { g.setColor(new Color(100, 190, 205, x % 240 == 0 ? 18 : 7)); g.drawLine(x, 0, x, H); }
-                    for (int y = 0; y < H; y += 48) { g.setColor(new Color(100, 190, 205, y % 240 == 0 ? 18 : 7)); g.drawLine(0, y, W, y); }
-                }
                 case "blueprint" -> {
                     g.setColor(new Color(0x0D3B73)); g.fillRect(0, 0, W, H);
                     g.setStroke(new BasicStroke(1f));
@@ -1262,7 +1365,6 @@ public final class ConceptSlideRenderer {
                 case "card": case "pop": return big ? new Color(255, 255, 255, 200) : new Color(mix(col.getRed(), 255, 0.88), mix(col.getGreen(), 255, 0.88), mix(col.getBlue(), 255, 0.88));
                 case "chalk": return new Color(255, 255, 255, big ? 0 : 10);
                 case "blueprint": return new Color(255, 255, 255, big ? 0 : 14);
-                case "reference": return big ? new Color(0x102B38) : new Color(14, 38, 49, 235);
                 default: return big ? new Color(4, 5, 10) : new Color(col.getRed() / 28 + 3, col.getGreen() / 28 + 3, col.getBlue() / 28 + 5);
             }
         }

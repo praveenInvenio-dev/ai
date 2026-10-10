@@ -40,8 +40,8 @@ import java.util.regex.Pattern;
  *
  * <pre>
  * topic -> Ollama lesson plan (one TEMPLATE per scene + narration as ordered sentences)
- *       -> ConceptSlideRenderer draws each scene as a neon infographic panel (exact text/code/tables),
- *          AI image only for the real-world object in analogy scenes
+ *       -> generate a scene-specific illustration for every scene and compose it with exact text/code/diagram overlays,
+ *          using the selected art direction and progressive explanatory reveals
  *       -> narration spoken sentence by sentence, so we KNOW when each sentence starts
  *       -> build step k of the slide fades in when the sentence that explains it starts
  *       -> scenes joined, soft music ducked under the voice, 1920x1080
@@ -136,7 +136,7 @@ public class ConceptExplainerService {
             job.setStatus(ConceptExplainerJob.Status.GENERATING_SCENES);
             for (ConceptExplainerJob.Scene s : job.getScenes()) {
                 String base = "Scene " + s.getSceneNumber() + "/" + job.getScenes().size() + " - " + s.getTitle();
-                if (needsIllustration(s)) {
+                if (needsIllustration(job, s)) {
                     job.setStage(base + ": drawing the real-world illustration");
                     makeIllustration(job, s);
                 }
@@ -437,31 +437,28 @@ public class ConceptExplainerService {
 
     // =================================================================== slide
 
-    private boolean needsIllustration(ConceptExplainerJob.Scene s) {
-        return ("analogy".equals(s.getTemplate()) || "analogy_code".equals(s.getTemplate()))
-                && s.getIllustrationPrompt() != null && !s.getIllustrationPrompt().isBlank();
+    private boolean needsIllustration(ConceptExplainerJob job, ConceptExplainerJob.Scene s) {
+        // Every scene gets a purpose-built visual asset; the selected style changes its art direction.
+        return (s.getVisualDescription() != null && !s.getVisualDescription().isBlank())
+                || (s.getIllustrationPrompt() != null && !s.getIllustrationPrompt().isBlank());
     }
 
-    /**
-     * Generate a rich, scene-specific illustration in the selected visual language. Typography and code
-     * remain app-rendered for correctness; the image model creates the detailed visual explanation artwork.
-     */
+    /** Generate scene-specific teaching artwork for the selected visual style; text is overlaid separately. */
     private void makeIllustration(ConceptExplainerJob job, ConceptExplainerJob.Scene s) {
+        // the object is drawn in the lesson's visual style (neon / sketch / 3D clay / chalk / blueprint / anime)
         String look = ConceptSlideRenderer.style(job.getStyle()).illustrationStyle();
-        String prompt = "Create a premium, richly detailed educational editorial illustration for a technical concept explainer. "
-                + "Visual subject and idea: " + s.getIllustrationPrompt() + ". "
-                + "Visual treatment: " + look + ". "
-                + "Show meaningful, topic-specific details rather than a generic icon: layered forms, material texture, "
-                + "careful lighting and shadows, foreground/midground/background separation, purposeful composition, "
-                + "small supporting details that help explain the idea, clear silhouette and strong visual hierarchy. "
-                + "The artwork should feel custom art-directed for this exact lesson, like a polished frame from a premium "
-                + "educational film, not clip art, a stock icon, a flat template, or a generic infographic. "
-                + "Use the scene's full available artwork area; allow a subtle contextual environment when it helps the concept. "
-                + "No text, letters, numbers, labels, UI text, watermark or logo; those are rendered separately by the application. "
-                + "One cohesive composition, no collage, no multi-panel layout, no border.";
-        String negative = "text, letters, words, numbers, typography, watermark, logo, stock icon, clip art, generic app icon, "
-                + "flat template, empty simplistic object, low detail, muddy forms, blurry, low contrast, clutter, collage, "
-                + "grid, split panels, border, frame, malformed geometry, duplicate objects";
+        String subjectBrief = blank(s.getIllustrationPrompt()) ? s.getVisualDescription() : s.getIllustrationPrompt();
+        String visualBrief = blank(s.getVisualDescription()) ? subjectBrief : s.getVisualDescription();
+        String prompt = "Create a richly detailed educational illustration for a premium explainer video. Subject and action: "
+                + subjectBrief + ". Scene context: " + visualBrief + ". Narration context: " + safePromptText(s.getNarration(), 700)
+                + ". Art direction: " + look + ". "
+                + "Use a deliberate cinematic composition, multiple meaningful visual details, foreground/midground/background depth, "
+                + "material texture, directional lighting, realistic shadows, precise edges, and clear visual hierarchy. "
+                + "The image must help explain the actual concept, not merely symbolize it with a generic icon. "
+                + "Fill the composition with relevant subject detail while keeping a clean negative-space area for separately rendered labels. "
+                + "No text, no letters, no numbers, no words, no watermark, no logo, no border or decorative frame.";
+        String negative = "text, letters, words, numbers, typography, watermark, logo, generic app icon, tiny icon, empty composition, "
+                + "unrelated objects, random symbols, clutter, blurry, low contrast, decorative frame, border, collage, grid, split panels";
         try {
             var result = gateway.generateImage(new ImageGenerationProvider.ImageGenerationRequest(
                     prompt, negative, 1024, 1024, 28, 4.2, null, "qwen-image-2-1-16gb-t2i", null, null, null));
@@ -811,6 +808,12 @@ public class ConceptExplainerService {
     private static boolean blank(String s) { return s == null || s.isBlank(); }
 
     private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s; }
+
+    private String safePromptText(String value, int max) {
+        if (value == null) return "";
+        String clean = value.replaceAll("[\\r\\n]+", " ").trim();
+        return clean.length() <= max ? clean : clean.substring(0, max);
+    }
 
     private static String rootMessage(Throwable e) {
         Throwable current = e;

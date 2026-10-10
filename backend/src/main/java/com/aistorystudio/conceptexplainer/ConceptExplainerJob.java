@@ -103,7 +103,7 @@ public class ConceptExplainerJob {
     }
 
     /** Visual style: neon | sketchnote | storyboard | chalkboard | blueprint | anime. */
-    private volatile String style = "reference";
+    private volatile String style = "neon";
     public String getStyle() { return style; }
     public void setStyle(String v) { style = ConceptSlideRenderer.style(v).id(); }
 

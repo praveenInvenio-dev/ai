@@ -56,13 +56,13 @@ interface LessonSummary { id: string; title: string; duration: string; language:
         <div>
           <div class="eyebrow">LEARN WITH VISUALS</div>
           <h1>Concept Explainer</h1>
-          <p>Create a polished technical lesson with crisp diagrams, readable code, natural narration and visuals that reveal in sync with each explanation.</p>
+          <p>Build a topic-led lesson with scene-specific artwork, detailed explanatory diagrams, code or interface walkthroughs, and visuals revealed in sync with the explanation.</p>
         </div>
-        <div class="hero-badge"><span>✦</span> Technical visuals + synced narration + 1080p</div>
+        <div class="hero-badge"><span>✦</span> Neon slides + synced voice + 1080p</div>
       </div>
 
       <section class="builder card">
-        <div class="section-title"><div><h2>What do you want to learn?</h2><p>Choose a visual style. Every style uses richly detailed, concept-specific artwork with sharp app-rendered text, code and diagrams.</p></div></div>
+        <div class="section-title"><div><h2>What do you want to learn?</h2><p>AI plans the teaching narrative and creates a dedicated visual for each scene. Diagrams, labels and code are rendered sharply over rich artwork, with progressive explanation beats.</p></div></div>
         <div class="form-grid">
           <div>
             <label>Visual style</label>
@@ -199,7 +199,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
           </div>
         </div>
         <div class="form-footer">
-          <div class="hint"><strong>{{ duration === '1 minute' ? 'Quick Learn:' : 'Deep Dive:' }}</strong> The selected style controls the visual treatment. Reference style uses rich technical illustration; other styles retain their own look at the same detail level. Text and code are rendered separately for readability.</div>
+          <div class="hint"><strong>{{ duration === '1 minute' ? 'Quick Learn:' : 'Deep Dive:' }}</strong> text, code, tables and diagrams are drawn by the app (always crisp and correct); the AI image model only draws the real-world object in analogy slides. No zoom or pan — text stays sharp.</div>
           <button class="btn btn-primary generate" [disabled]="loading || !topic.trim()" (click)="generate()">{{ loading ? 'Starting…' : 'Generate Concept Explainer' }}</button>
         </div>
         <p class="err-inline" *ngIf="formError">{{ formError }}</p>
@@ -275,7 +275,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
       <section *ngIf="!job" class="empty card">
         <div class="empty-icon">✦</div>
         <h2>From “What is a Java variable?” to a visual lesson</h2>
-        <p>One clear visual per idea: diagrams build step by step, code highlights follow the narration, and examples make abstract concepts concrete.</p>
+        <p>One neon slide per idea, everyday analogies, a natural narrator — and each label, code part or row lights up exactly when it is explained.</p>
         <div class="examples"><button class="example" (click)="topic='Explain Java Variables'">Java Variables</button><button class="example" (click)="topic='Explain HashMap like I am a beginner'">Java HashMap</button><button class="example" (click)="topic='Explain Docker containers'">Docker Containers</button></div>
       </section>
     </div>
@@ -327,15 +327,15 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
   speakVoices: { id: string; label: string }[] = [];
   edgeVoices: { id: string; label: string }[] = [];
   clonedVoices: { id: string; label: string }[] = [];
-  style = 'reference';
+  style = 'neon';
   readonly styles = [
-    { id: 'reference', label: 'Rich technical tutorial (reference video)', hint: 'Cinematic, highly detailed concept illustrations combined with precise diagrams, code and synchronized explanation.' },
     { id: 'neon', label: 'Neon glow', hint: 'Black canvas, glowing neon panels and code — tech look.' },
     { id: 'sketchnote', label: 'Sketchnote (hand-drawn)', hint: 'Cream paper, hand-drawn ink lines, handwritten font, pastel highlights.' },
     { id: 'storyboard', label: 'Clean storyboard (3D icons)', hint: 'Light pastel cards with soft shadows and glossy 3D-style illustrations.' },
     { id: 'chalkboard', label: 'Chalkboard classroom', hint: 'Green board, chalk lines and handwriting — classroom feel.' },
     { id: 'blueprint', label: 'Blueprint (engineering)', hint: 'Blue grid paper with white technical lines.' },
-    { id: 'anime', label: 'Anime pop', hint: 'Bright pop colours, bold outlines, comic title font, anime-style illustrations.' }
+    { id: 'anime', label: 'Anime pop', hint: 'Bright pop colours, bold outlines, comic title font, anime-style illustrations.' },
+    { id: 'reference', label: 'Reference technical tutorial', hint: 'Deep teal cinematic technical visuals, detailed connected diagrams, code/interface walkthroughs, precise annotations and layered composition.' }
   ];
   styleHint(): string { return this.styles.find(s => s.id === this.style)?.hint || ''; }
   private static readonly LANG_CODE: Record<string, string> = {

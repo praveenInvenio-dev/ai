@@ -55,7 +55,7 @@ public final class TeachingPlanner {
 
     /** The required topic-introducing line (without the greeting). */
     public static String openingLine(String topic) {
-        return "Today, we are breaking down " + cleanTopic(topic) + " — what it is, how it works, and why it matters.";
+        return cleanTopic(topic) + ". Let's break down what it is, why it matters, and exactly how it works.";
     }
 
     /**
@@ -101,7 +101,7 @@ public final class TeachingPlanner {
 
                 Every lesson follows the same teaching pattern, but the content, analogies, jokes and structure must be invented fresh for
                 the actual topic (never reuse a stock example or joke):
-                1. HOOK - open by naming the exact topic immediately in a natural, confident way, as a premium educational video does: “Today, we’re breaking down <topic> — what it is, how it works, and why it matters.” A short greeting may precede it only if it sounds natural. Then immediately pose a topic-specific curiosity or real problem. Do NOT use the generic “What are we learning today?” classroom formula.
+                1. HOOK - opens with ONE short greeting ('Hello friends!' or 'Hello everyone!') and then 'What are we learning today? <topic>!', then a topic-specific curiosity hook or relatable situation.
                 2. ANALOGY - a relatable everyday situation BEFORE any difficult term. Pick it for this topic (daily life, classroom, office, food
                    delivery, shopping, banking, travel, cricket, traffic, queues, family chat ...). Do not force Indian references where they do
                    not fit. The analogy must be accurate - it may not teach something technically wrong.
@@ -161,7 +161,9 @@ public final class TeachingPlanner {
                 1. narration  - what the tutor says (array of 2-5 short spoken sentences)
                 2. slide      - the slide that REINFORCES that narration (template fields below)
                 3. visualDescription - one sentence describing what is on screen, matching the narration step by step
-                4. imagePrompt - whenever a scene benefits from custom artwork, specify a richly detailed, topic-specific visual that concretely teaches the narration. Describe composition, foreground/background, meaningful objects, depth, lighting/materials, annotations to be added by the renderer, and what the viewer should notice first. Avoid generic icon-only art, empty backgrounds, stock template cards, and repeated compositions. Never ask the image model to spell text; render text/code sharply in the application. Keep the chosen visual style, but apply premium editorial detail within that style.
+                4. imagePrompt - ONLY for analogy / analogy_code scenes: ONE concrete object or situation that the narration just described,
+                   derived from the narration (e.g. the same bottle, queue, shop, box the tutor mentioned). No text, no people, no style words
+                   (the art style is applied automatically).
                 5. voiceDirection - {"emotion":"energetic|curious|calm|playful|dramatic|serious|encouraging|warm|neutral",
                    "pace":"slow|medium|fast","delivery":"conversational|storytelling|explanatory|emphatic|comedic|reflective"}
                    Direction is metadata for the voice engine. NEVER write it inside the narration (no '(dramatic voice)', no '[pause]').
@@ -174,26 +176,22 @@ public final class TeachingPlanner {
                 - Never explain on one scene what another scene shows. Never repeat the same sentence in two scenes.
 
                 NARRATION STYLE
-                - Teach like a confident, excellent human technical educator in a premium YouTube explainer: clear, warm, curious and conversational, never like a textbook or a list being read aloud.
-                - Use a strong explanatory arc: relatable question/problem, intuitive mental model, precise definition, step-by-step mechanism, concrete worked example, then concise takeaway. Adapt this arc to the topic; never pad the lesson.
-                - Every sentence must add a new idea, clarify a relationship, or guide the learner through a visible change. Use natural bridges and varied sentence lengths; allow short emphasis sentences between longer explanations. Start with the topic immediately, then progressively deep-dive: problem/context → intuitive mental model → precise definition → how the parts connect → step-by-step flow → worked example → implications/common pitfall → concise takeaway. Do not jump straight to a shallow definition and do not merely list features.
-                - Explain cause and effect, not just labels. When showing a flow, state what enters, what changes, what leaves, and why the step matters. For code, explain the intent before or as the relevant line is highlighted.
-                - Avoid generic filler such as 'in today's digital world', repeated 'imagine this' openings, empty hype, overlong definitions, and narrating slide labels verbatim.
-                - Visual direction must be richly detailed and varied scene-to-scene, comparable to a premium reference technical explainer: detailed topic-specific illustrations, annotated system diagrams, readable code/editor panels, real interface-like mockups when relevant, data-flow arrows, callout details and layered compositions. Use the selected style as the art direction, not as a rigid slide template. Fill the frame intentionally without clutter or large empty areas. Every diagram must explain relationships and flow, not merely decorate. Reveal components in spoken order. Keep labels high-contrast and render text/code sharply in the application, never in the image model. Never repeat the same layout for consecutive scenes unless the second scene deliberately builds on the first.
-                - The opening must begin by naming the topic immediately, like a polished reference tutorial: “Today, we’re breaking down <topic> — what it is, how it works, and why it matters.” A brief greeting is optional and must never delay the topic. Avoid the generic classroom question “What are we learning today?” Translate this opening naturally into the selected language; do not translate word-for-word if it sounds unnatural.
-                - Spoken, simple sentences (10-18 words quick lessons, 12-22 deep). Contractions, rhetorical questions, bridges like
-                  'Now here is the interesting part'. Intuition first, terminology only when needed, every term explained at once.
+                - OPENING: Start with the topic itself in the first words, as the reference tutorial does. No greeting, welcome, channel intro, or generic "What are we learning today?". Use a confident topic-led line that immediately establishes the key question, promise, or problem (for example: "Java variables are how a program remembers information. But where does that value go when the code runs?"). Translate this approach naturally into the requested language.
+                - Narration is a connected expert-led explanation, not a sequence of slide captions. Use natural transitions and build one mental model across scenes. State the topic, establish the problem, explain the mechanism, unpack the important parts and their relationships, then demonstrate the complete flow with a concrete example before a concise takeaway.
+                - For deep lessons, explain WHY and HOW, not only WHAT. Define every technical term when it first appears. Explain each component's purpose, inputs, outputs, and relationship to adjacent components where relevant. Walk through cause and effect in order. Use precise examples and avoid vague claims such as "it makes things easier" without showing how.
+                - Quick lessons must still have a meaningful explanation: one clear question, one mental model, one worked example, one takeaway. Do not cram a shallow list of definitions into the short duration.
+                - Spoken language should sound like a skilled human educator: varied sentence length, signposting ("Here's what happens next"), useful rhetorical questions, precise analogies and no repeated filler. Each sentence must add a new piece of understanding.
                 - Humour: brief, relevant, helps memory; vary it by topic and make it natural in the lesson's language (do not translate English
                   jokes literally). Serious topics (security, data consistency, exam facts) stay clear and mostly joke-free.
                 - [chuckle] [laugh] [sigh] [gasp] are allowed sparingly as performance cues. No other bracket or parenthesis stage directions.
-                - Never say 'as you can see on the slide' and never read every label out loud.
-                - If a greeting is used, use it once and keep it brief. Never stack greetings or repeat phrases. After naming the topic, go straight into the problem and explanation.
+                - Never say 'as you can see on the slide' and never read every label out loud. Narration must explain the idea; visuals provide evidence and structure.
+                - No greeting or channel intro. The very first words must be the topic or its central problem. Never stack hooks, repeat the title, or waste time announcing the lesson. After the opening, deepen the explanation immediately.
                 - Last scene: concise recap (+ memorable takeaway). When the destination is social video, finish with a short friendly line
                   inviting viewers to subscribe for more simple, entertaining lessons (natural wording in the lesson's language).
                   For classroom/internal destinations do not ask for subscriptions.
 
                 SLIDE TEMPLATES - fill ONLY the fields of the chosen template; slide text <= 25 words, labels <= 4 words:
-                - "definition": text, box {label, value}, callouts [3 x {label, detail}], optional formula + formulaResult (one-line REMEMBER rule)
+                - "definition": text, box {label, value}, callouts [3 x {label, detail}], optional formula + formulaResult (one-line REMEMBER rule); use detailed callouts to explain the mechanism, not generic benefits
                 - "analogy": text, callouts [2-3 x {label, detail}], caption   (+ imagePrompt)
                 - "analogy_code": text, code (3-6 lines)   (+ imagePrompt)
                 - "code_anatomy": code (ONE line), parts [2-4 x {token (exact substring of code), label, detail}]
@@ -205,7 +203,7 @@ public final class TeachingPlanner {
                 - "checklist": items [3-6 x {ok: true|false, text}]
                 - "summary": statement, mappings [2-4 x {left, right}], formula, formulaResult
                 - "flow": text (optional), items [3-6 x {icon, label, text}] IN SPOKEN ORDER (node k <-> sentence k); label = component name (<= 3 words),
-                  text = what it does (<= 8 words). Use for request flows, pipelines, step-by-step processes.
+                  text = what it does (<= 8 words). Use for request flows, pipelines, step-by-step processes. Nodes must form a meaningful causal chain; narration explains what enters, what each step does, and what leaves.
                 - "compare": columns [leftTitle, rightTitle], items [{ok:true|false, text}] where ok:true lands in the left column (advantages / use it)
                   and ok:false in the right (limits / avoid it); list them in spoken order.
                 Code / code_* templates ONLY for programming topics; otherwise leave "code" empty.
@@ -219,11 +217,12 @@ public final class TeachingPlanner {
     public static String writeUserPrompt(Request r, String planJson) {
         return "Write the final scenes for this plan.\n"
                 + "Topic: " + r.cleanTopic() + " | Language: " + r.language() + " | Difficulty: " + r.difficulty() + "\n"
-                + "Required opening" + (isEnglishFamily(r.language()) ? " (use this as the opening sentence): " + openingLine(r.topic()) : " (natural " + r.language() + " equivalent of): " + openingLine(r.topic())) + "\n"
-                + "Teaching style: " + r.style().label() + " - " + r.style().promptFragment() + "\n"
-                + "Destination: " + r.destination().label() + (r.destination() == Destination.SOCIAL ? " (end with a short subscribe invitation)" : " (no subscribe request)") + "\n"
-                + "Total spoken length: " + r.minWords() + "-" + r.maxWords() + " words across all scenes.\n"
-                + "Plan (follow its scene order, objectives and templates):\n" + planJson;
+                + "Opening requirement: Start directly with the topic/problem; no greeting or generic intro. Suggested topic-led opening: " + openingLine(r.topic()) + "\\n"
+                + "Teaching style: " + r.style().label() + " - " + r.style().promptFragment() + "\\n"
+                + "Destination: " + r.destination().label() + (r.destination() == Destination.SOCIAL ? " (end with a short subscribe invitation)" : " (no subscribe request)") + "\\n"
+                + "Total spoken length: " + r.minWords() + "-" + r.maxWords() + " words across all scenes.\\n"
+                + "REFERENCE BENCHMARK: detailed, topic-led, connected teaching; deep explanation of mechanisms and relationships; scene-specific rich visuals; concrete end-to-end example; precise diagram/code flow synchronized to narration. Do not generate generic template narration or shallow bullet-point coverage.\\n"
+                + "Plan (follow its scene order, objectives and templates):\\n" + planJson;
     }
 
     /** Targeted repair: lists the concrete problems and asks for the complete corrected JSON. */
