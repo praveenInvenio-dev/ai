@@ -55,7 +55,7 @@ public final class TeachingPlanner {
 
     /** The required topic-introducing line (without the greeting). */
     public static String openingLine(String topic) {
-        return "What are we learning today? " + cleanTopic(topic) + "!";
+        return "Today, we are breaking down " + cleanTopic(topic) + " — what it is, how it works, and why it matters.";
     }
 
     /**
@@ -101,7 +101,7 @@ public final class TeachingPlanner {
 
                 Every lesson follows the same teaching pattern, but the content, analogies, jokes and structure must be invented fresh for
                 the actual topic (never reuse a stock example or joke):
-                1. HOOK - opens with ONE short greeting ('Hello friends!' or 'Hello everyone!') and then 'What are we learning today? <topic>!', then a topic-specific curiosity hook or relatable situation.
+                1. HOOK - open by naming the exact topic immediately in a natural, confident way, as a premium educational video does: “Today, we’re breaking down <topic> — what it is, how it works, and why it matters.” A short greeting may precede it only if it sounds natural. Then immediately pose a topic-specific curiosity or real problem. Do NOT use the generic “What are we learning today?” classroom formula.
                 2. ANALOGY - a relatable everyday situation BEFORE any difficult term. Pick it for this topic (daily life, classroom, office, food
                    delivery, shopping, banking, travel, cricket, traffic, queues, family chat ...). Do not force Indian references where they do
                    not fit. The analogy must be accurate - it may not teach something technically wrong.
@@ -147,7 +147,6 @@ public final class TeachingPlanner {
         if (r.instructions() != null && !r.instructions().isBlank()) sb.append("\nUser instructions: ").append(r.instructions());
         if (r.trackNotes() != null && !r.trackNotes().isBlank()) sb.append("\n").append(r.trackNotes());
         sb.append("\nThe first scene must be HOOK and the last must be RECAP.");
-        if (!r.deep()) sb.append("\nSTRICT 60-SECOND QUICK-LEARN EDITORIAL RULE: This is a short-form lesson, not a compressed long lecture. Aim for 115-135 spoken words total, roughly 60 seconds at an energetic but intelligible pace. Use only 5-7 purposeful scenes. Structure it as: (1) a curiosity hook in the first 3 seconds, (2) one relatable analogy, (3) the core concept in plain language, (4) one visual step-by-step example or code/data-flow demonstration, and (5) a memorable one-sentence takeaway. Combine or omit sections when needed; do not force a practice question, trade-offs, or multiple examples. Every sentence must earn its time. No filler, repeated definitions, generic intro, subscribe CTA, or unnecessary outro. Prefer one strong example over a list. If the topic is broad, teach its most useful core idea rather than rushing through everything. Keep visuals synchronized to narration.");
         return sb.toString();
     }
 
@@ -162,9 +161,7 @@ public final class TeachingPlanner {
                 1. narration  - what the tutor says (array of 2-5 short spoken sentences)
                 2. slide      - the slide that REINFORCES that narration (template fields below)
                 3. visualDescription - one sentence describing what is on screen, matching the narration step by step
-                4. imagePrompt - ONLY for analogy / analogy_code scenes: ONE concrete object or situation that the narration just described,
-                   derived from the narration (e.g. the same bottle, queue, shop, box the tutor mentioned). No text, no people, no style words
-                   (the art style is applied automatically).
+                4. imagePrompt - whenever a scene benefits from custom artwork, specify a richly detailed, topic-specific visual that concretely teaches the narration. Describe composition, foreground/background, meaningful objects, depth, lighting/materials, annotations to be added by the renderer, and what the viewer should notice first. Avoid generic icon-only art, empty backgrounds, stock template cards, and repeated compositions. Never ask the image model to spell text; render text/code sharply in the application. Keep the chosen visual style, but apply premium editorial detail within that style.
                 5. voiceDirection - {"emotion":"energetic|curious|calm|playful|dramatic|serious|encouraging|warm|neutral",
                    "pace":"slow|medium|fast","delivery":"conversational|storytelling|explanatory|emphatic|comedic|reflective"}
                    Direction is metadata for the voice engine. NEVER write it inside the narration (no '(dramatic voice)', no '[pause]').
@@ -179,22 +176,18 @@ public final class TeachingPlanner {
                 NARRATION STYLE
                 - Teach like a confident, excellent human technical educator in a premium YouTube explainer: clear, warm, curious and conversational, never like a textbook or a list being read aloud.
                 - Use a strong explanatory arc: relatable question/problem, intuitive mental model, precise definition, step-by-step mechanism, concrete worked example, then concise takeaway. Adapt this arc to the topic; never pad the lesson.
-                - Every sentence must add a new idea, clarify a relationship, or guide the learner through a visible change. Use natural bridges and varied sentence lengths; allow short emphasis sentences between longer explanations.
+                - Every sentence must add a new idea, clarify a relationship, or guide the learner through a visible change. Use natural bridges and varied sentence lengths; allow short emphasis sentences between longer explanations. Start with the topic immediately, then progressively deep-dive: problem/context → intuitive mental model → precise definition → how the parts connect → step-by-step flow → worked example → implications/common pitfall → concise takeaway. Do not jump straight to a shallow definition and do not merely list features.
                 - Explain cause and effect, not just labels. When showing a flow, state what enters, what changes, what leaves, and why the step matters. For code, explain the intent before or as the relevant line is highlighted.
                 - Avoid generic filler such as 'in today's digital world', repeated 'imagine this' openings, empty hype, overlong definitions, and narrating slide labels verbatim.
-                - Visual direction should prefer clean technical diagrams, restrained dark-teal/cyan/violet palettes, readable code-editor panels, precise connectors and uncluttered layouts. Keep all generated labels short and high contrast; do not ask image models to render text that the renderer can draw sharply.
-                - The very first sentence of the first scene is: Hello friends! What are we learning today? <topic>!   (or 'Hello everyone!' -
-                  ONE simple greeting, once, only at the very start; in non-English lessons write the natural equivalent in that language,
-                  same meaning, ending with the topic).
+                - Visual direction must be richly detailed and varied scene-to-scene, comparable to a premium reference technical explainer: detailed topic-specific illustrations, annotated system diagrams, readable code/editor panels, real interface-like mockups when relevant, data-flow arrows, callout details and layered compositions. Use the selected style as the art direction, not as a rigid slide template. Fill the frame intentionally without clutter or large empty areas. Every diagram must explain relationships and flow, not merely decorate. Reveal components in spoken order. Keep labels high-contrast and render text/code sharply in the application, never in the image model. Never repeat the same layout for consecutive scenes unless the second scene deliberately builds on the first.
+                - The opening must begin by naming the topic immediately, like a polished reference tutorial: “Today, we’re breaking down <topic> — what it is, how it works, and why it matters.” A brief greeting is optional and must never delay the topic. Avoid the generic classroom question “What are we learning today?” Translate this opening naturally into the selected language; do not translate word-for-word if it sounds unnatural.
                 - Spoken, simple sentences (10-18 words quick lessons, 12-22 deep). Contractions, rhetorical questions, bridges like
                   'Now here is the interesting part'. Intuition first, terminology only when needed, every term explained at once.
                 - Humour: brief, relevant, helps memory; vary it by topic and make it natural in the lesson's language (do not translate English
                   jokes literally). Serious topics (security, data consistency, exam facts) stay clear and mostly joke-free.
                 - [chuckle] [laugh] [sigh] [gasp] are allowed sparingly as performance cues. No other bracket or parenthesis stage directions.
                 - Never say 'as you can see on the slide' and never read every label out loud.
-                - Greet ONCE, in the very first sentence only ('Hello friends!' / 'Hello everyone!'). Never greet again in later scenes, never
-                  stack greetings ('Hello hello hello', 'Hi hi welcome'), and never repeat a word or phrase ('so so so'). After the opening
-                  go straight into the content.
+                - If a greeting is used, use it once and keep it brief. Never stack greetings or repeat phrases. After naming the topic, go straight into the problem and explanation.
                 - Last scene: concise recap (+ memorable takeaway). When the destination is social video, finish with a short friendly line
                   inviting viewers to subscribe for more simple, entertaining lessons (natural wording in the lesson's language).
                   For classroom/internal destinations do not ask for subscriptions.
@@ -226,11 +219,10 @@ public final class TeachingPlanner {
     public static String writeUserPrompt(Request r, String planJson) {
         return "Write the final scenes for this plan.\n"
                 + "Topic: " + r.cleanTopic() + " | Language: " + r.language() + " | Difficulty: " + r.difficulty() + "\n"
-                + "Required first sentence" + (isEnglishFamily(r.language()) ? " (exactly): " + openingLine(r.topic()) : " (natural " + r.language() + " equivalent of): " + openingLine(r.topic())) + "\n"
+                + "Required opening" + (isEnglishFamily(r.language()) ? " (use this as the opening sentence): " + openingLine(r.topic()) : " (natural " + r.language() + " equivalent of): " + openingLine(r.topic())) + "\n"
                 + "Teaching style: " + r.style().label() + " - " + r.style().promptFragment() + "\n"
                 + "Destination: " + r.destination().label() + (r.destination() == Destination.SOCIAL ? " (end with a short subscribe invitation)" : " (no subscribe request)") + "\n"
                 + "Total spoken length: " + r.minWords() + "-" + r.maxWords() + " words across all scenes.\n"
-                + (!r.deep() ? "QUICK-LEARN: strictly 5-7 scenes and 115-135 spoken words. Hook fast, teach one core idea, show one concrete visual example, end with a memorable takeaway. Do not cram a whole subject into 60 seconds. Keep sentences concise and natural.\n" : "")
                 + "Plan (follow its scene order, objectives and templates):\n" + planJson;
     }
 

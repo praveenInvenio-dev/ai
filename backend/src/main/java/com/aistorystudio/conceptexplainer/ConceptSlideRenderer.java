@@ -88,22 +88,22 @@ public final class ConceptSlideRenderer {
                 false, false, "premium glowing neon line art with subtle 3D depth, electric cyan, magenta, yellow and green outlines, isolated on a PURE BLACK background"));
         STYLES.put("reference", new Style("reference", "Technical tutorial (reference style)", true, false, "reference",
                 new Color[]{c(0x52D8E8), c(0xA58BFA), c(0xF4C96B), c(0x6DD6A8), c(0xF3A879), c(0xB7A0FF), c(0xF1F6FA), c(0xFF8585), c(0x91A8B8)},
-                false, false, "premium technical explainer graphics, deep teal navy background, crisp flat vector diagrams, thin cyan connectors, restrained violet highlights, clean software architecture and code-editor panels, high contrast readable typography, subtle depth, no neon glow, no decorative clutter"));
+                false, false, "premium cinematic technical tutorial art direction, deep teal navy canvas, richly detailed concept-specific technical illustrations, intricate but legible architecture diagrams, layered depth, precise cyan connectors, restrained violet highlights, beautifully composed code-editor panels, subtle volumetric lighting and texture, high contrast, no neon glow, no generic template cards or decorative clutter"));
         STYLES.put("sketchnote", new Style("sketchnote", "Sketchnote (hand-drawn)", false, false, "sketch",
                 new Color[]{c(0x2E9BB3), c(0xE07A5F), c(0xC9920E), c(0x4F9D5B), c(0xE8803A), c(0x8E6BC7), c(0x2A2A2A), c(0xD1495B), c(0x6B6B6B)},
-                true, false, "simple hand-drawn sketchnote doodle, black fine-liner ink outlines with soft peach and teal marker fills, on a PLAIN WHITE background"));
+                true, false, "rich hand-drawn editorial sketchnote illustration, fine-liner ink, carefully layered doodles, crosshatching, paper grain, soft peach and teal marker shading, many meaningful concept-specific details, on a warm paper background"));
         STYLES.put("storyboard", new Style("storyboard", "Clean storyboard (3D icons)", false, false, "card",
                 new Color[]{c(0x2F7AE5), c(0xD63384), c(0xE09A00), c(0x2FA84F), c(0xF2711C), c(0x7B4FD6), c(0x1D2B45), c(0xE03131), c(0x5C6B80)},
-                false, false, "glossy colourful 3D clay-style icon, soft studio lighting, rounded friendly shapes, on a PLAIN WHITE background"));
+                false, false, "richly detailed 3D clay editorial illustration, tactile material texture, carefully modeled shapes, soft cinematic studio lighting, ambient occlusion, multiple purposeful supporting details, polished educational film quality, on a clean light background"));
         STYLES.put("chalkboard", new Style("chalkboard", "Chalkboard classroom", true, false, "chalk",
                 new Color[]{c(0x8FD3E8), c(0xF59AC3), c(0xF7E07A), c(0xA5E39A), c(0xF6B57A), c(0xC4A8F0), c(0xF2F2EC), c(0xFF8A8A), c(0xB7C4BC)},
-                true, false, "white and pastel chalk drawing, loose hand-drawn chalk strokes, on a PURE BLACK background"));
+                true, false, "detailed classroom chalk illustration with layered white and pastel chalk strokes, visible chalk dust, crosshatching and carefully drawn explanatory details on a deep green-black chalkboard"));
         STYLES.put("blueprint", new Style("blueprint", "Blueprint (engineering)", true, true, "blueprint",
                 new Color[]{c(0x9FD8FF), c(0xFFB3D9), c(0xFFE08A), c(0xA8F0C0), c(0xFFC58A), c(0xD0B8FF), c(0xFFFFFF), c(0xFF9090), c(0xB8CDE8)},
-                false, false, "white technical blueprint line drawing with thin precise lines and measurement marks, on a PURE BLACK background"));
+                false, false, "intricate engineering blueprint illustration with precise white and cyan technical linework, sectional details, measurement marks, construction guides and layered schematic detail on deep blueprint blue"));
         STYLES.put("anime", new Style("anime", "Anime pop", false, false, "pop",
                 new Color[]{c(0x1C9BEF), c(0xFF4FA3), c(0xF5B700), c(0x22B573), c(0xFF7A1A), c(0x8A5CFF), c(0x1A1A2E), c(0xFF3B3B), c(0x55556A)},
-                false, true, "bright anime cel-shaded illustration, bold clean black outlines, vivid flat colours, cheerful, on a PLAIN WHITE background"));
+                false, true, "highly detailed anime educational illustration, expressive cel shading, bold clean outlines, rich environmental detail, dramatic but readable composition, vivid colors, polished anime key visual quality"));
     }
 
     private Style style = STYLES.get("neon");

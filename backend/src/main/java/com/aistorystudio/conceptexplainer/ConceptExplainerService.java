@@ -226,7 +226,7 @@ public class ConceptExplainerService {
         return new TeachingPlanner.Request(job.getTopic(), job.getLanguage(), job.getDifficulty(), job.getTrack(), job.getSubject(),
                 job.isExamFocus(), job.getInstructions(), trackInstruction(job), deep,
                 TeachingStyle.parse(job.getTeachingStyle()), Destination.parse(job.getDestination()),
-                deep ? 16 : 5, deep ? 20 : 7, deep ? 430 : 115, deep ? 520 : 135);
+                deep ? 16 : 8, deep ? 20 : 10, deep ? 430 : 145, deep ? 520 : 180);
     }
 
     /**
@@ -442,15 +442,26 @@ public class ConceptExplainerService {
                 && s.getIllustrationPrompt() != null && !s.getIllustrationPrompt().isBlank();
     }
 
-    /** Only the real-world object is AI-generated: neon line art on pure black, no text, no people. */
+    /**
+     * Generate a rich, scene-specific illustration in the selected visual language. Typography and code
+     * remain app-rendered for correctness; the image model creates the detailed visual explanation artwork.
+     */
     private void makeIllustration(ConceptExplainerJob job, ConceptExplainerJob.Scene s) {
-        // the object is drawn in the lesson's visual style (neon / sketch / 3D clay / chalk / blueprint / anime)
         String look = ConceptSlideRenderer.style(job.getStyle()).illustrationStyle();
-        String prompt = "A single " + s.getIllustrationPrompt() + ", " + look + ", centered, high detail, clean composition, "
-                + "like an icon in a premium educational infographic. No text, no letters, no numbers, no words, "
-                + "no people, no hands, no faces, no frame, no border, no background scene.";
-        String negative = "text, letters, words, numbers, typography, watermark, logo, people, person, hands, face, character, "
-                + "background scenery, room, frame, border, collage, grid, multiple panels, photo, blurry, low contrast, clutter";
+        String prompt = "Create a premium, richly detailed educational editorial illustration for a technical concept explainer. "
+                + "Visual subject and idea: " + s.getIllustrationPrompt() + ". "
+                + "Visual treatment: " + look + ". "
+                + "Show meaningful, topic-specific details rather than a generic icon: layered forms, material texture, "
+                + "careful lighting and shadows, foreground/midground/background separation, purposeful composition, "
+                + "small supporting details that help explain the idea, clear silhouette and strong visual hierarchy. "
+                + "The artwork should feel custom art-directed for this exact lesson, like a polished frame from a premium "
+                + "educational film, not clip art, a stock icon, a flat template, or a generic infographic. "
+                + "Use the scene's full available artwork area; allow a subtle contextual environment when it helps the concept. "
+                + "No text, letters, numbers, labels, UI text, watermark or logo; those are rendered separately by the application. "
+                + "One cohesive composition, no collage, no multi-panel layout, no border.";
+        String negative = "text, letters, words, numbers, typography, watermark, logo, stock icon, clip art, generic app icon, "
+                + "flat template, empty simplistic object, low detail, muddy forms, blurry, low contrast, clutter, collage, "
+                + "grid, split panels, border, frame, malformed geometry, duplicate objects";
         try {
             var result = gateway.generateImage(new ImageGenerationProvider.ImageGenerationRequest(
                     prompt, negative, 1024, 1024, 28, 4.2, null, "qwen-image-2-1-16gb-t2i", null, null, null));
