@@ -103,9 +103,9 @@ public class ConceptExplainerJob {
     }
 
     /** Visual style: neon | sketchnote | storyboard | chalkboard | blueprint | anime. */
-    private volatile String style = "neon";
+    private volatile String style = "reference";
     public String getStyle() { return style; }
-    public void setStyle(String v) { style = ConceptSlideRenderer.style(v).id(); }
+    public void setStyle(String v) { style = "reference"; }
 
     /** ENGAGING_TECH_TUTOR | STORYTELLING_TEACHER | PROFESSIONAL_INSTRUCTOR | SIMPLE_BEGINNER */
     private volatile String teachingStyle = "ENGAGING_TECH_TUTOR";

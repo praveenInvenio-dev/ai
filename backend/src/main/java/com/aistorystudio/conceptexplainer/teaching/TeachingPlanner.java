@@ -147,6 +147,7 @@ public final class TeachingPlanner {
         if (r.instructions() != null && !r.instructions().isBlank()) sb.append("\nUser instructions: ").append(r.instructions());
         if (r.trackNotes() != null && !r.trackNotes().isBlank()) sb.append("\n").append(r.trackNotes());
         sb.append("\nThe first scene must be HOOK and the last must be RECAP.");
+        if (!r.deep()) sb.append("\nSTRICT 60-SECOND QUICK-LEARN EDITORIAL RULE: This is a short-form lesson, not a compressed long lecture. Aim for 115-135 spoken words total, roughly 60 seconds at an energetic but intelligible pace. Use only 5-7 purposeful scenes. Structure it as: (1) a curiosity hook in the first 3 seconds, (2) one relatable analogy, (3) the core concept in plain language, (4) one visual step-by-step example or code/data-flow demonstration, and (5) a memorable one-sentence takeaway. Combine or omit sections when needed; do not force a practice question, trade-offs, or multiple examples. Every sentence must earn its time. No filler, repeated definitions, generic intro, subscribe CTA, or unnecessary outro. Prefer one strong example over a list. If the topic is broad, teach its most useful core idea rather than rushing through everything. Keep visuals synchronized to narration.");
         return sb.toString();
     }
 
@@ -176,6 +177,12 @@ public final class TeachingPlanner {
                 - Never explain on one scene what another scene shows. Never repeat the same sentence in two scenes.
 
                 NARRATION STYLE
+                - Teach like a confident, excellent human technical educator in a premium YouTube explainer: clear, warm, curious and conversational, never like a textbook or a list being read aloud.
+                - Use a strong explanatory arc: relatable question/problem, intuitive mental model, precise definition, step-by-step mechanism, concrete worked example, then concise takeaway. Adapt this arc to the topic; never pad the lesson.
+                - Every sentence must add a new idea, clarify a relationship, or guide the learner through a visible change. Use natural bridges and varied sentence lengths; allow short emphasis sentences between longer explanations.
+                - Explain cause and effect, not just labels. When showing a flow, state what enters, what changes, what leaves, and why the step matters. For code, explain the intent before or as the relevant line is highlighted.
+                - Avoid generic filler such as 'in today's digital world', repeated 'imagine this' openings, empty hype, overlong definitions, and narrating slide labels verbatim.
+                - Visual direction should prefer clean technical diagrams, restrained dark-teal/cyan/violet palettes, readable code-editor panels, precise connectors and uncluttered layouts. Keep all generated labels short and high contrast; do not ask image models to render text that the renderer can draw sharply.
                 - The very first sentence of the first scene is: Hello friends! What are we learning today? <topic>!   (or 'Hello everyone!' -
                   ONE simple greeting, once, only at the very start; in non-English lessons write the natural equivalent in that language,
                   same meaning, ending with the topic).
@@ -223,6 +230,7 @@ public final class TeachingPlanner {
                 + "Teaching style: " + r.style().label() + " - " + r.style().promptFragment() + "\n"
                 + "Destination: " + r.destination().label() + (r.destination() == Destination.SOCIAL ? " (end with a short subscribe invitation)" : " (no subscribe request)") + "\n"
                 + "Total spoken length: " + r.minWords() + "-" + r.maxWords() + " words across all scenes.\n"
+                + (!r.deep() ? "QUICK-LEARN: strictly 5-7 scenes and 115-135 spoken words. Hook fast, teach one core idea, show one concrete visual example, end with a memorable takeaway. Do not cram a whole subject into 60 seconds. Keep sentences concise and natural.\n" : "")
                 + "Plan (follow its scene order, objectives and templates):\n" + planJson;
     }
 

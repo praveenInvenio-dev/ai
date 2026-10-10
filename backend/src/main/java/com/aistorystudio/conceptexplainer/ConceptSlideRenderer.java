@@ -86,6 +86,9 @@ public final class ConceptSlideRenderer {
         STYLES.put("neon", new Style("neon", "Neon glow", true, true, "neon",
                 new Color[]{c(0x00DCFF), c(0xFF3CDC), c(0xFFE13C), c(0x46FF78), c(0xFFA028), c(0xAA6EFF), c(0xF0F4FA), c(0xFF3C50), c(0x96A0B4)},
                 false, false, "premium glowing neon line art with subtle 3D depth, electric cyan, magenta, yellow and green outlines, isolated on a PURE BLACK background"));
+        STYLES.put("reference", new Style("reference", "Technical tutorial (reference style)", true, false, "reference",
+                new Color[]{c(0x52D8E8), c(0xA58BFA), c(0xF4C96B), c(0x6DD6A8), c(0xF3A879), c(0xB7A0FF), c(0xF1F6FA), c(0xFF8585), c(0x91A8B8)},
+                false, false, "premium technical explainer graphics, deep teal navy background, crisp flat vector diagrams, thin cyan connectors, restrained violet highlights, clean software architecture and code-editor panels, high contrast readable typography, subtle depth, no neon glow, no decorative clutter"));
         STYLES.put("sketchnote", new Style("sketchnote", "Sketchnote (hand-drawn)", false, false, "sketch",
                 new Color[]{c(0x2E9BB3), c(0xE07A5F), c(0xC9920E), c(0x4F9D5B), c(0xE8803A), c(0x8E6BC7), c(0x2A2A2A), c(0xD1495B), c(0x6B6B6B)},
                 true, false, "simple hand-drawn sketchnote doodle, black fine-liner ink outlines with soft peach and teal marker fills, on a PLAIN WHITE background"));
@@ -1154,6 +1157,14 @@ public final class ConceptSlideRenderer {
                         g.fillOval(rnd.nextInt(W), rnd.nextInt(H), 200 + rnd.nextInt(400), 60 + rnd.nextInt(120));
                     }
                 }
+                case "reference" -> {
+                    g.setPaint(new java.awt.GradientPaint(0, 0, new Color(0x102B38), W, H, new Color(0x091923)));
+                    g.fillRect(0, 0, W, H);
+                    // Restrained technical grid: enough structure to feel engineered, never competing with labels.
+                    g.setStroke(new BasicStroke(1f));
+                    for (int x = 0; x < W; x += 48) { g.setColor(new Color(100, 190, 205, x % 240 == 0 ? 18 : 7)); g.drawLine(x, 0, x, H); }
+                    for (int y = 0; y < H; y += 48) { g.setColor(new Color(100, 190, 205, y % 240 == 0 ? 18 : 7)); g.drawLine(0, y, W, y); }
+                }
                 case "blueprint" -> {
                     g.setColor(new Color(0x0D3B73)); g.fillRect(0, 0, W, H);
                     g.setStroke(new BasicStroke(1f));
@@ -1251,6 +1262,7 @@ public final class ConceptSlideRenderer {
                 case "card": case "pop": return big ? new Color(255, 255, 255, 200) : new Color(mix(col.getRed(), 255, 0.88), mix(col.getGreen(), 255, 0.88), mix(col.getBlue(), 255, 0.88));
                 case "chalk": return new Color(255, 255, 255, big ? 0 : 10);
                 case "blueprint": return new Color(255, 255, 255, big ? 0 : 14);
+                case "reference": return big ? new Color(0x102B38) : new Color(14, 38, 49, 235);
                 default: return big ? new Color(4, 5, 10) : new Color(col.getRed() / 28 + 3, col.getGreen() / 28 + 3, col.getBlue() / 28 + 5);
             }
         }

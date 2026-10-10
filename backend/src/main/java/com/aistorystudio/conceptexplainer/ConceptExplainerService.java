@@ -226,7 +226,7 @@ public class ConceptExplainerService {
         return new TeachingPlanner.Request(job.getTopic(), job.getLanguage(), job.getDifficulty(), job.getTrack(), job.getSubject(),
                 job.isExamFocus(), job.getInstructions(), trackInstruction(job), deep,
                 TeachingStyle.parse(job.getTeachingStyle()), Destination.parse(job.getDestination()),
-                deep ? 16 : 8, deep ? 20 : 10, deep ? 430 : 145, deep ? 520 : 180);
+                deep ? 16 : 5, deep ? 20 : 7, deep ? 430 : 115, deep ? 520 : 135);
     }
 
     /**
