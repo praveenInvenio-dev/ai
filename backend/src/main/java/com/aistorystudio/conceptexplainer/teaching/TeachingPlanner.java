@@ -103,8 +103,10 @@ public final class TeachingPlanner {
                 the actual topic (never reuse a stock example or joke):
                 1. HOOK - opens with ONE short greeting ('Hello friends!' or 'Hello everyone!') and then 'What are we learning today? <topic>!', then a topic-specific curiosity hook or relatable situation.
                 2. ANALOGY - a relatable everyday situation BEFORE any difficult term. Pick it for this topic (daily life, classroom, office, food
-                   delivery, shopping, banking, travel, cricket, traffic, queues, family chat ...). Do not force Indian references where they do
-                   not fit. The analogy must be accurate - it may not teach something technically wrong.
+                   delivery, shopping, banking, travel, cricket, traffic, queues, family chat ...). Prefer everyday INDIAN-life situations the audience
+                   knows first-hand: chai stall, tiffin/dabba delivery, IRCTC train booking, UPI payments, auto-rickshaw and metro rush hour, kirana
+                   store, cricket and IPL, festivals, wedding catering, Swiggy/Zomato, Bengaluru traffic. Use rupees and Indian names/places in
+                   examples. Skip them only when they would make the explanation technically wrong. The analogy must be accurate - it may not teach something technically wrong.
                 3. CONCEPT - what it is, why it exists, what problem it solves, in simple words; terminology only when needed.
                 4. HOW_IT_WORKS - a step-by-step walkthrough (components, order of events, data flow). Only components relevant to the topic.
                 5. EXAMPLE / REAL_WORLD - a practical example. Real products may be used as illustrations; never claim a company's exact internal

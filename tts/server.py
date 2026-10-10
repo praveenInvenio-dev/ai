@@ -295,13 +295,35 @@ def indic_get_voices() -> list:
         return []
 
 
+# Built-in roster (language -> [(speaker, gender)]) so the voices stay selectable while the GPU service is stopped; the
+# service is only needed at synthesis time. Names mirror tts-indicspeak/server.py.
+SPEAK_ROSTER = {
+    "en": [("Kavya", "female"), ("Amit", "male")], "hi": [("Kavya", "female"), ("Amit", "male")],
+    "kn": [("Deepika", "female"), ("Adarsh", "male")], "ta": [("Anitha", "female"), ("Arun", "male")],
+    "te": [("Sravani", "female"), ("Vamsi", "male")], "ml": [("Lakshmi", "female"), ("Kiran", "male")],
+    "mr": [("Anagha", "female"), ("Chinmay", "male")], "bn": [("Ishita", "female"), ("Sourav", "male")],
+    "gu": [("Dhara", "female"), ("Parth", "male")], "pa": [("Kaur", "female"), ("Manpreet", "male")],
+    "or": [("Itishree", "female"), ("Akash", "male")],
+}
+
+
+def speak_roster_voices() -> list:
+    names = {"en": "English", "hi": "Hindi", "kn": "Kannada", "ta": "Tamil", "te": "Telugu", "ml": "Malayalam",
+             "mr": "Marathi", "bn": "Bengali", "gu": "Gujarati", "pa": "Punjabi", "or": "Odia"}
+    return [{"id": f"{SPEAK_PREFIX}{lang}-{n}", "label": f"{n} ({names[lang]}, {g}) - Indic-Speak"}
+            for lang, items in SPEAK_ROSTER.items() for n, g in items]
+
+
 def speak_get_voices() -> list:
-    """Voice list from the Indic-Speak service, or empty if the profile is not up."""
+    """Voice list from the Indic-Speak service; the built-in roster when the service is not up (so they stay selectable)."""
     try:
-        with urllib.request.urlopen(f"{SPEAK_BASE_URL}/api/voices", timeout=5) as response:
-            return json.loads(response.read().decode("utf-8")).get("voices", [])
-    except Exception:  # noqa: BLE001 - absence is the normal case
-        return []
+        with urllib.request.urlopen(f"{SPEAK_BASE_URL}/api/voices", timeout=3) as response:
+            voices = json.loads(response.read().decode("utf-8")).get("voices", [])
+            if voices:
+                return voices
+    except Exception:  # noqa: BLE001 - service off is a normal case
+        pass
+    return speak_roster_voices()
 
 
 SPEAK_CHUNK_CHARS = int(os.environ.get("INDICSPEAK_CHUNK_CHARS", "600"))

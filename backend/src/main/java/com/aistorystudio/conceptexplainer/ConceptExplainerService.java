@@ -54,7 +54,7 @@ public class ConceptExplainerService {
     private static final Logger log = LoggerFactory.getLogger(ConceptExplainerService.class);
     private static final double FADE = 0.35;          // element fade-in
     private static final double SENTENCE_GAP = 0.28;  // breath between sentences
-    private static final double SCENE_TAIL = 0.7;     // silence before next scene
+    private static final double SCENE_TAIL = 0.35;    // silence before next scene (reference tutorials: median pause 0.26 s, no dead air)
     private static final Pattern SENTENCE = Pattern.compile("(?<=[.!?।॥])\\s+");
 
     private final ProviderGateway gateway;
