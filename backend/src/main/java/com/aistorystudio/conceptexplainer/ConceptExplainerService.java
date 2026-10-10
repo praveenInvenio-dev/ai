@@ -183,7 +183,7 @@ public class ConceptExplainerService {
             ConceptExplainerJob.Scene s = job.getScenes().get(sceneNumber - 1);
             if ("image".equals(kind) || "both".equals(kind)) {
                 job.setStage("Scene " + sceneNumber + ": new illustration");
-                if (needsIllustration(s)) makeIllustration(job, s);
+                if (needsIllustration(job, s)) makeIllustration(job, s);
                 renderSlide(job, s);
             }
             if ("audio".equals(kind) || "both".equals(kind)) {
