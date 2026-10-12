@@ -501,6 +501,7 @@ public class ConceptExplainerService {
                 }
             }
             if (written == null) throw new IllegalStateException("The model wrote no scenes for " + from + "-" + to + ".");
+            if (reel) written = fillSixtySeconds(job, written, topic, outlineText, total, target, size, model);
             int taken = 0;
             for (JsonNode sc : written.path("scenes")) {
                 if (taken >= to - from + 1) break;
@@ -561,21 +562,29 @@ public class ConceptExplainerService {
             tc.put("title", text(outline, "subject", job.getSubject() == null || job.getSubject().equals("General") ? "Explained" : job.getSubject()));
             tc.put("text", text(outline, "title", topic));
             tc.put("content", text(outline, "summary", ""));
-            tc.put("style", TutorialPrompts.SHORT_TAGLINE.replace(".", ""));
+            tc.put("style", "Learn one concept a day");
             tc.put("x", 50); tc.put("y", 42);
             sc.add(0, bookend(plan, hook, "Title"));
             added += hook.split("\\s+").length;
         }
         ConceptExplainerJob.Scene last = sc.get(sc.size() - 1);
-        if (!last.getPlanJson().contains("\"outro\"")) {
+        if (last.getPlanJson().contains("\"outro\"")) {
+            // the model's own outro card: always the page's call to follow
+            try {
+                ObjectNode plan = (ObjectNode) mapper.readTree(last.getPlanJson());
+                for (JsonNode e : plan.withArray("elements"))
+                    if ("outro".equals(e.path("type").asText())) { ((ObjectNode) e).put("text", TutorialPrompts.SHORT_TAGLINE); ((ObjectNode) e).put("title", "Follow"); }
+                last.setPlanJson(plan.toString());
+            } catch (Exception ignored) { }
+        } else {
             ObjectNode plan = mapper.createObjectNode();
             plan.put("heading", "");
             plan.put("label", "");
             ObjectNode o = plan.putArray("elements").addObject();
             o.put("id", "outro"); o.put("type", "outro"); o.put("at", 0); o.put("dimAt", -1);
-            o.put("text", TutorialPrompts.SHORT_TAGLINE); o.put("title", "concept"); o.put("x", 50); o.put("y", 42);
+            o.put("text", TutorialPrompts.SHORT_TAGLINE); o.put("title", "Follow"); o.put("x", 50); o.put("y", 42);
             sc.add(bookend(plan, TutorialPrompts.SHORT_TAGLINE, "Outro"));
-            added += 5;
+            added += TutorialPrompts.SHORT_TAGLINE.split(" ").length;
         }
         for (int i = 0; i < sc.size(); i++) sc.get(i).setSceneNumber(i + 1);
         return added;
@@ -643,10 +652,11 @@ public class ConceptExplainerService {
                         String prompt = "Vertical cinematic 3D render for a premium tech explainer: " + what + ". "
                                 + "Stylised 3D blueprint world: deep navy-blue palette, glowing cyan-white edges and window light, soft volumetric fog, "
                                 + "night-time, physically based materials, depth of field, high detail, dramatic perspective, centred subject, "
-                                + "a little warm yellow accent light. No people's faces in close-up, no text, no letters, no logos, no watermark.";
+                                + "a little warm yellow accent light. No people's faces in close-up. ABSOLUTELY NO TEXT anywhere: no letters, no numbers, "
+                                + "no signs, no screens with writing, no UI, no labels, no logos, no watermark (all words are added later as overlays).";
                         try {
                             var r = gateway.generateImage(new ImageGenerationProvider.ImageGenerationRequest(prompt,
-                                    "text, letters, words, logo, watermark, cartoon, flat illustration, low detail, blurry, oversaturated, bright daylight",
+                                    "text, letters, words, numbers, digits, signage, captions, user interface, screen text, logo, watermark, cartoon, flat illustration, low detail, blurry, oversaturated, bright daylight",
                                     768, 1344, 28, 4.0, null, "qwen-image-2-1-16gb-t2i", null, null, null));
                             Path p = storage.store(dir(job) + "/photos/scene-" + num(s) + "-" + e.path("id").asText("photo") + ".png", r.imageBytes());
                             e.put("content", p.toString());
@@ -665,6 +675,49 @@ public class ConceptExplainerService {
                 log.warn("Photo step failed for scene {}: {}", s.getSceneNumber(), ex.getMessage());
             }
         }
+    }
+
+    /**
+     * A short must really fill 60 seconds: local models often write 90-120 words (a 40-second, half-baked video). The
+     * draft is sent back with its word count and asked to explain more (not pad) - up to twice - keeping the longest
+     * draft that is not over the limit.
+     */
+    private JsonNode fillSixtySeconds(ConceptExplainerJob job, JsonNode written, String topic, String outlineText, int total, int target,
+                                      TutorialPrompts.Size size, String model) {
+        JsonNode best = written;
+        int bestWords = narrationWords(written);
+        for (int round = 0; round < 2 && bestWords < size.minWords() * 0.93; round++) {
+            job.setStage("Short is " + bestWords + " words (~" + Math.round(bestWords / 2.6) + " s) - asking for a fuller 60-second script");
+            try {
+                String feedback = "\n\nYOUR PREVIOUS DRAFT (" + bestWords + " words, about " + Math.round(bestWords / 2.6) + " seconds - TOO SHORT, it felt half-baked):\n"
+                        + best + "\n\nRewrite ALL scenes so the narration totals " + size.minWords() + "-" + size.maxWords() + " words (60 seconds). "
+                        + "Do not pad: explain the mechanism more concretely on the example, add the missing step or the before/after, "
+                        + "and add matching on-screen elements for the new sentences (update every \"at\"). Keep the title card first and the outro last.";
+                JsonNode w = readJson(gateway.llm().generateStructured(TutorialPrompts.shortWriteSystemPrompt(),
+                        TutorialPrompts.writeUserPrompt(topic, job.getLanguage(), outlineText, 1, total, total, "", "", target) + feedback, model));
+                int words = narrationWords(w);
+                if (w.path("scenes").isArray() && w.path("scenes").size() >= 3 && words > bestWords && words <= size.maxWords() * 1.25) {
+                    best = w;
+                    bestWords = words;
+                }
+            } catch (Exception e) {
+                log.warn("Short lengthening pass failed: {}", e.getMessage());
+            }
+        }
+        if (bestWords < size.minWords() * 0.85)
+            job.getWarnings().add("The model wrote only " + bestWords + " words - the short will run about " + Math.round(bestWords / 2.6)
+                    + " s instead of 60. A larger model (14B+) follows the length rule better.");
+        return best;
+    }
+
+    private static int narrationWords(JsonNode written) {
+        int n = 0;
+        for (JsonNode sc : written.path("scenes"))
+            for (JsonNode line : sc.path("narration")) {
+                String t = line.asText("").trim();
+                if (!t.isEmpty()) n += t.split("\\s+").length;
+            }
+        return n;
     }
 
     private ConceptExplainerJob.Scene bookend(ObjectNode plan, String line, String title) {
@@ -840,6 +893,7 @@ public class ConceptExplainerService {
                 job.getWarnings().add("Voice style: this voice has no emotion model, so the teaching tone is applied through pace and pitch only. "
                         + "Pick a Chatterbox or cloned voice for fuller expression.");
             }
+            if (i == 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice used:"))) job.getWarnings().add("Voice used: " + describeVoice(job));
             var audio = gateway.synthesizeForStoryLanguage(new TextToSpeechProvider.TtsRequest(
                     line, job.getVoice(), job.getLanguage(), tp.speed(), tp.pitch(),
                     tp.emotion(), tp.intensity(), tut ? "calm, confident senior instructor recording a course, conversational, steady pace, no drama"
@@ -908,6 +962,20 @@ public class ConceptExplainerService {
     private String theme(ConceptExplainerJob job) { return isShort(job) ? "reel" : isBreakdown(job) ? "blueprint3d" : job.getStyle(); }
 
     /** Reference-video teaching + diagram engine, for every visual style unless the user picked the classic slides. */
+    /** Plain-language name of the narrator, so a US / Indian / native voice choice is visible on the lesson. */
+    static String describeVoice(ConceptExplainerJob job) {
+        String v = job.getVoice() == null ? "" : job.getVoice();
+        boolean english = TutorialPrompts.english(job.getLanguage()) || String.valueOf(job.getLanguage()).toLowerCase(Locale.ROOT).contains("indian english");
+        if (v.startsWith("narrator-in-")) return (v.endsWith("female") ? "Meera" : "Arjun") + " - Indian English (Chatterbox clone of the Edge en-IN voice)"
+                + (english ? "" : "; " + job.getLanguage() + " narration uses the native " + job.getLanguage() + " voice instead");
+        if (v.equals("narrator-male") || v.equals("narrator-female")) return (v.endsWith("female") ? "Amy" : "Ryan") + " - US English (Chatterbox)"
+                + (english ? ". For an Indian accent pick Arjun / Meera - Indian English." : "; " + job.getLanguage() + " narration uses the native voice instead");
+        if (v.startsWith("edge:")) return v.substring(5) + " (Edge neural, cloud)";
+        if (v.startsWith("speak:")) return v.substring(6) + " (Indic-Speak, local)";
+        if (v.startsWith("indic:")) return v.substring(6) + " (IndicF5, local)";
+        return v.isEmpty() ? "default" : v;
+    }
+
     static boolean tutorial(ConceptExplainerJob job) { return job != null && !"CLASSIC".equals(job.getFormat()); }
 
     private static double sentenceGap(String sentence) {

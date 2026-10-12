@@ -297,7 +297,9 @@ public final class DiagramRenderer {
             // outside the first view and the camera pulls back to show it (overview shot, see camera()).
             double x = e.x() > 100 ? cx - sz[0] / 2 : clamp(cx - sz[0] / 2, 30, W - 30 - sz[0]);
             double y = e.y() > 100 ? cy - sz[1] / 2 : clamp(cy - sz[1] / 2, 30, (full(e) ? H - 30 : contentBottom()) - sz[1]);
-            if (backdrop(e) && e.w() <= 0) { x = 0; y = 0; }     // full-bleed picture
+            if (e.type().equals("photo") && !nz(e.style()).toLowerCase(Locale.ROOT).contains("framed")) { x = 0; y = 0; sz = new double[]{W, H}; }
+            else if (backdrop(e) && e.w() <= 0) { x = 0; y = 0; }     // full-bleed picture
+            if (e.type().equals("journey")) { x = 60; y = portrait ? 175 : 110; sz = new double[]{W - 120, 80}; }   // HUD: always at the top
             b.put(e.id(), new Rectangle2D.Double(x, y, sz[0], sz[1]));
         }
         resolveOverlaps(els, b);
@@ -310,7 +312,10 @@ public final class DiagramRenderer {
      * other elements are meant to sit inside them.
      */
     /** Background layers: never pushed around by the overlap fixer, never framed by the camera. */
-    private static boolean backdrop(Element e) { return e.type().equals("photo") || e.type().equals("particles"); }
+    private static boolean backdrop(Element e) { return e.type().equals("photo") || e.type().equals("particles") || hud(e); }
+
+    /** Screen-space UI (the step tracker): never moved by the camera. */
+    private static boolean hud(Element e) { return e.type().equals("journey"); }
 
     private static boolean full(Element e) { return e.type().equals("titlecard") || e.type().equals("outro"); }
 
@@ -330,12 +335,37 @@ public final class DiagramRenderer {
                 if (ny + r.getHeight() <= bottom) r = new Rectangle2D.Double(r.getX(), ny, r.getWidth(), r.getHeight());
                 else {
                     double nx = hit.getMaxX() + 24;
-                    if (nx + r.getWidth() > (r.getMaxX() > W ? 1.6 * W : W - 30)) break; // nowhere to go: leave it
+                    if (nx + r.getWidth() > 1.6 * W) break;   // beyond the frame is fine: the camera pulls back to show it
                     r = new Rectangle2D.Double(nx, r.getY(), r.getWidth(), r.getHeight());
                 }
             }
             b.put(e.id(), r);
             placed.add(r);
+        }
+        // nothing may straddle a container's border: mostly inside -> fully inside, mostly outside -> fully outside
+        for (Element c : els) {
+            if (!c.type().equals("container")) continue;
+            Rectangle2D cr = b.get(c.id());
+            if (cr == null) continue;
+            Rectangle2D inner = new Rectangle2D.Double(cr.getX() + 16, cr.getY() + 64, cr.getWidth() - 32, cr.getHeight() - 80);
+            for (Element e : els) {
+                if (e == c || e.type().equals("container") || e.type().equals("arrow") || backdrop(e)) continue;
+                Rectangle2D r = b.get(e.id());
+                if (r == null || !r.intersects(cr) || inner.contains(r)) continue;
+                Rectangle2D ix = r.createIntersection(cr);
+                boolean inside = area(ix) > area(r) * 0.5 && r.getWidth() <= inner.getWidth() && r.getHeight() <= inner.getHeight();
+                double x = r.getX(), y = r.getY();
+                if (inside) {
+                    x = Math.max(inner.getX(), Math.min(inner.getMaxX() - r.getWidth(), x));
+                    y = Math.max(inner.getY(), Math.min(inner.getMaxY() - r.getHeight(), y));
+                } else {
+                    double left = r.getMaxX() - cr.getX() + 20, right = cr.getMaxX() - r.getX() + 20,
+                           up = r.getMaxY() - cr.getY() + 20, down = cr.getMaxY() - r.getY() + 20;
+                    double m = Math.min(Math.min(left, right), Math.min(up, down));
+                    if (m == left) x -= left; else if (m == right) x += right; else if (m == up) y -= up; else y += down;
+                }
+                b.put(e.id(), new Rectangle2D.Double(x, y, r.getWidth(), r.getHeight()));
+            }
         }
     }
 
@@ -415,9 +445,9 @@ public final class DiagramRenderer {
                 double cw = w > 0 ? w : W - 120;
                 String st = nz(e.style()).toLowerCase(Locale.ROOT);
                 int size = st.contains("named") ? 64 : st.contains("stat") ? 60 : 50;
-                int lines = richLines(t, sansBold, size, (int) cw - 60).size();
+                double body = st.contains("stat") ? statHeight(t, size, (int) cw - 60) : richLines(t, sansBold, size, (int) cw - 60).size() * size * 1.18;
                 double extra = listOrEmpty(e).size() * 58 + (nz(e.title()).isEmpty() ? 0 : 44);
-                return new double[]{cw, h > 0 ? h : 56 + lines * size * 1.18 + extra};
+                return new double[]{cw, h > 0 ? h : 56 + body + extra};
             }
             case "db" -> { double d = w > 0 ? w : 260; return new double[]{d, h > 0 ? h : d * 1.25 + 70}; }
             case "server" -> { double d = w > 0 ? w : 200; return new double[]{d, h > 0 ? h : d * 1.7 + 50}; }
@@ -440,7 +470,6 @@ public final class DiagramRenderer {
         try {
             hints(g);
             background(g);
-            headingText(g, scene.heading(), scene.label(), 1f);
             Graphics2D cg = (Graphics2D) g.create();
             try {
                 applyCamera(cg, cam);
@@ -448,6 +477,8 @@ public final class DiagramRenderer {
             } finally {
                 cg.dispose();
             }
+            headingText(g, scene.heading(), scene.label(), 1f);   // on top of everything (full-screen photos included)
+            drawHud(g, scene.elements(), bounds, e -> e.at() <= k ? 1f : 0f, k);
         } finally {
             g.dispose();
         }
@@ -474,7 +505,16 @@ public final class DiagramRenderer {
         if (box == null) return identity();
         boolean head = !nz(scene.heading()).isEmpty() || !nz(scene.label()).isEmpty();
         double top = portrait ? (head ? 330 : 60) : (head ? 130 : 30), bottom = contentBottom(), left = 30, right = W - 30;
-        if (box.getX() >= left - 1 && box.getMaxX() <= right + 1 && box.getY() >= top - 40 && box.getMaxY() <= bottom + 1) return identity();
+        boolean fits = box.getX() >= left - 1 && box.getMaxX() <= right + 1 && box.getY() >= top - 40 && box.getMaxY() <= bottom + 1;
+        if (fits && !blueprint) {
+            // reels: a small diagram floating in a big empty frame looks unfinished - frame it closer
+            boolean onlyCards = true;
+            for (Element e : scene.elements()) if (!full(e) && !backdrop(e)) { onlyCards = false; break; }
+            double zin = Math.min(portrait ? 1.6 : 1.3, Math.min((right - left - 40) / box.getWidth(), (bottom - top - 40) / box.getHeight()));
+            if (!onlyCards && zin > 1.08) return new double[]{zin, box.getCenterX(), box.getCenterY(), W / 2.0, (top + bottom) / 2.0};
+            return identity();
+        }
+        if (fits) return identity();
         double z = Math.min(1.0, Math.min((right - left) / box.getWidth(), (bottom - top) / box.getHeight()));
         z = Math.max(0.42, z);
         return new double[]{z, box.getCenterX(), box.getCenterY(), W / 2.0, (top + bottom) / 2.0};
@@ -546,8 +586,6 @@ public final class DiagramRenderer {
             try {
                 hints(g);
                 background(g);
-                if (h0.equals(h1) && l0.equals(l1)) headingText(g, h1, l1, 1f);
-                else { headingText(g, h0, l0, (float) (1 - t)); headingText(g, h1, l1, (float) t); }
                 Graphics2D cg = (Graphics2D) g.create();
                 try {
                     applyCamera(cg, cam);
@@ -561,6 +599,16 @@ public final class DiagramRenderer {
                 } finally {
                     cg.dispose();
                 }
+                {
+                    final float inH = (float) Math.max(0, Math.min(1, (lin - 0.3) / 0.5));
+                    if (prev != null) drawHud(g, prev.elements(), b0, e -> now.contains(e.id()) ? 0f : (float) Math.max(0, 1 - lin / 0.45), Math.max(0, prev.sentences() - 1));
+                    drawHud(g, scene.elements(), bi, e -> e.at() > 0 ? 0f : before.contains(e.id()) ? 1f : inH, -1);
+                }
+                if (h0.equals(h1) && l0.equals(l1)) headingText(g, h1, l1, 1f);
+                else {
+                    headingText(g, h0, l0, (float) Math.max(0, 1 - lin / 0.45));
+                    headingText(g, h1, l1, (float) Math.max(0, Math.min(1, (lin - 0.45) / 0.45)));
+                }
             } finally {
                 g.dispose();
                 typing = Map.of();
@@ -571,12 +619,33 @@ public final class DiagramRenderer {
     }
 
     /** Containers first (they sit behind), then connectors, then everything else; alpha per element. */
+    private boolean hudPass;
+
+    /** The step tracker etc., drawn without the camera transform so they stay pinned to the top. */
+    private void drawHud(Graphics2D g, List<Element> els, Map<String, Rectangle2D> bounds, java.util.function.ToDoubleFunction<Element> alpha, int k) {
+        List<Element> hudEls = new ArrayList<>();
+        for (Element e : els) if (hud(e)) hudEls.add(e);
+        if (hudEls.isEmpty()) return;
+        hudPass = true;
+        try { drawLayers(g, hudEls, bounds, alpha, k); } finally { hudPass = false; }
+    }
+
     private void drawLayers(Graphics2D g, List<Element> els, Map<String, Rectangle2D> bounds,
+                            java.util.function.ToDoubleFunction<Element> alpha, int k) {
+        pendingLabels.clear();
+        try {
+            drawPasses(g, els, bounds, alpha, k);
+        } finally {
+            flushLabels(g, bounds);
+        }
+    }
+
+    private void drawPasses(Graphics2D g, List<Element> els, Map<String, Rectangle2D> bounds,
                             java.util.function.ToDoubleFunction<Element> alpha, int k) {
         for (int pass = 0; pass < 3; pass++) {
             for (Element e : els) {
                 float a = (float) alpha.applyAsDouble(e);
-                if (a <= 0.004f) continue;
+                if (a <= 0.004f || (hud(e) && !hudPass)) continue;
                 boolean container = e.type().equals("container") || e.type().equals("photo") || e.type().equals("particles");
                 boolean arrow = e.type().equals("arrow") || e.type().equals("cables");
                 int layer = container ? 0 : arrow ? 1 : 2;
@@ -670,15 +739,18 @@ public final class DiagramRenderer {
         int[] a = src.getRGB(0, 0, W, H, null, 0, W), b = halo.getRGB(0, 0, W, H, null, 0, W);
         double k = bloomAmount;
         for (int i = 0; i < a.length; i++) {
-            int r = Math.min(255, ((a[i] >> 16) & 255) + (int) (((b[i] >> 16) & 255) * k));
-            int gg = Math.min(255, ((a[i] >> 8) & 255) + (int) (((b[i] >> 8) & 255) * k));
-            int bb = Math.min(255, (a[i] & 255) + (int) ((b[i] & 255) * k));
+            // screen blend: glow lifts dark areas but never flattens already-bright detail (phone screens, cards) to white
+            int r = screen((a[i] >> 16) & 255, (int) (((b[i] >> 16) & 255) * k));
+            int gg = screen((a[i] >> 8) & 255, (int) (((b[i] >> 8) & 255) * k));
+            int bb = screen(a[i] & 255, (int) ((b[i] & 255) * k));
             a[i] = (r << 16) | (gg << 8) | bb;
         }
         BufferedImage out = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
         out.setRGB(0, 0, W, H, a, 0, W);
         return out;
     }
+
+    private static int screen(int a, int b) { return 255 - (255 - a) * (255 - Math.min(255, b)) / 255; }
 
     private static int[] boxBlur(int[] px, int w, int h, int r) {
         int[] tmp = new int[px.length], out = new int[px.length];
@@ -712,6 +784,11 @@ public final class DiagramRenderer {
         if (blueprint) { blueprintBackground(g); return; }
         g.setColor(BG);
         g.fillRect(0, 0, W, H);
+        if (light) {   // light themes: a gentle top-to-bottom wash (a radial lift showed as rings after compression)
+            g.setPaint(new GradientPaint(0, 0, BG_GLOW, 0, H, BG));
+            g.fillRect(0, 0, W, H);
+            return;
+        }
         // very soft lift in the middle, like the reference's slight vignette
         g.setPaint(new RadialGradientPaint(new Point2D.Float(W * 0.5f, H * 0.45f), W * 0.7f,
                 new float[]{0f, 1f}, new Color[]{new Color(BG_GLOW.getRed(), BG_GLOW.getGreen(), BG_GLOW.getBlue(), 150), new Color(BG_GLOW.getRed(), BG_GLOW.getGreen(), BG_GLOW.getBlue(), 0)}));
@@ -883,7 +960,7 @@ public final class DiagramRenderer {
     }
 
     private void quote(Graphics2D g, Element e, Rectangle2D r) {
-        List<String> ls = wrap("\u201C" + nz(e.text()) + "\u201D", sansItalic, 30, (int) r.getWidth());
+        List<String> ls = wrap("\u201C" + unquote(e.text()) + "\u201D", sansItalic, 30, (int) r.getWidth());
         float y = (float) r.getY() + 30;
         for (String l : ls) {
             text(g, l, (float) (r.getCenterX() - widthOf(l, sansItalic, 30) / 2), y, sansItalic, 30, TEXT);
@@ -1585,19 +1662,22 @@ public final class DiagramRenderer {
             } else
             y = drawRich(g, "*" + nz(e.text()).replace("*", "") + "*", x, y + 6, sansBold, size, (int) r.getWidth() - 60, TEXT, HL, true, (float) r.getCenterX());
         } else if (stat) {
-            // numbers twice as big as the words around them
-            float px = x;
-            for (Word wd : richWords(e.text())) {
-                boolean num = wd.text().matches("[\\d.,%×x]+");
-                int sz = num ? (int) (size * 2.0) : size;
-                Color c = wd.hl() ? hl : TEXT;
-                float ww = widthOf(wd.text(), sansBold, sz);
-                if (px + ww > r.getMaxX() - 30) { px = x; y += size * 2.0f; }
-                text(g, wd.text(), px, y + (num ? size * 0.9f : 0), sansBold, sz, c);
-                caretX = px + ww; caretY = y + (num ? size * 0.9f : 0);
-                px += ww + widthOf(" ", sansBold, size);
+            // numbers twice as big as the words around them, every word of a line on ONE baseline
+            float top = y - size * 0.8f;
+            for (List<Word> line : statLines(e.text(), size, (int) r.getWidth() - 60)) {
+                int lineMax = size;
+                for (Word wd : line) lineMax = Math.max(lineMax, statSize(wd, size));
+                float base = top + lineMax * 0.86f, px = x;
+                for (Word wd : line) {
+                    int sz = statSize(wd, size);
+                    float ww = widthOf(wd.text(), sansBold, sz);
+                    text(g, wd.text(), px, base, sansBold, sz, wd.hl() ? hl : TEXT);
+                    caretX = px + ww; caretY = base;
+                    px += ww + widthOf(" ", sansBold, size) * 0.9f;
+                }
+                top += lineMax * 1.02f + 6;
             }
-            y += size * 2.1f;
+            y = top + size * 0.8f;
         } else {
             y = drawRich(g, e.text(), x, y + 6, sansBold, size, (int) r.getWidth() - 60, TEXT, hl, false, 0);
         }
@@ -1611,6 +1691,33 @@ public final class DiagramRenderer {
             y = drawRich(g, l.replace("->", "\u2192"), x, y + 34, sansBold, 40, (int) r.getWidth() - 60, TEXT, HL, false, 0) - 34;
             y += 18;
         }
+    }
+
+    private static int statSize(Word w, int size) { return w.text().matches(".*\\d.*") ? (int) (size * 1.9) : size; }
+
+    /** Wraps a stat sentence where number tokens are drawn larger. */
+    private List<List<Word>> statLines(String text, int size, int maxW) {
+        List<List<Word>> lines = new ArrayList<>();
+        List<Word> cur = new ArrayList<>();
+        float w = 0, space = widthOf(" ", sansBold, size) * 0.9f;
+        for (Word wd : richWords(text)) {
+            float ww = widthOf(wd.text(), sansBold, statSize(wd, size));
+            if (!cur.isEmpty() && w + space + ww > maxW) { lines.add(cur); cur = new ArrayList<>(); w = 0; }
+            w += (cur.isEmpty() ? 0 : space) + ww;
+            cur.add(wd);
+        }
+        if (!cur.isEmpty()) lines.add(cur);
+        return lines;
+    }
+
+    private double statHeight(String text, int size, int maxW) {
+        double h = 0;
+        for (List<Word> line : statLines(text, size, maxW)) {
+            int m = size;
+            for (Word wd : line) m = Math.max(m, statSize(wd, size));
+            h += m * 1.02 + 6;
+        }
+        return h;
     }
 
     private static Element withText(Element e, String t) {
@@ -1675,7 +1782,6 @@ public final class DiagramRenderer {
                 try {
                     hints(g);
                     background(g);
-                    headingText(g, scene.heading(), scene.label(), 1f);
                     Graphics2D cg = (Graphics2D) g.create();
                     try {
                         applyCamera(cg, cam);
@@ -1683,6 +1789,8 @@ public final class DiagramRenderer {
                     } finally {
                         cg.dispose();
                     }
+                    drawHud(g, scene.elements(), b, e -> e.at() < k ? 1f : e.at() == k ? fade : 0f, k);
+                    headingText(g, scene.heading(), scene.label(), 1f);
                 } finally {
                     g.dispose();
                 }
@@ -1801,7 +1909,7 @@ public final class DiagramRenderer {
         RoundRectangle2D screen = new RoundRectangle2D.Double(x + ins, y + ins, w - ins * 2, h - ins * 2, rad * 1.7, rad * 1.7);
         Shape clip = g.getClip();
         g.clip(screen);
-        g.setColor(new Color(0xF4F5F8)); g.fill(screen);
+        g.setColor(new Color(0xEDF0F5)); g.fill(screen);
         double sx = x + ins, sw = w - ins * 2, k = sw / 400.0;
         Color brand = accent(e.color(), new Color(0xF07D2B));
         if (e.color() == null) brand = new Color(0xF07D2B);
@@ -1811,12 +1919,18 @@ public final class DiagramRenderer {
         text(g, fit(nz(e.text()).toUpperCase(Locale.ROOT), sansBold, (int) (24 * k), (int) (sw - 40 * k)), (float) (sx + 22 * k), (float) (y + ins + 92 * k), sansBold, (int) (24 * k), Color.WHITE);
         if (!nz(e.title()).isEmpty()) text(g, fit(nz(e.title()), sans, (int) (16 * k), (int) (sw - 40 * k)), (float) (sx + 22 * k), (float) (y + ins + 122 * k), sans, (int) (16 * k), new Color(255, 255, 255, 220));
         double cy = y + ins + 170 * k;
-        for (String row : listOrEmpty(e)) {
+        List<String> rowsList = listOrEmpty(e);
+        if (rowsList.isEmpty()) rowsList = List.of("·|", "·|", "·|");     // skeleton rows, never an empty white screen
+        for (String row : rowsList) {
             if (cy > y + h - 160 * k) break;
             String[] p = row.split("\\|");
             RoundRectangle2D card = new RoundRectangle2D.Double(sx + 16 * k, cy, sw - 32 * k, 92 * k, 14 * k, 14 * k);
             g.setColor(Color.WHITE); g.fill(card);
-            g.setColor(new Color(0xD9DEE8)); g.setStroke(new BasicStroke(1.2f)); g.draw(card);
+            g.setColor(new Color(0xD2D9E4)); g.setStroke(new BasicStroke(1.4f)); g.draw(card);
+            if (p[0].trim().equals("·")) {
+                g.setColor(new Color(0xC7D0DD));
+                g.fill(new RoundRectangle2D.Double(sx + 32 * k, cy + 20 * k, sw * 0.45, 18 * k, 9 * k, 9 * k));
+            } else
             text(g, fit(p[0].trim(), sansBold, (int) (20 * k), (int) (sw * 0.55)), (float) (sx + 32 * k), (float) (cy + 36 * k), sansBold, (int) (20 * k), new Color(0x1F2937));
             for (int c = 0; c < 3; c++) {
                 g.setColor(new Color(0xEEF1F6)); g.fill(new RoundRectangle2D.Double(sx + 32 * k + c * 74 * k, cy + 52 * k, 62 * k, 26 * k, 6 * k, 6 * k));
@@ -1996,18 +2110,60 @@ public final class DiagramRenderer {
         arrowHead(g, c2.getX(), c2.getY(), p2.getX(), p2.getY(), col);
         if ("both".equalsIgnoreCase(e.style())) arrowHead(g, c1.getX(), c1.getY(), p1.getX(), p1.getY(), col);
         String t = nz(e.text());
-        if (!t.isEmpty()) {
-            double mx = (p1.getX() + 3 * c1.getX() + 3 * c2.getX() + p2.getX()) / 8, my = (p1.getY() + 3 * c1.getY() + 3 * c2.getY() + p2.getY()) / 8;
-            float tw = widthOf(t, sans, 22);
-            RoundRectangle2D tag = new RoundRectangle2D.Double(mx - tw / 2 - 16, my - 20, tw + 32, 40, 10, 10);
+        if (!t.isEmpty()) pendingLabels.add(new PendingLabel(t, new CubicCurve2D.Double(p1.getX(), p1.getY(), c1.getX(), c1.getY(),
+                c2.getX(), c2.getY(), p2.getX(), p2.getY()), g.getComposite()));
+    }
+
+    private record PendingLabel(String text, CubicCurve2D curve, java.awt.Composite composite) { }
+
+    private final List<PendingLabel> pendingLabels = new ArrayList<>();
+
+    private static Point2D at(CubicCurve2D c, double t) {
+        double u = 1 - t;
+        return new Point2D.Double(u * u * u * c.getX1() + 3 * u * u * t * c.getCtrlX1() + 3 * u * t * t * c.getCtrlX2() + t * t * t * c.getX2(),
+                u * u * u * c.getY1() + 3 * u * u * t * c.getCtrlY1() + 3 * u * t * t * c.getCtrlY2() + t * t * t * c.getY2());
+    }
+
+    /**
+     * Arrow labels are drawn LAST (so boxes never cover them) and each one slides along its own arrow until it overlaps neither
+     * an element nor another label - several arrows leaving one box used to stack their labels on top of each other.
+     */
+    private void flushLabels(Graphics2D g, Map<String, Rectangle2D> bounds) {
+        List<Rectangle2D> taken = new ArrayList<>();
+        double[] tries = {0.6, 0.45, 0.72, 0.35, 0.82, 0.5, 0.66, 0.28, 0.9};
+        for (PendingLabel pl : pendingLabels) {
+            float tw = widthOf(pl.text(), sans, 22);
+            Rectangle2D best = null;
+            double bestCost = Double.MAX_VALUE;
+            for (double off : new double[]{0, -30, 30}) {
+                for (double t : tries) {
+                    Point2D m = at(pl.curve(), t);
+                    Rectangle2D r = new Rectangle2D.Double(m.getX() - tw / 2 - 16, m.getY() - 20 + off, tw + 32, 40);
+                    double cost = 0;
+                    for (Rectangle2D b : bounds.values()) if (b.intersects(r)) cost += area(b.createIntersection(r));
+                    for (Rectangle2D b : taken) if (b.intersects(r)) cost += 4 * area(b.createIntersection(r));
+                    cost += Math.abs(off) * 2 + Math.abs(t - 0.55) * 10;
+                    if (cost < bestCost) { bestCost = cost; best = r; }
+                }
+                if (bestCost < 40) break;
+            }
+            if (best == null) continue;
+            taken.add(best);
+            var old = g.getComposite();
+            g.setComposite(pl.composite());
+            RoundRectangle2D tag = new RoundRectangle2D.Double(best.getX(), best.getY(), best.getWidth(), best.getHeight(), 10, 10);
             g.setColor(TAG_BG);
             g.fill(tag);
             g.setColor(themeId.equals("reference") ? new Color(0x2FB3A6) : ARROW);
             g.setStroke(new BasicStroke(1.6f));
             g.draw(tag);
-            text(g, t, (float) (mx - tw / 2), (float) (my + 8), sans, 22, TEXT);
+            text(g, pl.text(), (float) (best.getX() + 16), (float) (best.getY() + 28), sans, 22, TEXT);
+            g.setComposite(old);
         }
+        pendingLabels.clear();
     }
+
+    private static double area(Rectangle2D r) { return Math.max(0, r.getWidth()) * Math.max(0, r.getHeight()); }
 
     private static void arrowHead(Graphics2D g, double fx, double fy, double tx, double ty, Color col) {
         double ang = Math.atan2(ty - fy, tx - fx), len = 14, spread = 0.45;
@@ -2490,6 +2646,8 @@ public final class DiagramRenderer {
     }
 
     private static String nz(String s) { return s == null ? "" : s.trim(); }
+
+    private static String unquote(String s) { return nz(s).replaceAll("^[\"'\u201C\u201D\u2018\u2019]+|[\"'\u201C\u201D\u2018\u2019]+$", "").trim(); }
 
     private static double clamp(double v, double lo, double hi) { return Math.max(lo, Math.min(Math.max(lo, hi), v)); }
 }

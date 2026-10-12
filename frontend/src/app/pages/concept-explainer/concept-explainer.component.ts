@@ -104,16 +104,20 @@ interface LessonSummary { id: string; title: string; duration: string; language:
           <div>
             <label>Narrator voice</label>
             <select [(ngModel)]="voice">
-              <optgroup label="Indian English — natural Indian accent">
-                <option value="edge:en-IN-NeerjaNeural">Neerja — Indian English, female</option>
+              <optgroup label="Indian English — expressive (Chatterbox, local GPU)">
+                <option value="narrator-in-male">Arjun — Indian English, male (recommended)</option>
+                <option value="narrator-in-female">Meera — Indian English, female</option>
+              </optgroup>
+              <optgroup label="Indian English — Edge (cloud, needs internet)">
                 <option value="edge:en-IN-PrabhatNeural">Prabhat — Indian English, male</option>
+                <option value="edge:en-IN-NeerjaNeural">Neerja — Indian English, female</option>
               </optgroup>
               <optgroup *ngIf="edgeForLanguage().length" [label]="'Edge — ' + language">
                 <option *ngFor="let v of edgeForLanguage()" [value]="v.id">{{ v.label }}</option>
               </optgroup>
-              <optgroup label="Expressive (Chatterbox, US-style accent)">
-                <option value="narrator-male">Arjun — Natural Male Tutor</option>
-                <option value="narrator-female">Maya — Natural Female Tutor</option>
+              <optgroup label="US English — expressive (Chatterbox)">
+                <option value="narrator-male">Ryan — US English, male</option>
+                <option value="narrator-female">Amy — US English, female</option>
               </optgroup>
               <optgroup *ngIf="clonedVoices.length" label="My voices (Voice Lab clones — expressive + your accent)">
                 <option *ngFor="let v of clonedVoices" [value]="v.id">{{ v.label }}</option>
@@ -125,7 +129,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
                 <option *ngFor="let v of indicForLanguage()" [value]="v.id">{{ v.label }}</option>
               </optgroup>
             </select>
-            <small class="sync-note" *ngIf="!voice.startsWith('indic:')">Chatterbox + local open-source reference voice (English). For Indian languages without an IndicF5 voice the native Edge voice is used.</small>
+            <small class="sync-note" *ngIf="voice.startsWith('narrator-') && language !== 'English' && language !== 'Indian English'">Chatterbox voices speak English only — for {{ language }} the native {{ language }} voice is used automatically.</small>
             <small class="sync-note" *ngIf="voice.startsWith('speak:')">Indic-Speak (Bodhan AI / AI4Bharat): built for teaching — maths, units and mixed Indian-language + English sentences in one voice. Needs the tts-indicspeak service; the first line loads the model (about a minute), later lines are quick. Built with Indic-Speak from Bodhan AI / AI4Bharat.</small>
             <small class="sync-note" *ngIf="voice.startsWith('indic:')">IndicF5 near-human {{ language }} voice (needs the tts-indic service). Slower than Edge — about a few seconds per sentence on GPU.</small>
           </div>
@@ -361,7 +365,7 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
   teachingStyle = 'ENGAGING_TECH_TUTOR';
   destination = 'SOCIAL';
   motion = 'REVEAL';
-  voice = 'narrator-male';
+  voice = 'narrator-in-male';
   model = '';
   models: string[] = [];
   lessons: LessonSummary[] = [];
@@ -422,7 +426,7 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
     if ((this.voice.startsWith('speak:') && !this.speakForLanguage().some(v => v.id === this.voice))
         || (this.voice.startsWith('indic:') && !this.indicForLanguage().some(v => v.id === this.voice))
         || (this.voice.startsWith('edge:') && !this.voice.startsWith('edge:en-IN') && !this.edgeForLanguage().some(v => v.id === this.voice))) {
-      this.voice = 'narrator-male';
+      this.voice = 'narrator-in-male';
     }
   }
 

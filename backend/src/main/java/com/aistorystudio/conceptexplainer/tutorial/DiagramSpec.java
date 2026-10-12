@@ -117,6 +117,34 @@ public final class DiagramSpec {
         res.put("label", text(scene, "label", ""));
         ArrayNode arr = res.putArray("elements");
         out.values().forEach(arr::add);
+        boolean content = false, breakdownLook = false;
+        for (JsonNode e : arr) {
+            String ty = e.path("type").asText();
+            if (!List.of("journey", "photo", "particles", "arrow", "cables").contains(ty)) content = true;
+            if (List.of("journey", "callout", "db", "rows", "phone", "server", "sql").contains(ty)) breakdownLook = true;
+        }
+        for (JsonNode p : previous) if (List.of("journey", "callout", "db").contains(p.path("type").asText())) breakdownLook = true;
+        if (!content && !arr.isEmpty()) {
+            // only the step tracker / a backdrop: the model forgot the scene's content - show its key line as a card
+            String line = text(scene, "title", null);
+            JsonNode nar = scene.path("narration");
+            if (nar.isArray() && nar.size() > 0) {
+                String[] w = nar.get(0).asText("").trim().split("\\s+");
+                line = String.join(" ", java.util.Arrays.copyOf(w, Math.min(w.length, 10)));
+            }
+            if (line != null && !line.isBlank()) {
+                ObjectNode c = M.createObjectNode();
+                c.put("id", "keyline");
+                c.put("type", breakdownLook ? "callout" : "note");
+                c.put("text", line);
+                c.put("x", 50);
+                c.put("y", 40);
+                c.put("at", 0);
+                c.put("dimAt", -1);
+                arr.add(c);
+                if (warnings != null) warnings.add("scene had no content elements - showed its key line instead");
+            }
+        }
         if (arr.isEmpty()) { // never an empty screen: show the scene's key idea as a note
             ObjectNode note = M.createObjectNode();
             note.put("id", "keyidea");
@@ -168,7 +196,13 @@ public final class DiagramSpec {
             case "dialog", "speech" -> "message";
             default -> type;
         };
-        if (!DiagramRenderer.TYPES.contains(type)) return null;
+        if (!DiagramRenderer.TYPES.contains(type)) {
+            // an element type we do not draw: keep its words on screen instead of silently losing them
+            String words = firstText(e);
+            if (words == null) return null;
+            type = "label";
+            e.put("text", words);
+        }
         e.put("type", type);
         alias(e, "text", "label", "name", "value", "message", "command");
         alias(e, "title", "file", "filename", "url", "app");
@@ -237,6 +271,12 @@ public final class DiagramSpec {
             sb.append(")\n");
         }
         return sb.toString();
+    }
+
+    private static String firstText(ObjectNode e) {
+        for (String k : List.of("text", "label", "title", "name", "value", "content"))
+            if (e.hasNonNull(k) && e.get(k).isTextual() && !e.get(k).asText().isBlank()) return e.get(k).asText().trim();
+        return null;
     }
 
     private static void alias(ObjectNode e, String target, String... names) {

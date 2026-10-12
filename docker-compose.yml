@@ -344,7 +344,7 @@ services:
       CHATTERBOX_DEVICE: ${CHATTERBOX_DEVICE:-auto}
       CHATTERBOX_DEFAULT_VOICE: ${CHATTERBOX_VOICE:-narrator-male}
       CHATTERBOX_REFERENCE_BOOTSTRAP_URL: ${CHATTERBOX_REFERENCE_BOOTSTRAP_URL:-http://tts:5002}
-      CHATTERBOX_BOOTSTRAP_VOICES: ${CHATTERBOX_BOOTSTRAP_VOICES:-narrator-male:en_US-ryan-high,narrator-female:en_US-amy-medium}
+      CHATTERBOX_BOOTSTRAP_VOICES: ${CHATTERBOX_BOOTSTRAP_VOICES:-narrator-male:en_US-ryan-high,narrator-female:en_US-amy-medium,narrator-in-male:edge:en-IN-PrabhatNeural,narrator-in-female:edge:en-IN-NeerjaNeural}
       CHATTERBOX_MODEL_TYPE: ${CHATTERBOX_MODEL_TYPE:-standard}
       CHATTERBOX_DEFAULT_LANGUAGE: ${CHATTERBOX_DEFAULT_LANGUAGE:-en}
     volumes:

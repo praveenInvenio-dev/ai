@@ -70,7 +70,7 @@ VOICES_DIR = os.environ.get("CHATTERBOX_VOICES_DIR", "/voices")
 VOICE_PROFILES_DIR = os.environ.get("CHATTERBOX_VOICE_PROFILES_DIR", "/voice-profiles")
 DEFAULT_VOICE = os.environ.get("CHATTERBOX_DEFAULT_VOICE", "narrator-male")
 BOOTSTRAP_URL = os.environ.get("CHATTERBOX_REFERENCE_BOOTSTRAP_URL", "http://tts:5002")
-BOOTSTRAP_VOICES = os.environ.get("CHATTERBOX_BOOTSTRAP_VOICES", "narrator-male:en_US-ryan-high,narrator-female:en_US-amy-medium")
+BOOTSTRAP_VOICES = os.environ.get("CHATTERBOX_BOOTSTRAP_VOICES", "narrator-male:en_US-ryan-high,narrator-female:en_US-amy-medium,narrator-in-male:edge:en-IN-PrabhatNeural,narrator-in-female:edge:en-IN-NeerjaNeural")
 
 _models = {}
 _model_lock = threading.Lock()

@@ -349,13 +349,31 @@ public class ProviderGateway {
         String lang = request.language() == null ? "" : request.language().trim().toLowerCase(java.util.Locale.ROOT);
         boolean englishFamily = lang.equals("english") || lang.equals("en") || lang.startsWith("english ")
                 || lang.equals("indian english") || lang.equals("en-in") || lang.startsWith("en-in-");
-        if (requestedVoice.startsWith("narrator-") || requestedVoice.startsWith("tutor-") || requestedVoice.startsWith("chatterbox:")) {
+        boolean chatterboxVoice = requestedVoice.startsWith("narrator-") || requestedVoice.startsWith("tutor-") || requestedVoice.startsWith("chatterbox:");
+        // Chatterbox speaks English with the accent of its reference clip. For Hindi / Kannada / Tamil ... narration it
+        // would read Indian text with that accent, so those languages fall through to the native voice chain below.
+        if (chatterboxVoice && (englishFamily || lang.isEmpty())) {
             // Chatterbox voices live in the tts-chatterbox sidecar, not in the Piper/Edge "tts" service
             // (sending them there returned HTTP 500 "unknown voice" unless TTS_PROVIDER=chatterbox).
             String v = requestedVoice.startsWith("chatterbox:") ? requestedVoice.substring("chatterbox:".length()) : requestedVoice;
-            return chatterboxTtsProvider.synthesize(new TextToSpeechProvider.TtsRequest(request.text(), v, request.language(),
-                    request.speed(), request.pitch(), request.emotion(), request.emotionIntensity(), request.delivery(),
-                    request.emphasis(), request.breath(), request.paralinguisticEvent(), request.actingDirection()));
+            try {
+                return chatterboxTtsProvider.synthesize(new TextToSpeechProvider.TtsRequest(request.text(), v, request.language(),
+                        request.speed(), request.pitch(), request.emotion(), request.emotionIntensity(), request.delivery(),
+                        request.emphasis(), request.breath(), request.paralinguisticEvent(), request.actingDirection()));
+            } catch (RuntimeException e) {
+                // Indian-English expressive voices are cloned once from the Edge en-IN voices; if that reference is not
+                // there yet (first start without internet), speak with the Edge en-IN voice itself instead of failing.
+                if (v.startsWith("narrator-in-")) {
+                    String edgeIn = v.endsWith("female") ? "edge:en-IN-NeerjaNeural" : "edge:en-IN-PrabhatNeural";
+                    TextToSpeechProvider.TtsResult r = synthesize(new TextToSpeechProvider.TtsRequest(request.text(), edgeIn, request.language(),
+                            request.speed(), request.pitch(), request.emotion(), request.emotionIntensity(), request.delivery(),
+                            request.emphasis(), request.breath(), request.paralinguisticEvent(), request.actingDirection()));
+                    return new TextToSpeechProvider.TtsResult(r.audioBytes(), r.durationSeconds(), r.format(),
+                            "the Indian-English Chatterbox voice is not ready yet (" + firstLine(e.getMessage()) + ") - spoke with " + edgeIn
+                                    + ". Restart tts-chatterbox with internet once so it can create the Indian-accent clone.");
+                }
+                throw e;
+            }
         }
         // Explicit Edge voice or a Voice Lab clone chosen by the user: use exactly that voice.
         if (requestedVoice.startsWith("edge:") || requestedVoice.startsWith("profile:")) {
@@ -399,12 +417,43 @@ public class ProviderGateway {
         try {
             return localTtsProvider.synthesize(request);
         } catch (Exception e) {
+            // The engine's container is not running (or the card is full): don't throw away a whole skit / lesson for it.
+            // Same language + gender on the other local Indic engine, then the Edge voice. Other errors still surface.
+            if (engineUnreachable(e)) {
+                for (String alt : com.aistorystudio.h3.IndicSpeech.fallbackVoices(request.voice())) {
+                    try {
+                        TextToSpeechProvider.TtsResult r = localTtsProvider.synthesize(new TextToSpeechProvider.TtsRequest(
+                                request.text(), alt, request.language(), request.speed(), request.pitch(), request.emotion(),
+                                request.emotionIntensity(), request.delivery(), request.emphasis(), request.breath(),
+                                request.paralinguisticEvent(), request.actingDirection(), request.referenceTranscript()));
+                        log.warn("Indic voice {} unavailable ({}); used {} instead", request.voice(), firstLine(e.getMessage()), alt);
+                        return r;
+                    } catch (Exception ignored) {
+                        // try the next one
+                    }
+                }
+            }
             boolean speak = request.voice() != null && request.voice().startsWith("speak:");
             throw new IllegalStateException("Indic TTS voice '" + request.voice() + "' failed: " + e.getMessage()
                     + (speak ? " - is the tts-indicspeak service running? Add 'indicspeak' to COMPOSE_PROFILES (e.g. COMPOSE_PROFILES=chatterbox,indic,indicspeak),"
                                + " set HF_TOKEN and accept the licence at huggingface.co/bodhan-ai/indic-speak."
                              : " - is the tts-indic service running? Add 'indic' to COMPOSE_PROFILES (e.g. COMPOSE_PROFILES=chatterbox,indic)."), e);
         }
+    }
+
+    private static boolean engineUnreachable(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String m = t.getMessage() == null ? "" : t.getMessage().toLowerCase(java.util.Locale.ROOT);
+            if (m.contains("service unavailable") || m.contains("name resolution") || m.contains("connection refused")
+                    || m.contains("tts 502") || m.contains("tts 503") || m.contains("out of memory") || m.contains("not running")) return true;
+        }
+        return false;
+    }
+
+    private static String firstLine(String m) {
+        if (m == null) return "";
+        int i = m.indexOf('\n');
+        return i > 0 ? m.substring(0, i) : (m.length() > 160 ? m.substring(0, 160) : m);
     }
 
     /** Which engine "Indic TTS" means (indicf5 | indicspeak), from INDIC_ENGINE. */

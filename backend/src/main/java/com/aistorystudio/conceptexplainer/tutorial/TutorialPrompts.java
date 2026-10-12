@@ -94,6 +94,9 @@ public final class TutorialPrompts {
             code, search, bolt, cart, folder, key, globe, phone, check, warning, api, sparkle, money, clock, book, cpu, network, chat, shield, list.
             LAYOUT: 1920x1080 frame. Keep y >= 14 when there is a heading. Left column x 10-30, middle 40-60, right column x 75-90.
             Stack tiles/buttons with about 17-25 y between them. Never place two elements on the same spot. Max ~10 visible elements.
+            - A container always has a title (text) and its members are placed INSIDE its box (never half on its border); an empty container
+              is not allowed. To change code / a list / a card, re-declare the SAME id with the new content (it updates in place) instead of
+              adding a second window. Leave at least 6 % between boxes so arrows and their labels have room.
             CAMERA (automatic, like the reference video):
             - MOVE: to slide an element somewhere else, put it in "keep" AND re-declare it in "elements" with the same id and new x/y;
               it glides there at the start of the scene (e.g. the agent moves left to make room for a new layer).
@@ -193,12 +196,13 @@ public final class TutorialPrompts {
     // ================================================================== 60-second short (vertical reel)
 
     /** 60 s at ~140 wpm: title card + 5-7 teaching scenes + outro. */
-    public static Size shortSize() { return new Size(7, 9, 130, 160); }
+    /** 60 s of speech at the narrator's pace (~150-160 wpm incl. pauses) = 155-175 words. */
+    public static Size shortSize() { return new Size(9, 11, 155, 175); }
 
-    public static final String SHORT_TAGLINE = "Learn one concept a day.";
+    public static final String SHORT_TAGLINE = "Follow the page to learn one concept a day.";
 
     private static final String SHORT_VOICE = """
-            NARRATION (a 60-second vertical explainer reel, 130-160 words in total):
+            NARRATION (a 60-second vertical explainer reel, 155-175 words in total - it MUST fill 60 seconds):
             - Open with the question people actually ask ("Docker container vs VM?", "How does an AI model actually learn?").
               Then answer it with ONE concrete, tiny example that is built up on screen ("Ten houses. Their size, and their price.").
             - Short spoken sentences of 4-14 words. Fragments are fine. No greeting, no "in this video", no hype, no emojis.
@@ -207,7 +211,10 @@ public final class TutorialPrompts {
               step) -> the key difference or the payoff with a number -> one sentence that names the concept ("That loop is
               gradient descent.") -> scale it up to the real world in one line.
             - Calm, clear, confident male explainer voice, about 140 words per minute.
-            - The final scene says "Learn one concept a day." (in the narration language; its English caption is exactly that).
+            - The final scene says "Follow the page to learn one concept a day." (in the narration language; English caption exactly that).
+            - COMPLETENESS (the viewer must get it in one watch, never half-baked): say in plain words WHAT the concept is, show HOW it
+              works step by step on the example (cause -> effect), show WHY it matters with a concrete before/after, NAME it, and give one
+              real-world place it is used. Every technical word is explained the moment it appears.
             """;
 
     private static final String SHORT_SCREEN = """
@@ -220,8 +227,12 @@ public final class TutorialPrompts {
               bars (two-row size/speed comparison), tabs (1 · speed / 2 · size / 3 · security with the active one), value (mono
               number pill like "w 0.2"), metric (huge number + label like "11.4 LOSS"), plot (points + line / error lines /
               falling loss curve), arrow (thin connector), label (small text).
-            - Everything sits between y 18 and y 72; the bottom quarter is for captions. 2-6 elements per scene, centred column.
-            - Last scene: ONE "outro" element, text = "Learn one concept a day.", title = "concept".
+            - Everything sits between y 18 and y 72; the bottom quarter is for captions.
+            - RICH, MEANINGFUL FRAMES: every teaching scene builds ONE diagram of 3-6 elements that SHOWS the mechanism - things connected
+              by arrows, values that change, a before/after side by side. Use the full width (x 15-85) and height (y 20-70).
+              Every element carries real information from the narration. NO decoration: no chips/tabs/plots/numbers that are not
+              explained; a plot only with real meaningful data points; never a lone element in an empty frame.
+            - Last scene: ONE "outro" element, text = "Follow the page to learn one concept a day.", title = "Follow".
             """;
 
     private static final String SHORT_SCHEMA = """
@@ -309,6 +320,9 @@ public final class TutorialPrompts {
             - photo: a generated full-screen picture of the real-world example (text = what to show, e.g. "a long Indian passenger train at
               a night platform"), used for the opening scene and once or twice more (a callout can sit on top of it). Max 3 photos.
             - 2-6 elements per scene, one new thing per sentence, the same ids for the same objects across scenes (keep + glide).
+            - NEVER an empty scene: besides the journey tracker every scene shows at least one real object or card. A phone ALWAYS has
+              lines (the real list on that screen). A photo is always full-screen (no x/y/w/h). Stat callouts: one short sentence,
+              numbers as digits ("*1,000,000* users, *1* row").
             """;
 
     private static final String BREAKDOWN_SCHEMA = """

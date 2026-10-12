@@ -200,6 +200,47 @@ public final class IndicSpeech {
         return isIndicSpeak(engine) ? indicSpeakVoices(lang) : indicVoices(lang);
     }
 
+    private static final List<String> FALLBACK_LANGS = List.of("Hindi", "Kannada", "Tamil", "Telugu", "Malayalam", "Marathi",
+            "Bengali", "Gujarati", "Punjabi", "Odia", "English");
+
+    /** Edge neural voices [female, male] - cloud, used only as the last resort when both local Indic engines are down. */
+    private static List<String> edgeVoices(String lang) {
+        return switch (lang) {
+            case "Hindi" -> List.of("edge:hi-IN-SwaraNeural", "edge:hi-IN-MadhurNeural");
+            case "Kannada" -> List.of("edge:kn-IN-SapnaNeural", "edge:kn-IN-GaganNeural");
+            case "Tamil" -> List.of("edge:ta-IN-PallaviNeural", "edge:ta-IN-ValluvarNeural");
+            case "Telugu" -> List.of("edge:te-IN-ShrutiNeural", "edge:te-IN-MohanNeural");
+            case "Malayalam" -> List.of("edge:ml-IN-SobhanaNeural", "edge:ml-IN-MidhunNeural");
+            case "Marathi" -> List.of("edge:mr-IN-AarohiNeural", "edge:mr-IN-ManoharNeural");
+            case "Bengali" -> List.of("edge:bn-IN-TanishaaNeural", "edge:bn-IN-BashkarNeural");
+            case "Gujarati" -> List.of("edge:gu-IN-DhwaniNeural", "edge:gu-IN-NiranjanNeural");
+            case "English" -> List.of("edge:en-IN-NeerjaNeural", "edge:en-IN-PrabhatNeural");
+            default -> List.of();
+        };
+    }
+
+    /**
+     * When the engine behind {@code voice} is not running: the same language and gender on the OTHER local Indic
+     * engine first (Indic-Speak <-> IndicF5), then the Edge voice. Empty when the voice is unknown.
+     */
+    public static List<String> fallbackVoices(String voice) {
+        if (!isIndicEngineVoice(voice)) return List.of();
+        for (String name : FALLBACK_LANGS) {
+            Language l = resolve(name, "");
+            List<String> speak = indicSpeakVoices(l), f5 = indicVoices(l);
+            int i = speak.indexOf(voice), j = f5.indexOf(voice);
+            if (i < 0 && j < 0) continue;
+            int idx = i >= 0 ? i : j;
+            List<String> out = new java.util.ArrayList<>();
+            List<String> other = i >= 0 ? f5 : speak;
+            if (idx < other.size()) out.add(other.get(idx));
+            List<String> edge = edgeVoices(name);
+            if (idx < edge.size()) out.add(edge.get(idx));
+            return out;
+        }
+        return List.of();
+    }
+
     // ------------------------------------------------------------------ IndicF5 voices
 
     /** IndicF5 reference voices shipped in tts-indic/prompts: [female, male]. Empty = none. */
