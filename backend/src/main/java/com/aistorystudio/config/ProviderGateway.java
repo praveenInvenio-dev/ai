@@ -228,8 +228,9 @@ public class ProviderGateway {
                     .replaceAll("\\s+", " ").trim();
             // 1st try: an Edge neural voice matching the story language (Hindi/Hinglish ->
             // Swara, Tamil -> Pallavi...). 2nd try: the sidecar's default Piper voice.
-            String edge = edgeVoiceForLanguage(request.language());
-            String[] voices = edge == null ? new String[]{null} : new String[]{edge, null};
+            String piper = piperFor(request.voice());   // same gender as what was asked for, not the female default
+            String edge = com.aistorystudio.h3.IndicSpeech.withGender(edgeVoiceForLanguage(request.language()), piper.contains("ryan"));
+            String[] voices = edge == null ? new String[]{piper, null} : new String[]{edge, piper, null};
             for (String voice : voices) {
                 try {
                     var local = localTtsProvider.synthesize(new TextToSpeechProvider.TtsRequest(
@@ -365,30 +366,42 @@ public class ProviderGateway {
                 // there yet (first start without internet), speak with the Edge en-IN voice itself instead of failing.
                 if (v.startsWith("narrator-in-")) {
                     String edgeIn = v.endsWith("female") ? "edge:en-IN-NeerjaNeural" : "edge:en-IN-PrabhatNeural";
-                    TextToSpeechProvider.TtsResult r = synthesize(new TextToSpeechProvider.TtsRequest(request.text(), edgeIn, request.language(),
-                            request.speed(), request.pitch(), request.emotion(), request.emotionIntensity(), request.delivery(),
-                            request.emphasis(), request.breath(), request.paralinguisticEvent(), request.actingDirection()));
-                    return new TextToSpeechProvider.TtsResult(r.audioBytes(), r.durationSeconds(), r.format(),
-                            "the Indian-English Chatterbox voice is not ready yet (" + firstLine(e.getMessage()) + ") - spoke with " + edgeIn
-                                    + ". Restart tts-chatterbox with internet once so it can create the Indian-accent clone.");
+                    TextToSpeechProvider.TtsResult r = speakLocally(withVoice(request, edgeIn), e);
+                    String note = r.providerWarning() != null ? r.providerWarning()
+                            : "Chatterbox is not available (" + firstLine(e.getMessage()) + ") - spoke with " + edgeIn
+                              + ". Check that tts-chatterbox is running (COMPOSE_PROFILES must include chatterbox).";
+                    return new TextToSpeechProvider.TtsResult(r.audioBytes(), r.durationSeconds(), r.format(), note);
                 }
-                throw e;
+                // US Chatterbox voices: keep the voice's gender on the local Piper fallback instead of failing the lesson
+                TextToSpeechProvider.TtsResult r = speakLocally(withVoice(request, piperFor(v)), e);
+                return new TextToSpeechProvider.TtsResult(r.audioBytes(), r.durationSeconds(), r.format(),
+                        r.providerWarning() != null ? r.providerWarning()
+                                : "Chatterbox is not available (" + firstLine(e.getMessage()) + ") - spoke with the local " + piperFor(v)
+                                  + " voice. Check that tts-chatterbox is running (COMPOSE_PROFILES must include chatterbox).");
             }
         }
         // Explicit Edge voice or a Voice Lab clone chosen by the user: use exactly that voice.
-        if (requestedVoice.startsWith("edge:") || requestedVoice.startsWith("profile:")) {
+        if (requestedVoice.startsWith("edge:")) {
+            // Edge voices live in the local "tts" service. Sending them to the configured provider (TTS_PROVIDER=chatterbox)
+            // failed every line and fell back to the default female Piper voice - whatever voice was picked.
+            return speakLocally(request, null);
+        }
+        if (requestedVoice.startsWith("profile:")) {
             return synthesize(request);
         }
         // An explicitly chosen Indic engine voice (IndicF5 "indic:", Indic-Speak "speak:") is the user's decision: use it, don't swap to Edge.
         if (com.aistorystudio.h3.IndicSpeech.isIndicEngineVoice(requestedVoice)) {
             return synthesizeIndicVoice(request);
         }
-        String edge = edgeVoiceForLanguage(request.language());
-        String indic = indicVoiceForLanguage(request.language());
+        // The native voice keeps the GENDER of the voice the user picked (Arjun / Ryan / Prabhat -> a male Hindi voice).
+        // Every list is [female, male]; taking the first entry made every Hindi/Tamil/... lesson female.
+        boolean male = piperFor(requestedVoice).contains("ryan");
+        String edge = com.aistorystudio.h3.IndicSpeech.withGender(edgeVoiceForLanguage(request.language()), male);
+        String indic = com.aistorystudio.h3.IndicSpeech.withGender(indicVoiceForLanguage(request.language()), male);
         String[] preferredVoices = edge == null ? new String[]{indic} : (indic == null ? new String[]{edge} : new String[]{edge, indic});
         if (com.aistorystudio.h3.IndicSpeech.isIndicSpeak(indicEngine)) {
             // INDIC_ENGINE=indicspeak: Indic-Speak first (offline, built for teaching/STEM), the Edge cloud voice as the fallback
-            String speak = com.aistorystudio.h3.IndicSpeech.autoVoice(request.language(), indicEngine);
+            String speak = com.aistorystudio.h3.IndicSpeech.withGender(com.aistorystudio.h3.IndicSpeech.autoVoice(request.language(), indicEngine), male);
             if (speak != null) preferredVoices = edge == null ? new String[]{speak} : new String[]{speak, edge};
         }
         for (String preferred : preferredVoices) {
@@ -439,6 +452,43 @@ public class ProviderGateway {
                                + " set HF_TOKEN and accept the licence at huggingface.co/bodhan-ai/indic-speak."
                              : " - is the tts-indic service running? Add 'indic' to COMPOSE_PROFILES (e.g. COMPOSE_PROFILES=chatterbox,indic)."), e);
         }
+    }
+
+    /** Speak through the local tts service; if that fails, a local Piper voice of the SAME gender (never silently female). */
+    private TextToSpeechProvider.TtsResult speakLocally(TextToSpeechProvider.TtsRequest request, Exception earlier) {
+        try {
+            return localTtsProvider.synthesize(request);
+        } catch (Exception e) {
+            String piper = piperFor(request.voice());
+            try {
+                TextToSpeechProvider.TtsResult r = localTtsProvider.synthesize(withVoice(request, piper));
+                String why = firstLine(e.getMessage());
+                String warning = "Voice '" + request.voice() + "' failed (" + why + ")"
+                        + (request.voice() != null && request.voice().startsWith("edge:") ? " - Edge voices need internet from the tts container" : "")
+                        + "; used the local " + piper + " voice instead.";
+                log.warn(warning);
+                return new TextToSpeechProvider.TtsResult(r.audioBytes(), r.durationSeconds(), r.format(), warning);
+            } catch (Exception e2) {
+                return fallbackNarration(localTtsProvider, request, earlier != null ? earlier : e);
+            }
+        }
+    }
+
+    private static TextToSpeechProvider.TtsRequest withVoice(TextToSpeechProvider.TtsRequest r, String voice) {
+        return new TextToSpeechProvider.TtsRequest(r.text(), voice, r.language(), r.speed(), r.pitch(), r.emotion(),
+                r.emotionIntensity(), r.delivery(), r.emphasis(), r.breath(), r.paralinguisticEvent(), r.actingDirection(), r.referenceTranscript());
+    }
+
+    private static final java.util.Set<String> MALE_NAMES = java.util.Set.of("prabhat", "madhur", "gagan", "valluvar", "mohan", "midhun",
+            "manohar", "bashkar", "niranjan", "amit", "adarsh", "arun", "vamsi", "kiran", "chinmay", "sourav", "parth", "manpreet", "akash",
+            "ryan", "lessac", "joe", "arjun", "guy", "davis", "christopher", "eric", "roger", "steffan", "brian", "andrew");
+
+    /** Local Piper voice with the same gender as the requested voice (ryan = male, amy = female). */
+    static String piperFor(String voice) {
+        String v = voice == null ? "" : voice.toLowerCase(java.util.Locale.ROOT);
+        boolean male = (v.contains("male") && !v.contains("female"));
+        for (String n : MALE_NAMES) if (v.contains(n)) male = true;
+        return male ? "en_US-ryan-high" : "en_US-amy-medium";
     }
 
     private static boolean engineUnreachable(Throwable e) {

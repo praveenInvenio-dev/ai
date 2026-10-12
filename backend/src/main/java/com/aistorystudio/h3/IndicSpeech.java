@@ -241,6 +241,22 @@ public final class IndicSpeech {
         return List.of();
     }
 
+    /**
+     * The same voice slot with the requested gender: every list here is [female, male], so "edge:hi-IN-SwaraNeural" with
+     * male=true gives "edge:hi-IN-MadhurNeural", "speak:hi-Kavya" gives "speak:hi-Amit". Unknown voices come back unchanged.
+     */
+    public static String withGender(String voice, boolean male) {
+        if (voice == null) return null;
+        int want = male ? 1 : 0;
+        for (String name : FALLBACK_LANGS) {
+            Language l = resolve(name, "");
+            for (List<String> list : List.of(indicSpeakVoices(l), indicVoices(l), edgeVoices(name))) {
+                if (list.contains(voice) && want < list.size()) return list.get(want);
+            }
+        }
+        return voice;
+    }
+
     // ------------------------------------------------------------------ IndicF5 voices
 
     /** IndicF5 reference voices shipped in tts-indic/prompts: [female, male]. Empty = none. */
