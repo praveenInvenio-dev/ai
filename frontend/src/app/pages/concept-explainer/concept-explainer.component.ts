@@ -119,6 +119,9 @@ interface LessonSummary { id: string; title: string; duration: string; language:
                 <option value="narrator-male">Ryan — US English, male</option>
                 <option value="narrator-female">Amy — US English, female</option>
               </optgroup>
+              <optgroup *ngIf="piperForLanguage().length" label="Local offline voices (Piper — no GPU, no internet)">
+                <option *ngFor="let v of piperForLanguage()" [value]="v.id">{{ v.label }}</option>
+              </optgroup>
               <optgroup *ngIf="clonedVoices.length" label="My voices (Voice Lab clones — expressive + your accent)">
                 <option *ngFor="let v of clonedVoices" [value]="v.id">{{ v.label }}</option>
               </optgroup>
@@ -129,6 +132,12 @@ interface LessonSummary { id: string; title: string; duration: string; language:
                 <option *ngFor="let v of indicForLanguage()" [value]="v.id">{{ v.label }}</option>
               </optgroup>
             </select>
+            <div style="display:flex;gap:.5rem;align-items:center;margin-top:.4rem">
+              <button type="button" class="btn" (click)="testVoice()" [disabled]="testingVoice">{{ testingVoice ? 'Generating sample…' : '▶ Test this voice' }}</button>
+              <audio *ngIf="voiceSampleUrl" [src]="voiceSampleUrl" controls autoplay style="height:32px"></audio>
+            </div>
+            <small class="warn" *ngIf="voiceTestError" style="display:block;color:#f87171">{{ voiceTestError }}</small>
+            <small class="sync-note">More voices: choose an Indian narration language (below) for native Hindi / Kannada / Tamil ... voices · Indic-Speak voices appear while its service runs (COMPOSE_PROFILES=…,indicspeak) · clone your own voice in Voice Lab.</small>
             <small class="sync-note" *ngIf="voice.startsWith('narrator-') && language !== 'English' && language !== 'Indian English'">Chatterbox voices speak English only — for {{ language }} the native {{ language }} voice is used automatically.</small>
             <small class="sync-note" *ngIf="voice.startsWith('speak:')">Indic-Speak (Bodhan AI / AI4Bharat): built for teaching — maths, units and mixed Indian-language + English sentences in one voice. Needs the tts-indicspeak service; the first line loads the model (about a minute), later lines are quick. Built with Indic-Speak from Bodhan AI / AI4Bharat.</small>
             <small class="sync-note" *ngIf="voice.startsWith('indic:')">IndicF5 near-human {{ language }} voice (needs the tts-indic service). Slower than Edge — about a few seconds per sentence on GPU.</small>
@@ -380,6 +389,41 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
   speakVoices: { id: string; label: string }[] = [];
   edgeVoices: { id: string; label: string }[] = [];
   clonedVoices: { id: string; label: string }[] = [];
+  piperVoices: { id: string; label: string }[] = [];
+  testingVoice = false;
+  voiceSampleUrl = '';
+  voiceTestError = '';
+
+  /** Speaks a short sample with EXACTLY the selected engine (no fallback), so a broken service shows up here, not in the lesson. */
+  testVoice(): void {
+    const hindi = this.language === 'Hindi' || this.language === 'Hinglish';
+    const samples: Record<string, string> = {
+      Hindi: 'नमस्ते! आज हम एक नया कॉन्सेप्ट आसान भाषा में समझेंगे।',
+      Hinglish: 'Namaste! Aaj hum ek naya concept bilkul simple tarike se samjhenge.',
+      Kannada: 'ನಮಸ್ಕಾರ! ಇಂದು ನಾವು ಹೊಸ ವಿಷಯವನ್ನು ಸುಲಭವಾಗಿ ಕಲಿಯೋಣ.',
+      Tamil: 'வணக்கம்! இன்று ஒரு புதிய கருத்தை எளிமையாகப் புரிந்துகொள்வோம்.',
+      Telugu: 'నమస్కారం! ఈ రోజు ఒక కొత్త విషయాన్ని సులభంగా నేర్చుకుందాం.',
+    };
+    const text = samples[this.language] || (hindi ? samples['Hindi'] : 'Hi! Today we will understand one new concept, step by step, with a real example.');
+    this.testingVoice = true; this.voiceTestError = '';
+    if (this.voiceSampleUrl) { URL.revokeObjectURL(this.voiceSampleUrl); this.voiceSampleUrl = ''; }
+    this.http.post(`${this.base}/tts/preview`, { text, voice: this.voice, speed: 1, pitch: 1 }, { responseType: 'blob' }).subscribe({
+      next: b => { this.testingVoice = false; this.voiceSampleUrl = URL.createObjectURL(b); },
+      error: async e => {
+        this.testingVoice = false;
+        let msg = 'This voice could not speak.';
+        try { const t = await (e?.error as Blob).text(); msg = (JSON.parse(t)?.error) || t || msg; } catch { }
+        this.voiceTestError = msg + ' — in a lesson this voice would fall back to another one.';
+      }
+    });
+  }
+
+  /** Piper voices for the narration language (en_* for English, hi_IN-* for Hindi ...). */
+  piperForLanguage(): { id: string; label: string }[] {
+    const english = ['English', 'Indian English'].includes(this.language);
+    const code = english ? 'en' : (ConceptExplainerComponent.LANG_CODE[this.language] || '');
+    return code ? this.piperVoices.filter(v => v.id.startsWith(code + '_')) : [];
+  }
   style = 'reference';
   format: 'TUTORIAL' | 'CLASSIC' | 'SHORT' | 'BREAKDOWN' = 'TUTORIAL';
 
@@ -405,7 +449,8 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
   constructor(private http: HttpClient, private route: ActivatedRoute, private router: Router) {}
 
   edgeForLanguage(): { id: string; label: string }[] {
-    const code = ConceptExplainerComponent.LANG_CODE[this.language];
+    const english = ['English', 'Indian English'].includes(this.language);
+    const code = english ? 'en' : ConceptExplainerComponent.LANG_CODE[this.language];
     return code ? this.edgeVoices.filter(v => v.id.startsWith('edge:' + code + '-')) : [];
   }
 
@@ -425,7 +470,8 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
     // IndicF5 voices are per language (and never English): reset an invalid choice.
     if ((this.voice.startsWith('speak:') && !this.speakForLanguage().some(v => v.id === this.voice))
         || (this.voice.startsWith('indic:') && !this.indicForLanguage().some(v => v.id === this.voice))
-        || (this.voice.startsWith('edge:') && !this.voice.startsWith('edge:en-IN') && !this.edgeForLanguage().some(v => v.id === this.voice))) {
+        || (this.voice.startsWith('edge:') && !this.voice.startsWith('edge:en-IN') && !this.edgeForLanguage().some(v => v.id === this.voice))
+        || (/^[a-z]{2}_[A-Z]{2}-/.test(this.voice) && !this.piperForLanguage().some(v => v.id === this.voice))) {
       this.voice = 'narrator-in-male';
     }
   }
@@ -442,11 +488,22 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
     this.http.get<any>(`${this.base}/tts/voices`).subscribe({
       next: r => {
         const list: any[] = r?.voices || [];
+        // "xx-in-name" IndicF5 references were synthesised from the Edge voice of the same name (evaluation clips): they sound
+        // like that Edge voice. The others are real human recordings - those give a genuinely different voice.
         this.indicVoices = list.filter(v => String(v.id).startsWith('indic:') && v.installed !== false)
-          .map(v => ({ id: v.id, label: String(v.id).replace('indic:', '').replace(/-in-/, ' · ') }));
+          .map(v => {
+            const id = String(v.id).replace('indic:', '');
+            const edgeCopy = /^[a-z]{2}-in-/.test(id);
+            const name = edgeCopy ? id.replace(/^[a-z]{2}-in-/, '') : id.replace(/^[a-z]{2}-/, '');
+            return { id: v.id, label: edgeCopy ? name.charAt(0).toUpperCase() + name.slice(1) + ' — copy of the Edge voice (sounds the same)'
+                                              : name + ' — real human recording', real: !edgeCopy };
+          })
+          .sort((a: any, b: any) => (b.real ? 1 : 0) - (a.real ? 1 : 0));
         this.speakVoices = list.filter(v => String(v.id).startsWith('speak:'))
           .map(v => ({ id: v.id, label: v.label || String(v.id).replace('speak:', '') }));
-        this.edgeVoices = list.filter(v => String(v.id).startsWith('edge:') && !String(v.id).startsWith('edge:en-'))
+        this.piperVoices = list.filter(v => /^[a-z]{2}_[A-Z]{2}-/.test(String(v.id)))
+          .map(v => ({ id: v.id, label: (v.label || v.id) + (v.gender ? ' — ' + v.gender : '') + (v.installed ? '' : ' (downloads on first use)') }));
+        this.edgeVoices = list.filter(v => String(v.id).startsWith('edge:') && !String(v.id).startsWith('edge:en-IN'))
           .map(v => ({ id: v.id, label: v.label || String(v.id).replace('edge:', '').replace('Neural', '') }));
         this.clonedVoices = list.filter(v => String(v.id).startsWith('profile:'))
           .map(v => ({ id: v.id, label: v.label || v.name || String(v.id).replace('profile:', '') }));

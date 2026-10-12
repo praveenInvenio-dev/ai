@@ -160,6 +160,54 @@ SPEAK_PREFIX = "speak:"
 SPEAK_BASE_URL = os.environ.get("INDICSPEAK_BASE_URL", "http://tts-indicspeak:5006")
 
 EDGE_VOICE_CATALOG = {
+    "edge:ta-IN-ValluvarNeural": {
+        "label": "Valluvar (Tamil)", "accent": "IN (Tamil)", "gender": "male",
+        "notes": "Tamil male narrator.",
+    },
+    "edge:te-IN-MohanNeural": {
+        "label": "Mohan (Telugu)", "accent": "IN (Telugu)", "gender": "male",
+        "notes": "Telugu male narrator.",
+    },
+    "edge:ml-IN-MidhunNeural": {
+        "label": "Midhun (Malayalam)", "accent": "IN (Malayalam)", "gender": "male",
+        "notes": "Malayalam male narrator.",
+    },
+    "edge:mr-IN-ManoharNeural": {
+        "label": "Manohar (Marathi)", "accent": "IN (Marathi)", "gender": "male",
+        "notes": "Marathi male narrator.",
+    },
+    "edge:bn-IN-TanishaaNeural": {
+        "label": "Tanishaa (Bengali)", "accent": "IN (Bengali)", "gender": "female",
+        "notes": "Bengali female.",
+    },
+    "edge:bn-IN-BashkarNeural": {
+        "label": "Bashkar (Bengali)", "accent": "IN (Bengali)", "gender": "male",
+        "notes": "Bengali male narrator.",
+    },
+    "edge:gu-IN-DhwaniNeural": {
+        "label": "Dhwani (Gujarati)", "accent": "IN (Gujarati)", "gender": "female",
+        "notes": "Gujarati female.",
+    },
+    "edge:gu-IN-NiranjanNeural": {
+        "label": "Niranjan (Gujarati)", "accent": "IN (Gujarati)", "gender": "male",
+        "notes": "Gujarati male narrator.",
+    },
+    "edge:en-US-GuyNeural": {
+        "label": "Guy (US English)", "accent": "US", "gender": "male",
+        "notes": "US English male, newsreader style.",
+    },
+    "edge:en-US-JennyNeural": {
+        "label": "Jenny (US English)", "accent": "US", "gender": "female",
+        "notes": "US English female, friendly.",
+    },
+    "edge:en-GB-RyanNeural": {
+        "label": "Ryan (British English)", "accent": "GB", "gender": "male",
+        "notes": "British English male.",
+    },
+    "edge:en-GB-SoniaNeural": {
+        "label": "Sonia (British English)", "accent": "GB", "gender": "female",
+        "notes": "British English female.",
+    },
     "edge:kn-IN-SapnaNeural": {
         "label": "Sapna (Kannada)", "accent": "IN (Kannada)", "gender": "female",
         "notes": "Kannada female. Not available in Piper at any quality.",

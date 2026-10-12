@@ -389,6 +389,10 @@ public class ProviderGateway {
         if (requestedVoice.startsWith("profile:")) {
             return synthesize(request);
         }
+        if (requestedVoice.matches("[a-z]{2}_[A-Z]{2}-.+")) {
+            // a local Piper voice (en_US-lessac-high, hi_IN-rohan-medium ...): spoken by the local tts service, offline
+            return speakLocally(request, null);
+        }
         // An explicitly chosen Indic engine voice (IndicF5 "indic:", Indic-Speak "speak:") is the user's decision: use it, don't swap to Edge.
         if (com.aistorystudio.h3.IndicSpeech.isIndicEngineVoice(requestedVoice)) {
             return synthesizeIndicVoice(request);
@@ -439,8 +443,9 @@ public class ProviderGateway {
                                 request.text(), alt, request.language(), request.speed(), request.pitch(), request.emotion(),
                                 request.emotionIntensity(), request.delivery(), request.emphasis(), request.breath(),
                                 request.paralinguisticEvent(), request.actingDirection(), request.referenceTranscript()));
-                        log.warn("Indic voice {} unavailable ({}); used {} instead", request.voice(), firstLine(e.getMessage()), alt);
-                        return r;
+                        String w = "Voice '" + request.voice() + "' failed (" + firstLine(e.getMessage()) + "); used " + alt + " instead.";
+                        log.warn(w);
+                        return new TextToSpeechProvider.TtsResult(r.audioBytes(), r.durationSeconds(), r.format(), w);
                     } catch (Exception ignored) {
                         // try the next one
                     }
