@@ -34,3 +34,8 @@ madhur (IndicF5), female -> Swara / Kavya / swara. Same for Kannada, Tamil, Telu
 - A failed Indic voice that falls back to another one now leaves a note on the lesson (it only went to the log before).
 - "Test this voice" button: speaks a sample in the narration language with exactly the selected engine (no fallback)
   and shows the engine's error (e.g. IndicF5 needs HF_TOKEN, service not running) before you make a lesson.
+
+## Voice Lab clones ("My voices") always fell back to Neerja
+Log: `No reference audio found for voice 'profile:d6501dd7-...'`. Lessons passed the raw "profile:<id>" pointer to
+Chatterbox. Now the gateway resolves it like the story pipeline does: the saved profile's engine + reference file +
+transcript are used (synthesizeWithVoice). A deleted clone leaves a note on the lesson instead of failing it.

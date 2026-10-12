@@ -387,7 +387,10 @@ public class ProviderGateway {
             return speakLocally(request, null);
         }
         if (requestedVoice.startsWith("profile:")) {
-            return synthesize(request);
+            // A Voice Lab clone: "profile:<id>" is only a pointer. Its engine and reference file live on the saved profile
+            // (provider + voiceName + transcript). Passing the raw id to Chatterbox failed every line ("No reference audio
+            // found for voice 'profile:...'") and fell back to the default female voice.
+            return synthesizeVoiceProfile(requestedVoice, request);
         }
         if (requestedVoice.matches("[a-z]{2}_[A-Z]{2}-.+")) {
             // a local Piper voice (en_US-lessac-high, hi_IN-rohan-medium ...): spoken by the local tts service, offline
@@ -457,6 +460,29 @@ public class ProviderGateway {
                                + " set HF_TOKEN and accept the licence at huggingface.co/bodhan-ai/indic-speak."
                              : " - is the tts-indic service running? Add 'indic' to COMPOSE_PROFILES (e.g. COMPOSE_PROFILES=chatterbox,indic)."), e);
         }
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aistorystudio.repository.VoiceProfileRepository voiceProfiles;
+
+    private TextToSpeechProvider.TtsResult synthesizeVoiceProfile(String voice, TextToSpeechProvider.TtsRequest request) {
+        java.util.UUID id;
+        try {
+            id = java.util.UUID.fromString(voice.substring("profile:".length()).trim());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException("Invalid saved voice selection: " + voice);
+        }
+        com.aistorystudio.domain.VoiceProfile profile = voiceProfiles == null ? null : voiceProfiles.findById(id).orElse(null);
+        if (profile == null) {
+            // deleted clone: say so on the lesson and keep a sensible voice instead of failing the whole render
+            TextToSpeechProvider.TtsResult r = speakLocally(withVoice(request, piperFor(null)), null);
+            return new TextToSpeechProvider.TtsResult(r.audioBytes(), r.durationSeconds(), r.format(),
+                    "The selected Voice Lab voice no longer exists (" + id + ") - re-select a voice. This line used " + piperFor(null) + ".");
+        }
+        return synthesizeWithVoice(profile.getProvider(), profile.getVoiceName(), request.text(), request.language(),
+                request.speed(), request.pitch(), request.emotion(), request.emotionIntensity(), request.delivery(),
+                request.emphasis() == null ? java.util.List.of() : request.emphasis(), request.breath(),
+                request.paralinguisticEvent(), request.actingDirection(), profile.getReferenceTranscript());
     }
 
     /** Speak through the local tts service; if that fails, a local Piper voice of the SAME gender (never silently female). */
