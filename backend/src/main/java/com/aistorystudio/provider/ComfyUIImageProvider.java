@@ -45,6 +45,10 @@ import java.util.concurrent.TimeUnit;
  */
 @Component
 public class ComfyUIImageProvider implements ImageGenerationProvider {
+    /** Frees the other GPU engines before this one loads (one 16 GB card, see GpuMemoryManager). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private GpuMemoryManager gpu;
+
 
     private static final Logger log = LoggerFactory.getLogger(ComfyUIImageProvider.class);
 
@@ -115,6 +119,7 @@ public class ComfyUIImageProvider implements ImageGenerationProvider {
 
     @Override
     public ImageGenerationResult generateImage(ImageGenerationRequest request) {
+        if (gpu != null) gpu.prepare(GpuMemoryManager.Engine.COMFYUI);
         boolean acquired;
         try {
             acquired = slot.tryAcquire(queueWait.toMillis(), TimeUnit.MILLISECONDS);

@@ -25,4 +25,20 @@ public class FunnySkitJob {
     public String getStyle(){return style;} public void setStyle(String v){style=FunnySkitService.styleId(v);}
     public String getIdea(){return idea;} public void setIdea(String v){idea=v;}
     public String getTone(){return tone;} public void setTone(String v){tone=v;}
+
+    // Writers' room output (comedy) and adventure-series episode metadata
+    public enum Mode { SKIT, ADVENTURE }
+    private volatile Mode mode = Mode.SKIT;
+    private volatile String title, engine, button, summary, cliffhanger, seriesId, direction, stage;
+    private volatile int episodeNumber;
+    public Mode getMode(){return mode;} public void setMode(Mode m){mode=m==null?Mode.SKIT:m;}
+    public String getTitle(){return title;} public void setTitle(String v){title=v;}
+    public String getEngine(){return engine;} public void setEngine(String v){engine=v;}
+    public String getButton(){return button;} public void setButton(String v){button=v;}
+    public String getSummary(){return summary;} public void setSummary(String v){summary=v;}
+    public String getCliffhanger(){return cliffhanger;} public void setCliffhanger(String v){cliffhanger=v;}
+    public String getSeriesId(){return seriesId;} public void setSeriesId(String v){seriesId=v;}
+    public String getDirection(){return direction;} public void setDirection(String v){direction=v;}
+    public String getStage(){return stage;} public void setStage(String v){stage=v;}
+    public int getEpisodeNumber(){return episodeNumber;} public void setEpisodeNumber(int v){episodeNumber=v;}
 }

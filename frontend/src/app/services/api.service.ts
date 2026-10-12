@@ -453,6 +453,19 @@ export class ApiService {
   }
   renderFunnySkit(jobId: string, tone: string, speaker = "Ira", speechEngine: SpeechEngine = 'H3'): Observable<any> { return this.http.post(`${this.base}/funny-skits/jobs/${jobId}/render?tone=${encodeURIComponent(tone)}&speaker=${encodeURIComponent(speaker)}&speechEngine=${speechEngine}`, {}); }
   funnySkitImageUrl(jobId: string, scene: number): string { return `${this.base}/funny-skits/jobs/${jobId}/images/${scene}`; }
+  // Adventure micro-series (episodes continue from each other)
+  listAdventureSeries(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/adventure-series`); }
+  getAdventureSeries(id: string): Observable<any> { return this.http.get<any>(`${this.base}/adventure-series/${id}`); }
+  createAdventureSeries(character: File | null, premise: string, language: string, style: string, characterId?: string, referenceId?: string, narration = true): Observable<{seriesId: string}> {
+    const form = new FormData();
+    if (character) form.append('character', character);
+    form.append('premise', premise); form.append('language', language); form.append('style', style); form.append('narration', String(narration));
+    if (characterId) form.append('characterId', characterId);
+    if (referenceId) form.append('referenceId', referenceId);
+    return this.http.post<{seriesId: string}>(`${this.base}/adventure-series`, form);
+  }
+  nextAdventureEpisode(id: string, direction: string): Observable<{jobId: string, episode: number}> { return this.http.post<{jobId: string, episode: number}>(`${this.base}/adventure-series/${id}/episodes`, { direction }); }
+  adventureEpisodeVideoUrl(id: string, n: number): string { return `${this.base}/adventure-series/${id}/episodes/${n}/video`; }
 
   getVideoGenerationJob(jobId: string): Observable<VideoGenerationJob> {
     return this.http.get<VideoGenerationJob>(`${this.base}/video-generation/jobs/${jobId}`);

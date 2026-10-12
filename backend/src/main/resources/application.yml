@@ -34,6 +34,13 @@ management:
         include: health,info
 
 studio:
+  # One 16 GB GPU shared by Ollama, ComfyUI, Chatterbox, IndicF5 and Indic-Speak.
+  # exclusive = before an engine runs, the others are told to release VRAM (fixes "CUDA out of memory"
+  # when several are used in one job). off = old behaviour (everything stays resident).
+  gpu:
+    mode: ${GPU_MODE:exclusive}
+    indicf5-url: ${INDICF5_BASE_URL:http://tts-indic:5003}
+    indicspeak-url: ${INDICSPEAK_BASE_URL:http://tts-indicspeak:5006}
   demoMode: ${DEMO_MODE:false}
   # Spec section 34: when true, no external network call is allowed from
   # this app. Real enforcement, not just a label - see ProviderGateway

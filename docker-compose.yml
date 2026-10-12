@@ -14,6 +14,8 @@ x-app-env: &app-env
   # Ollama runs elsewhere, or set it to http://ollama:11434 if you start the
   # optional bundled `ollama` service (see the `bundled-ollama` profile).
   OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  # one engine in VRAM at a time (Ollama / ComfyUI / Chatterbox / IndicF5 / Indic-Speak): exclusive | off
+  GPU_MODE: ${GPU_MODE:-exclusive}
   # OLLAMA_MODEL is only a fallback default — the UI lets you pick any model
   # actually installed on your Ollama server from a dropdown per-story.
   OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
@@ -312,6 +314,8 @@ services:
       # Load the model in the background at start-up so the first "Play sample" does not
       # time out while 1.6 GB downloads/loads. GET http://localhost:5003/health shows progress.
       INDICF5_PRELOAD: ${INDICF5_PRELOAD:-true}
+      # weights stay in RAM; moved to the GPU only while speaking, released on /api/unload or after this idle time
+      INDICF5_IDLE_UNLOAD_SECONDS: ${INDICF5_IDLE_UNLOAD_SECONDS:-300}
       OMP_NUM_THREADS: ${INDICF5_THREADS:-6}
     volumes:
       # Reference clips. Each voice is <name>.wav plus <name>.txt holding that

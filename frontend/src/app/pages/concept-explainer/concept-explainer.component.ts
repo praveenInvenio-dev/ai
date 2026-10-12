@@ -71,6 +71,36 @@ interface LessonSummary { id: string; title: string; duration: string; language:
             </select>
             <small class="sync-note">{{ styleHint() }}</small>
           </div>
+          <div class="short-box" *ngIf="format === 'SHORT'">
+            <h4>60-second content</h4>
+            <ol>
+              <li>Title card — topic tag, concept name in green, one-line subtitle (0–4 s)</li>
+              <li>The question + one tiny concrete example built on screen (4–15 s)</li>
+              <li>How it works, one step per scene — cubes, chips, info cards, plots, values (15–45 s)</li>
+              <li>The payoff with a number, then the concept named in one line (45–55 s)</li>
+              <li>Outro: “Learn one concept a day.” (55–60 s)</li>
+            </ol>
+            <small class="sync-note">1080×1920 · near-black reel look · word-by-word captions · quiet music bed · same GPU-safe pipeline.</small>
+          </div>
+          <div class="short-box" *ngIf="format === 'BREAKDOWN'">
+            <h4>Real-world breakdown</h4>
+            <ol>
+              <li>The challenge, on top of a 3D picture of the real product (“Build a train booking system like IRCTC.”)</li>
+              <li>The naive answer — and why it breaks at real scale</li>
+              <li>The user's journey step by step (tracker at the top): each step → the technique → “This is called …”, with the real query or rule</li>
+              <li>Trade-offs, then “the best part” — one clever lesser-known detail</li>
+              <li>Recap card + a question for the comments</li>
+            </ol>
+            <small class="sync-note">Tip: put the example in the topic (“Seat locking — explained with IRCTC”), or just the concept and the AI picks a relatable product. 3D blueprint look, glowing databases, phone screens, record slabs, locks, request swarms.</small>
+          </div>
+          <div *ngIf="format !== 'SHORT' && format !== 'BREAKDOWN'">
+            <label>Lesson format</label>
+            <select [(ngModel)]="format">
+              <option value="TUTORIAL">Tutorial — reference-video teaching</option>
+              <option value="CLASSIC">Classic slides + AI artwork</option>
+            </select>
+            <small class="sync-note">{{ format === 'TUTORIAL' ? 'Running example built up as a diagram, one element per sentence, calm instructor voice — in the visual style you pick.' : 'One template slide per scene with generated artwork.' }}</small>
+          </div>
           <div>
             <label>Narrator voice</label>
             <select [(ngModel)]="voice">
@@ -142,15 +172,30 @@ interface LessonSummary { id: string; title: string; duration: string; language:
           <div class="wide mode-block">
             <label>Choose your lesson</label>
             <div class="mode-grid">
-              <button type="button" class="mode-card" [class.selected]="duration === '1 minute'" (click)="duration = '1 minute'">
+              <button type="button" class="mode-card" [class.selected]="duration === '1 minute'" (click)="duration = '1 minute'; leaveShort()">
                 <span class="mode-icon">⚡</span>
                 <span class="mode-copy"><strong>1-Minute Quick Learn</strong><small>Core idea fast · ~60 sec · 9–11 slides<span class="est">Takes about 5–8 min to make</span></small></span>
                 <span class="mode-check">{{ duration === '1 minute' ? '✓' : '' }}</span>
               </button>
-              <button type="button" class="mode-card deep" [class.selected]="duration === '3 minutes'" (click)="duration = '3 minutes'">
+              <button type="button" class="mode-card deep" [class.selected]="duration === '3 minutes'" (click)="duration = '3 minutes'; leaveShort()">
                 <span class="mode-icon">✦</span>
                 <span class="mode-copy"><strong>3-Minute Deep Dive</strong><small>Learn it properly · ~3 min · 18–22 slides · examples + pitfalls + recap<span class="est">Takes about 12–20 min to make</span></small></span>
                 <span class="mode-check">{{ duration === '3 minutes' ? '✓' : '' }}</span>
+              </button>
+              <button type="button" class="mode-card breakdown" [class.selected]="format === 'BREAKDOWN'" (click)="pickBreakdown()">
+                <span class="mode-icon">◈</span>
+                <span class="mode-copy"><strong>Real-World Breakdown</strong><small>Vertical · ~2 min · any concept explained through one real product (e.g. how IRCTC books a seat) · 3D blueprint visuals<span class="est">Fast confident narration · takes about 15–25 min to make</span></small></span>
+                <span class="mode-check">{{ format === 'BREAKDOWN' ? '✓' : '' }}</span>
+              </button>
+              <button type="button" class="mode-card short" [class.selected]="format === 'SHORT'" (click)="pickShort()">
+                <span class="mode-icon">⏱</span>
+                <span class="mode-copy"><strong>60-Second Short</strong><small>Vertical 9:16 reel · ~60 s · 7–9 scenes · title card, word-by-word captions, outro<span class="est">Reel look · takes about 5–10 min to make</span></small></span>
+                <span class="mode-check">{{ format === 'SHORT' ? '✓' : '' }}</span>
+              </button>
+              <button type="button" class="mode-card deep" [class.selected]="duration === '10 minutes full'" (click)="duration = '10 minutes full'; format = 'TUTORIAL'">
+                <span class="mode-icon">▶</span>
+                <span class="mode-copy"><strong>10-Minute Full Lesson</strong><small>Course-style · ~10 min · 32–42 scenes · what / why / how / in practice / use cases / recap<span class="est">Tech tutorial style · takes about 25–45 min to make</span></small></span>
+                <span class="mode-check">{{ duration === '10 minutes full' ? '✓' : '' }}</span>
               </button>
             </div>
           </div>
@@ -159,6 +204,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
             <select [(ngModel)]="language" (ngModelChange)="onLanguageChange()">
               <option *ngFor="let l of languages">{{ l }}</option>
             </select>
+            <small class="sync-note">Only the voice uses this language. Everything on screen and the subtitles stay in English.</small>
           </div>
           <div>
             <label>Difficulty</label>
@@ -199,7 +245,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
           </div>
         </div>
         <div class="form-footer">
-          <div class="hint"><strong>{{ duration === '1 minute' ? 'Quick Learn:' : 'Deep Dive:' }}</strong> text, code, tables and diagrams are drawn by the app (always crisp and correct); the AI image model only draws the real-world object in analogy slides. No zoom or pan — text stays sharp.</div>
+          <div class="hint"><strong>{{ duration === '1 minute' ? 'Quick Learn:' : duration === '3 minutes' ? 'Deep Dive:' : 'Full Lesson:' }}</strong> <ng-container *ngIf="format === 'TUTORIAL'; else artHint">every diagram, label, window and line of code is drawn by the app (always crisp and correct) and builds up sentence by sentence with the narration. No AI artwork, no music, no zoom.</ng-container><ng-template #artHint>text, code, tables and diagrams are drawn by the app; the AI image model draws scene artwork in the selected style. No zoom or pan — text stays sharp.</ng-template></div>
           <button class="btn btn-primary generate" [disabled]="loading || !topic.trim()" (click)="generate()">{{ loading ? 'Starting…' : 'Generate Concept Explainer' }}</button>
         </div>
         <p class="err-inline" *ngIf="formError">{{ formError }}</p>
@@ -220,7 +266,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
       <section *ngIf="job" class="workspace">
         <div class="status card">
           <div>
-            <div class="eyebrow">{{ job.status }} · {{ job.duration === '1 minute' ? 'QUICK LEARN' : 'DEEP DIVE' }} · {{ job.track }}<span *ngIf="job.examFocus"> · EXAM FOCUS</span></div>
+            <div class="eyebrow">{{ job.status }} · {{ job.duration === '2 minute breakdown' ? 'REAL-WORLD BREAKDOWN' : job.duration === '60 seconds short' ? '60-SECOND SHORT' : job.duration === '1 minute' ? 'QUICK LEARN' : job.duration === '3 minutes' ? 'DEEP DIVE' : 'FULL LESSON' }} · {{ job.track }}<span *ngIf="job.examFocus"> · EXAM FOCUS</span></div>
             <h2>{{ job.title || job.topic }}</h2>
             <p>{{ job.stage }}</p>
             <p class="subtle" *ngIf="isWorking()">Usually about {{ job.estimatedMinutes }} min. You can leave this page — the lesson is under “My lessons”.</p>
@@ -253,7 +299,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
 
         <div class="scene-grid">
           <article class="scene card" *ngFor="let scene of job.scenes; trackBy: trackScene">
-            <div class="scene-image-wrap">
+            <div class="scene-image-wrap" [class.portrait]="job.duration === '60 seconds short' || job.duration === '2 minute breakdown'">
               <img *ngIf="scene.imageUrl; else drawing" [src]="scene.imageUrl" [alt]="scene.title" />
               <ng-template #drawing><div class="placeholder">Drawing slide…</div></ng-template>
               <div class="scene-number">{{ scene.sceneNumber }}</div>
@@ -281,7 +327,10 @@ interface LessonSummary { id: string; title: string; duration: string; language:
     </div>
   `,
   styles: [`
-    .page{max-width:1320px;margin:0 auto}.hero{display:flex;justify-content:space-between;align-items:flex-end;gap:2rem;margin-bottom:1.8rem}.eyebrow{font-size:.68rem;letter-spacing:.16em;color:var(--teal);font-weight:800;margin-bottom:.45rem}.hero h1{font-size:clamp(2.2rem,4vw,3.7rem);margin-bottom:.45rem}.hero p,.section-title p,.status p,.result p{color:var(--muted);margin:.2rem 0}.hero-badge{padding:.7rem 1rem;border:1px solid var(--border);border-radius:999px;color:#bcb5c9;background:rgba(255,255,255,.025);white-space:nowrap}.hero-badge span{color:var(--accent);margin-right:.4rem}.builder{margin-bottom:1.4rem}.section-title{display:flex;justify-content:space-between;margin-bottom:1.25rem}.section-title h2,.status h2,.result h2,.scenes-head h2{margin:0}.form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}.form-grid .wide{grid-column:1/-1}.form-grid input,.form-grid textarea,.form-grid select{width:100%}.mode-block{margin-top:.15rem}.mode-block>label{display:block;margin-bottom:.55rem}.mode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}.mode-card{display:flex;align-items:center;gap:.85rem;text-align:left;width:100%;padding:1rem 1.05rem;border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,.02);color:var(--text);cursor:pointer;transition:border-color .18s,background .18s,transform .18s}.mode-card:hover{border-color:rgba(73,201,189,.55);transform:translateY(-1px)}.mode-card.selected{border-color:var(--teal);background:linear-gradient(135deg,rgba(73,201,189,.10),rgba(183,94,255,.07));box-shadow:0 0 0 1px rgba(73,201,189,.15),0 0 24px rgba(73,201,189,.07)}.mode-icon{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:1.2rem;color:var(--teal);border:1px solid rgba(73,201,189,.35);background:#05070d;flex:0 0 auto}.mode-card.deep .mode-icon{color:#d39aff;border-color:rgba(211,154,255,.35)}.mode-copy{display:flex;flex-direction:column;gap:.22rem;min-width:0}.mode-copy strong{font-size:.9rem}.mode-copy small{font-size:.72rem;line-height:1.4;color:var(--muted)}.mode-check{margin-left:auto;color:var(--teal);font-weight:900;font-size:1.1rem;min-width:1rem}.form-footer{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:1.2rem}.hint{font-size:.78rem;color:var(--muted);max-width:760px;line-height:1.5}.generate{padding:.8rem 1.25rem}.workspace{display:flex;flex-direction:column;gap:1.3rem}.status{display:flex;justify-content:space-between;gap:1.5rem;align-items:center}.status-right{display:flex;gap:.45rem;flex-wrap:wrap;justify-content:flex-end}.pill{border:1px solid var(--border);border-radius:999px;padding:.3rem .65rem;color:var(--muted);font-size:.72rem}.error{border-color:rgba(226,102,91,.5);color:#ffb1a9;background:rgba(226,102,91,.07)}.script-actions{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin:.8rem 0 1rem;padding:.8rem;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.02)}.result-head{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem}.final-video{display:block;width:min(100%,980px);max-height:620px;background:#000;border-radius:12px;margin:0 auto}.scenes-head{display:flex;justify-content:space-between;align-items:flex-end}.subtle{font-size:.78rem;color:var(--muted)}.scene-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.scene{padding:0;overflow:hidden}.scene-image-wrap{position:relative;background:#000;aspect-ratio:16/9}.scene-image-wrap img{width:100%;height:100%;object-fit:cover;display:block}.scene-number{position:absolute;top:10px;left:10px;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:rgba(5,5,10,.84);border:1px solid rgba(73,201,189,.6);color:var(--teal);font-weight:800}.scene-body{padding:1rem}.scene-title{display:flex;justify-content:space-between;gap:.6rem;align-items:flex-start}.scene-title h3{font-size:1rem;margin:0}.scene-title span{font-size:.7rem;color:var(--muted);white-space:nowrap}.concept{color:var(--teal);font-weight:700;font-size:.82rem;margin:.45rem 0}.analogy{font-size:.78rem;color:#d8d1df;line-height:1.45}.narration{font-size:.8rem;line-height:1.55;color:var(--muted);min-height:4.2em}.code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#090a0f;border:1px solid #2b3440;color:#8fffb0;padding:.7rem;border-radius:9px;white-space:pre-wrap;font-size:.73rem;overflow:auto}.scene-actions{display:flex;flex-direction:column;gap:.45rem}.scene-actions audio{width:100%;height:34px}.scene-actions .btn{font-size:.72rem;padding:.5rem .7rem}.empty{text-align:center;padding:4rem 2rem;margin-top:1rem}.empty-icon{font-size:2rem;color:var(--accent);margin-bottom:.5rem}.empty p{max-width:700px;margin:0 auto;color:var(--muted);line-height:1.6}.examples{display:flex;justify-content:center;gap:.5rem;flex-wrap:wrap;margin-top:1.2rem}.example{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:999px;padding:.5rem .8rem}.example:hover{color:var(--text);border-color:var(--accent)}
+    .page{max-width:1320px;margin:0 auto}.hero{display:flex;justify-content:space-between;align-items:flex-end;gap:2rem;margin-bottom:1.8rem}.eyebrow{font-size:.68rem;letter-spacing:.16em;color:var(--teal);font-weight:800;margin-bottom:.45rem}.hero h1{font-size:clamp(2.2rem,4vw,3.7rem);margin-bottom:.45rem}.hero p,.section-title p,.status p,.result p{color:var(--muted);margin:.2rem 0}.hero-badge{padding:.7rem 1rem;border:1px solid var(--border);border-radius:999px;color:#bcb5c9;background:rgba(255,255,255,.025);white-space:nowrap}.hero-badge span{color:var(--accent);margin-right:.4rem}.builder{margin-bottom:1.4rem}.section-title{display:flex;justify-content:space-between;margin-bottom:1.25rem}.section-title h2,.status h2,.result h2,.scenes-head h2{margin:0}.form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}.form-grid .wide{grid-column:1/-1}.form-grid input,.form-grid textarea,.form-grid select{width:100%}.mode-block{margin-top:.15rem}.mode-block>label{display:block;margin-bottom:.55rem}.mode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}
+    .short-box{margin-top:.8rem;padding:.9rem 1rem;border:1px solid #2a2a2e;border-radius:12px;background:#0b0b0c;color:#d4d4d8}
+    .short-box h4{margin:0 0 .4rem;font-size:.95rem;color:#4ade80}
+    .short-box ol{margin:.2rem 0 0 1.1rem;padding:0;font-size:.85rem;line-height:1.5}.mode-card{display:flex;align-items:center;gap:.85rem;text-align:left;width:100%;padding:1rem 1.05rem;border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,.02);color:var(--text);cursor:pointer;transition:border-color .18s,background .18s,transform .18s}.mode-card:hover{border-color:rgba(73,201,189,.55);transform:translateY(-1px)}.mode-card.selected{border-color:var(--teal);background:linear-gradient(135deg,rgba(73,201,189,.10),rgba(183,94,255,.07));box-shadow:0 0 0 1px rgba(73,201,189,.15),0 0 24px rgba(73,201,189,.07)}.mode-icon{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:1.2rem;color:var(--teal);border:1px solid rgba(73,201,189,.35);background:#05070d;flex:0 0 auto}.mode-card.deep .mode-icon{color:#d39aff;border-color:rgba(211,154,255,.35)}.mode-copy{display:flex;flex-direction:column;gap:.22rem;min-width:0}.mode-copy strong{font-size:.9rem}.mode-copy small{font-size:.72rem;line-height:1.4;color:var(--muted)}.mode-check{margin-left:auto;color:var(--teal);font-weight:900;font-size:1.1rem;min-width:1rem}.form-footer{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:1.2rem}.hint{font-size:.78rem;color:var(--muted);max-width:760px;line-height:1.5}.generate{padding:.8rem 1.25rem}.workspace{display:flex;flex-direction:column;gap:1.3rem}.status{display:flex;justify-content:space-between;gap:1.5rem;align-items:center}.status-right{display:flex;gap:.45rem;flex-wrap:wrap;justify-content:flex-end}.pill{border:1px solid var(--border);border-radius:999px;padding:.3rem .65rem;color:var(--muted);font-size:.72rem}.error{border-color:rgba(226,102,91,.5);color:#ffb1a9;background:rgba(226,102,91,.07)}.script-actions{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin:.8rem 0 1rem;padding:.8rem;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.02)}.result-head{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem}.final-video{display:block;width:min(100%,980px);max-height:620px;background:#000;border-radius:12px;margin:0 auto}.scenes-head{display:flex;justify-content:space-between;align-items:flex-end}.subtle{font-size:.78rem;color:var(--muted)}.scene-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.scene{padding:0;overflow:hidden}.scene-image-wrap{position:relative;background:#000;aspect-ratio:16/9}.scene-image-wrap img{width:100%;height:100%;object-fit:cover;display:block}.scene-image-wrap.portrait{aspect-ratio:9/16;max-height:420px;margin:0 auto}.scene-image-wrap.portrait img{object-fit:contain}.scene-number{position:absolute;top:10px;left:10px;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:rgba(5,5,10,.84);border:1px solid rgba(73,201,189,.6);color:var(--teal);font-weight:800}.scene-body{padding:1rem}.scene-title{display:flex;justify-content:space-between;gap:.6rem;align-items:flex-start}.scene-title h3{font-size:1rem;margin:0}.scene-title span{font-size:.7rem;color:var(--muted);white-space:nowrap}.concept{color:var(--teal);font-weight:700;font-size:.82rem;margin:.45rem 0}.analogy{font-size:.78rem;color:#d8d1df;line-height:1.45}.narration{font-size:.8rem;line-height:1.55;color:var(--muted);min-height:4.2em}.code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#090a0f;border:1px solid #2b3440;color:#8fffb0;padding:.7rem;border-radius:9px;white-space:pre-wrap;font-size:.73rem;overflow:auto}.scene-actions{display:flex;flex-direction:column;gap:.45rem}.scene-actions audio{width:100%;height:34px}.scene-actions .btn{font-size:.72rem;padding:.5rem .7rem}.empty{text-align:center;padding:4rem 2rem;margin-top:1rem}.empty-icon{font-size:2rem;color:var(--accent);margin-bottom:.5rem}.empty p{max-width:700px;margin:0 auto;color:var(--muted);line-height:1.6}.examples{display:flex;justify-content:center;gap:.5rem;flex-wrap:wrap;margin-top:1.2rem}.example{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:999px;padding:.5rem .8rem}.example:hover{color:var(--text);border-color:var(--accent)}
     @media(max-width:1000px){.scene-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.form-grid{grid-template-columns:repeat(2,1fr)}.mode-grid{grid-template-columns:1fr}}
     @media(max-width:700px){.hero,.status,.result-head,.form-footer,.scenes-head{flex-direction:column;align-items:flex-start}.form-grid,.scene-grid{grid-template-columns:1fr}.form-grid .wide{grid-column:auto}.hero-badge{white-space:normal}.status-right{justify-content:flex-start}}
   
@@ -327,15 +376,21 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
   speakVoices: { id: string; label: string }[] = [];
   edgeVoices: { id: string; label: string }[] = [];
   clonedVoices: { id: string; label: string }[] = [];
-  style = 'neon';
+  style = 'reference';
+  format: 'TUTORIAL' | 'CLASSIC' | 'SHORT' | 'BREAKDOWN' = 'TUTORIAL';
+
+  pickBreakdown() { this.format = 'BREAKDOWN'; this.duration = '2 minute breakdown'; }
+
+  pickShort() { this.format = 'SHORT'; this.duration = '60 seconds short'; }
+  leaveShort() { if (this.format === 'SHORT' || this.format === 'BREAKDOWN') this.format = 'TUTORIAL'; }
   readonly styles = [
+    { id: 'reference', label: 'Tech tutorial (reference video)', hint: 'Course style: dark-teal canvas, one running example built up as a diagram (user, agent, tiles, dashed arrows, chat/terminal/browser/code windows). One element appears per spoken sentence. Calm instructor voice, no music, no AI artwork.' },
     { id: 'neon', label: 'Neon glow', hint: 'Black canvas, glowing neon panels and code — tech look.' },
     { id: 'sketchnote', label: 'Sketchnote (hand-drawn)', hint: 'Cream paper, hand-drawn ink lines, handwritten font, pastel highlights.' },
     { id: 'storyboard', label: 'Clean storyboard (3D icons)', hint: 'Light pastel cards with soft shadows and glossy 3D-style illustrations.' },
     { id: 'chalkboard', label: 'Chalkboard classroom', hint: 'Green board, chalk lines and handwriting — classroom feel.' },
     { id: 'blueprint', label: 'Blueprint (engineering)', hint: 'Blue grid paper with white technical lines.' },
-    { id: 'anime', label: 'Anime pop', hint: 'Bright pop colours, bold outlines, comic title font, anime-style illustrations.' },
-    { id: 'reference', label: 'Reference technical tutorial', hint: 'Deep teal cinematic technical visuals, detailed connected diagrams, code/interface walkthroughs, precise annotations and layered composition.' }
+    { id: 'anime', label: 'Anime pop', hint: 'Bright pop colours, bold outlines, comic title font, anime-style illustrations.' }
   ];
   styleHint(): string { return this.styles.find(s => s.id === this.style)?.hint || ''; }
   private static readonly LANG_CODE: Record<string, string> = {
@@ -422,7 +477,7 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
       topic: this.topic.trim(), instructions: this.instructions, language: this.language,
       duration: this.duration, difficulty: this.difficulty, motion: this.motion, model: this.model, voice: this.voice, style: this.style,
       track: this.track, subject: this.subject, examFocus: this.examFocus,
-      teachingStyle: this.teachingStyle, destination: this.destination
+      teachingStyle: this.teachingStyle, destination: this.destination, format: this.format
     }).subscribe({
       next: r => { this.loading = false; this.open(r.jobId); this.loadLessons(); },
       error: e => { this.loading = false; this.formError = e?.error?.message || e?.message || 'Could not start the concept explainer.'; }

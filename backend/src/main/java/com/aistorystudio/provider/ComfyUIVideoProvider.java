@@ -42,6 +42,10 @@ import java.util.concurrent.TimeUnit;
  */
 @Component
 public class ComfyUIVideoProvider implements VideoGenerationProvider {
+    /** Frees the other GPU engines before this one loads (one 16 GB card, see GpuMemoryManager). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private GpuMemoryManager gpu;
+
 
     private static final Logger log = LoggerFactory.getLogger(ComfyUIVideoProvider.class);
 
@@ -351,6 +355,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                         + "MB VRAM; current GPU has " + gpu.gpuVramTotalMb() + "MB. Use Wan 2.2 TI2V-5B.");
             }
         }
+        if (gpu != null) gpu.prepare(GpuMemoryManager.Engine.COMFYUI);
         boolean acquired;
         try {
             acquired = slot.tryAcquire(queueWait.toMillis(), TimeUnit.MILLISECONDS);
@@ -622,6 +627,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         // without enabling H3/Wan visual generation.
         String h3Reason = h3UnavailableReason();
         if (h3Reason != null) throw new IllegalStateException(h3Reason);
+        if (gpu != null) gpu.prepare(GpuMemoryManager.Engine.COMFYUI);
         boolean acquired;
         try {
             acquired = slot.tryAcquire(queueWait.toMillis(), TimeUnit.MILLISECONDS);
@@ -840,6 +846,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                                     Map<String, Path> uploads) {
         String reason = unavailableReason();
         if (reason != null) throw new IllegalStateException("Local AI video is not available: " + reason);
+        if (gpu != null) gpu.prepare(GpuMemoryManager.Engine.COMFYUI);
         boolean acquired;
         try {
             acquired = slot.tryAcquire(queueWait.toMillis(), TimeUnit.MILLISECONDS);

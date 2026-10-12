@@ -22,6 +22,10 @@ import java.util.Map;
  */
 @Component
 public class LocalTTSProvider implements TextToSpeechProvider {
+    /** Frees the other GPU engines before this one loads (one 16 GB card, see GpuMemoryManager). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private GpuMemoryManager gpu;
+
 
     private static final Logger log = LoggerFactory.getLogger(LocalTTSProvider.class);
 
@@ -40,6 +44,8 @@ public class LocalTTSProvider implements TextToSpeechProvider {
     @Retryable(maxAttempts = 2, backoff = @Backoff(delay = 500, multiplier = 2))
     public TtsResult synthesize(TtsRequest request) {
         String voice = request.voice() != null ? request.voice() : defaultVoice;
+        GpuMemoryManager.Engine engine = GpuMemoryManager.engineForVoice(voice);
+        if (gpu != null && engine != null) gpu.prepare(engine);
 
         // IndicF5 (flow matching) is far slower than Piper/Edge, and its first call may still be
         // loading the model; 60 s made every slow Indic line look like "synthesis failed".
@@ -60,6 +66,10 @@ public class LocalTTSProvider implements TextToSpeechProvider {
                 .block(timeout);
         } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
             // keep the sidecar's own reason (e.g. "IndicF5: HF_TOKEN is not set ...")
+            String reason = e.getResponseBodyAsString();
+            if (gpu != null && engine != null && reason != null && reason.toLowerCase(java.util.Locale.ROOT).contains("out of memory")) {
+                gpu.recoverFromOom(engine);   // @Retryable then tries again on a freed card
+            }
             throw new IllegalStateException("TTS " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString(), e);
         }
 

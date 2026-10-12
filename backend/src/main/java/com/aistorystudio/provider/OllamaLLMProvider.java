@@ -35,6 +35,10 @@ public class OllamaLLMProvider implements StoryLLMProvider {
     private final Duration timeout;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /** Frees the other GPU engines before this one loads (one 16 GB card, see GpuMemoryManager). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private GpuMemoryManager gpu;
+
     public OllamaLLMProvider(
             org.springframework.web.reactive.function.client.WebClient.Builder webClientBuilder,
             @Value("${studio.ollama.baseUrl}") String baseUrl,
@@ -58,6 +62,7 @@ public class OllamaLLMProvider implements StoryLLMProvider {
     }
 
     private String callOllama(String systemPrompt, String userPrompt, boolean jsonFormat, String modelOverride) {
+        if (gpu != null) gpu.prepare(GpuMemoryManager.Engine.OLLAMA);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", resolveModel(modelOverride));
         body.put("stream", false);
@@ -134,6 +139,7 @@ public class OllamaLLMProvider implements StoryLLMProvider {
 
     @Override
     public Flux<String> stream(String systemPrompt, String userPrompt, String modelOverride) {
+        if (gpu != null) gpu.prepare(GpuMemoryManager.Engine.OLLAMA);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", resolveModel(modelOverride));
         body.put("stream", true);

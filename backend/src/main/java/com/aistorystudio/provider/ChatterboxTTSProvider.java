@@ -42,6 +42,10 @@ public class ChatterboxTTSProvider implements TextToSpeechProvider {
     private final WebClient webClient;
     private final String defaultVoice;
 
+    /** Frees the other GPU engines before this one loads (one 16 GB card, see GpuMemoryManager). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private GpuMemoryManager gpu;
+
     public ChatterboxTTSProvider(
             WebClient.Builder webClientBuilder,
             @Value("${studio.tts.chatterbox.baseUrl:http://tts-chatterbox:5004}") String baseUrl,
@@ -54,6 +58,7 @@ public class ChatterboxTTSProvider implements TextToSpeechProvider {
     @Retryable(maxAttempts = 2, backoff = @Backoff(delay = 500, multiplier = 2))
     public TtsResult synthesize(TtsRequest request) {
         String voice = request.voice() != null ? request.voice() : defaultVoice;
+        if (gpu != null) gpu.prepare(GpuMemoryManager.Engine.CHATTERBOX);
 
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("text", request.text());
@@ -68,7 +73,9 @@ public class ChatterboxTTSProvider implements TextToSpeechProvider {
         if (request.paralinguisticEvent() != null && !request.paralinguisticEvent().isBlank()) body.put("paralinguisticEvent", request.paralinguisticEvent());
         if (request.actingDirection() != null && !request.actingDirection().isBlank()) body.put("actingDirection", request.actingDirection());
 
-        byte[] wav = webClient.post()
+        byte[] wav;
+        try {
+            wav = webClient.post()
                 .uri("/api/tts")
                 .bodyValue(body)
                 .retrieve()
@@ -77,6 +84,13 @@ public class ChatterboxTTSProvider implements TextToSpeechProvider {
                 // while on CPU - a longer timeout than LocalTTSProvider's 60s
                 // is deliberate for exactly that cold-start case.
                 .block(Duration.ofSeconds(300));
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+            String reason = e.getResponseBodyAsString();
+            if (gpu != null && reason != null && reason.toLowerCase(java.util.Locale.ROOT).contains("out of memory")) {
+                gpu.recoverFromOom(GpuMemoryManager.Engine.CHATTERBOX);   // @Retryable then tries again on a freed card
+            }
+            throw new IllegalStateException("ChatterBox TTS " + e.getStatusCode().value() + ": " + reason, e);
+        }
 
         if (wav == null || wav.length == 0) {
             throw new IllegalStateException("ChatterBox TTS returned no audio for voice '" + voice + "'");

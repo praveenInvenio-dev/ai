@@ -32,7 +32,9 @@ public class FunnySkitService {
  public FunnySkitService(ProviderGateway gateway, StorageProvider storage, MediaProcessor media, FunnySkitJobStore jobs,
      WebClient.Builder wb, @Value("${studio.audio.rumik.base-url:http://tts-rumik:5006}") String rumikUrl,
      @Value("${studio.audio.rumik.voice:Ira}") String rumikSpeaker, CharacterRepository characterRepository, CharacterReferenceRepository characterReferenceRepository, H3SceneRenderer h3SceneRenderer){this.h3SceneRenderer=h3SceneRenderer;this.gateway=gateway;this.storage=storage;this.media=media;this.jobs=jobs;this.rumik=wb.baseUrl(rumikUrl).build();this.rumikSpeaker=rumikSpeaker;this.characterRepository=characterRepository;this.characterReferenceRepository=characterReferenceRepository;}
- public record JobView(UUID id, FunnySkitJob.Status status, String errorMessage, String language, String script, String[] visualPrompts, String[] dialogues, String[] imageUrls, String soundscape, String resultVideoPath, String characterId, String characterReferenceId){}
+ @org.springframework.beans.factory.annotation.Autowired private AdventureSeriesStore seriesStore;
+ public record JobView(UUID id, FunnySkitJob.Status status, String errorMessage, String language, String script, String[] visualPrompts, String[] dialogues, String[] imageUrls, String soundscape, String resultVideoPath, String characterId, String characterReferenceId,
+     String mode, String title, String engine, String button, String seriesId, int episodeNumber, String summary, String cliffhanger, String stage){}
  /** Visual style of the skit (storyboard frames + H3 video). */
  static final java.util.Map<String,String> STYLES=new java.util.LinkedHashMap<>();
  static {
@@ -42,6 +44,8 @@ public class FunnySkitService {
    STYLES.put("anime","Japanese anime cel-shaded frame, clean line art, vibrant colours, expressive anime faces and reactions");
    STYLES.put("claymation","claymation stop-motion frame, handmade clay textures, miniature set, warm practical lighting");
    STYLES.put("comic","comic-book illustration, bold ink outlines, halftone shading, vivid flat colours, dynamic panels");
+   // the adventure micro-series look (golden-hour fantasy jungle temples, cinematic child explorer)
+   STYLES.put("adventure","cinematic fantasy adventure film frame, photoreal with a gentle animated-film charm, golden-hour volumetric light, god rays through drifting mist, ancient jungle temples and waterfalls, lush depth, 35mm anamorphic lens, shallow depth of field, warm rich colour grade");
  }
  static String styleId(String v){ String k=v==null?"realistic":v.trim().toLowerCase(Locale.ROOT); return STYLES.containsKey(k)?k:"realistic"; }
  private static String styleText(FunnySkitJob j){ return STYLES.get(styleId(j.getStyle())); }
@@ -74,29 +78,156 @@ public class FunnySkitService {
    Path character=null; List<Path> temp=new ArrayList<>();
    try{
      character=findCharacterReference(id);
-     String json=gateway.llm().generateStructured(
-       "You are a viral short-form Indian comedy skit writer. Create ONE 15-second skit divided into EXACTLY THREE CONTINUOUS 5-second beats. The setup can be ANY scenario: family, school, office, street, home, friends, relationship, news, absurd, cinematic, etc. An interview is only one possible format, never mandatory. Return JSON only with keys part1VisualPrompt, part1Dialogue, part2VisualPrompt, part2Dialogue, part3VisualPrompt, part3Dialogue, tone, soundscape. Make dialogue short enough for about 5 seconds in the requested language. Part 2 MUST continue the physical action, camera context and emotional state from Part 1. Part 3 MUST continue directly from Part 2 and deliver the punchline/reaction. Keep the uploaded main character as the visual focus. Keep wardrobe, face, age, props, location, lighting and camera style consistent. No subtitles or on-screen text.",
-       "Language: "+language+"\nTone: "+(tone==null?"viral reel comedy":tone)+"\nVisual style: "+styleText(job)+"\nIdea: "+idea+"\nThe uploaded image is the locked identity reference for the main character. Write each part's visual prompt for this visual style: one clear action, camera framing (close-up / medium / wide), facial expression and setting. Dialogue: natural spoken lines a real person would say, with a clear setup, escalation and a punchline in part 3.");
-     var node=parseSkitJsonWithRepair(json, language, tone, idea);
+     com.fasterxml.jackson.databind.JsonNode node = job.getMode()==FunnySkitJob.Mode.ADVENTURE ? writeEpisode(job) : writersRoom(job, idea, language, tone);
      String[] visuals={node.path("part1VisualPrompt").asText(),node.path("part2VisualPrompt").asText(),node.path("part3VisualPrompt").asText()};
-     String[] dialogues={node.path("part1Dialogue").asText(),node.path("part2Dialogue").asText(),node.path("part3Dialogue").asText()};
-     String sound=node.path("soundscape").asText("natural ambience, comedic foley, light playful instrumental music");
-     for(int i=0;i<3;i++) if(visuals[i].isBlank()||dialogues[i].isBlank()) throw new IllegalStateException("Ollama did not return all three 5-second skit parts.");
-     job.setVisualPrompts(visuals); job.setDialogues(dialogues); job.setSoundscape(sound); job.setScript(dialogues[0]+" | "+dialogues[1]+" | "+dialogues[2]);
+     String[] dialogues={node.path("part1Dialogue").asText(""),node.path("part2Dialogue").asText(""),node.path("part3Dialogue").asText("")};
+     String sound=node.path("soundscape").asText(job.getMode()==FunnySkitJob.Mode.ADVENTURE
+         ? "sweeping cinematic orchestral score building to a swell, jungle ambience, distant waterfall, soft wind"
+         : "natural ambience, comedic foley, light playful instrumental music");
+     for(int i=0;i<3;i++) if(visuals[i].isBlank()) throw new IllegalStateException("The writer did not return all three 5-second parts.");
+     if(job.getMode()==FunnySkitJob.Mode.SKIT) for(int i=0;i<3;i++) if(dialogues[i].isBlank()) throw new IllegalStateException("The writer left part "+(i+1)+" without dialogue.");
+     job.setVisualPrompts(visuals); job.setDialogues(dialogues); job.setSoundscape(sound);
+     job.setTitle(node.path("title").asText(null)); job.setEngine(node.path("engine").asText(null)); job.setButton(node.path("button").asText(null));
+     job.setSummary(node.path("summary").asText(null)); job.setCliffhanger(node.path("cliffhanger").asText(null));
+     job.setScript(String.join(" | ", Arrays.stream(dialogues).filter(d->!d.isBlank()).toList()));
+     job.setStage("Drawing the three storyboard frames");
      generateStoryboardImages(job, character, visuals, temp);
+     if(job.getMode()==FunnySkitJob.Mode.ADVENTURE) updateEpisode(job, "STORYBOARD", null, null);
+     job.setStage(null);
      job.setStatus(FunnySkitJob.Status.SUCCEEDED);
-   }catch(Exception e){job.setErrorMessage(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage());job.setStatus(FunnySkitJob.Status.FAILED);}
+   }catch(Exception e){job.setErrorMessage(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage());job.setStatus(FunnySkitJob.Status.FAILED);
+     if(job.getMode()==FunnySkitJob.Mode.ADVENTURE) updateEpisode(job, "FAILED", null, null);}
    finally{for(Path p:temp)cleanup(p);}
+ }
+
+ /**
+  * Comedy writers' room: PITCH five different angles and pick the funniest, WRITE it as three continuous beats,
+  * PUNCH UP every weak line. If a later pass fails, the previous pass's result is used (never worse than one-shot).
+  */
+ private com.fasterxml.jackson.databind.JsonNode writersRoom(FunnySkitJob job, String idea, String language, String tone) throws Exception {
+   String style=styleText(job);
+   String chosen="{}";
+   try{
+     job.setStage("Writers' room: pitching 5 comic angles");
+     var pitch=objectMapper.readTree(gateway.llm().generateStructured(SkitWritersRoom.pitchSystemPrompt(), SkitWritersRoom.pitchUserPrompt(idea,language,tone,style)));
+     var angles=pitch.path("angles");
+     int best=pitch.path("chosen").asInt(-1);
+     if(best<0||best>=angles.size()){ // fall back to the highest self-score
+       double top=-1; for(int i=0;i<angles.size();i++){var a=angles.get(i); double sc=a.path("surprise").asDouble(0)+a.path("relatable").asDouble(0)+a.path("fits15s").asDouble(0); if(sc>top){top=sc;best=i;}}
+     }
+     if(best>=0&&best<angles.size()) chosen=angles.get(best).toString();
+   }catch(Exception e){ chosen="{\"premise\":"+objectMapper.writeValueAsString(idea)+"}"; }
+   job.setStage("Writers' room: writing the skit");
+   String draftRaw=gateway.llm().generateStructured(SkitWritersRoom.writeSystemPrompt(), SkitWritersRoom.writeUserPrompt(idea,language,tone,style,chosen));
+   var draft=parseSkitJsonWithRepair(draftRaw, language, tone, idea);
+   try{
+     job.setStage("Writers' room: punch-up pass");
+     var punched=objectMapper.readTree(gateway.llm().generateStructured(SkitWritersRoom.punchUpSystemPrompt(),
+         "Spoken language: "+language+"\nComedy style: "+(tone==null?"viral reel comedy":tone)+"\nSkit:\n"+draft.toString()));
+     boolean complete=true; for(int i=1;i<=3;i++) if(punched.path("part"+i+"VisualPrompt").asText("").isBlank()||punched.path("part"+i+"Dialogue").asText("").isBlank()) complete=false;
+     if(complete) return punched;
+   }catch(Exception ignored){ }
+   return draft;
+ }
+
+ // ================================================================== adventure series
+
+ /** Start a series: lock the hero, write the bible (async), then episode 1 can be created. */
+ public AdventureSeriesStore.Series createSeries(MultipartFile character, String premise, String language, String style, UUID characterId, UUID referenceId, boolean narration){
+   if(premise==null||premise.isBlank()) throw new IllegalArgumentException("Describe the series premise.");
+   FunnySkitJob tmp=createJob(character, premise, language, characterId, referenceId);   // reuses the character checks / upload
+   var s=seriesStore.create();
+   s.premise=premise.trim(); s.language=language==null||language.isBlank()?"English":language; s.style=styleId(style==null?"adventure":style); s.narration=narration;
+   s.characterId=tmp.getCharacterId(); s.characterReferenceId=tmp.getCharacterReferenceId(); s.characterReferencePath=tmp.getCharacterReferencePath();
+   s.title="New series";
+   seriesStore.save(s);
+   return s;
+ }
+
+ @Async("videoGenerationExecutor") public void writeBibleAsync(String seriesId){
+   var s=seriesStore.get(seriesId);
+   try{
+     var bible=objectMapper.readTree(gateway.llm().generateStructured(SkitWritersRoom.bibleSystemPrompt(), SkitWritersRoom.bibleUserPrompt(s.premise,s.language,STYLES.get(s.style))));
+     s.bibleJson=bible.toString(); s.title=bible.path("title").asText(s.premise); s.logline=bible.path("logline").asText(null);
+   }catch(Exception e){ s.bibleJson="{\"title\":"+quote(s.premise)+",\"logline\":"+quote(s.premise)+"}"; s.title=s.premise; }
+   seriesStore.save(s);
+ }
+
+ /** Next episode: a skit job in ADVENTURE mode that continues from the last finished episode. */
+ public FunnySkitJob startEpisode(String seriesId, String direction){
+   var s=seriesStore.get(seriesId);
+   for(var e:s.episodes) if("WRITING".equals(e.status)||"RENDERING".equals(e.status)) throw new IllegalStateException("Episode "+e.number+" is still being made.");
+   FunnySkitJob j=jobs.create(s.language);
+   j.setMode(FunnySkitJob.Mode.ADVENTURE); j.setSeriesId(s.id); j.setStyle(s.style); j.setIdea(s.premise); j.setTone("cinematic wonder"); j.setDirection(direction);
+   j.setCharacterId(s.characterId); j.setCharacterReferenceId(s.characterReferenceId); j.setCharacterReferencePath(s.characterReferencePath);
+   var ep=new AdventureSeriesStore.Episode(); ep.number=s.episodes.size()+1; ep.jobId=j.getId().toString(); ep.status="WRITING";
+   j.setEpisodeNumber(ep.number);
+   s.episodes.add(ep); seriesStore.save(s);
+   return j;   // the controller starts generateAsync through the Spring proxy (self-calls would not be async)
+ }
+
+ private com.fasterxml.jackson.databind.JsonNode writeEpisode(FunnySkitJob job) throws Exception {
+   var s=seriesStore.get(job.getSeriesId());
+   for(int i=0;i<60&&s.bibleJson==null;i++){ job.setStage("Writing the series bible"); Thread.sleep(2000); }   // the bible is written in the background
+   StringBuilder digest=new StringBuilder(); String last=null;
+   for(var e:s.episodes){ if(e.number>=job.getEpisodeNumber()||e.summary==null) continue; digest.append("Episode ").append(e.number).append(" - ").append(e.title).append(": ").append(e.summary).append('\n'); last=e.cliffhanger; }
+   job.setStage("Writing episode "+job.getEpisodeNumber());
+   var ep=objectMapper.readTree(gateway.llm().generateStructured(SkitWritersRoom.episodeSystemPrompt(),
+       SkitWritersRoom.episodeUserPrompt(s.bibleJson==null?"{}":s.bibleJson, job.getEpisodeNumber(), digest.toString(), last, s.language, job.getDirection())));
+   if(!s.narration) for(int i=1;i<=3;i++) ((com.fasterxml.jackson.databind.node.ObjectNode)ep).put("part"+i+"Dialogue","");
+   return ep;
+ }
+
+ /** Keep the series file in step with the episode job. */
+ private void updateEpisode(FunnySkitJob job, String status, String video, String lastFrame){
+   if(job.getSeriesId()==null||seriesStore==null) return;
+   try{
+     var s=seriesStore.get(job.getSeriesId());
+     for(var e:s.episodes) if(job.getId().toString().equals(e.jobId)){
+       e.status=status; if(job.getTitle()!=null) e.title=job.getTitle(); if(job.getSummary()!=null) e.summary=job.getSummary(); if(job.getCliffhanger()!=null) e.cliffhanger=job.getCliffhanger();
+       if(video!=null) e.videoPath=video; if(lastFrame!=null) e.lastFramePath=lastFrame;
+     }
+     seriesStore.save(s);
+   }catch(Exception ignored){}
+ }
+
+ /** The first frame of a new episode = the last frame of the previous finished one (continuity across episodes). */
+ private Path previousEpisodeFrame(FunnySkitJob job){
+   if(job.getMode()!=FunnySkitJob.Mode.ADVENTURE||job.getSeriesId()==null) return null;
+   try{
+     var s=seriesStore.get(job.getSeriesId());
+     for(int i=s.episodes.size()-1;i>=0;i--){ var e=s.episodes.get(i); if(e.number<job.getEpisodeNumber()&&e.lastFramePath!=null&&Files.exists(Path.of(e.lastFramePath))) return Path.of(e.lastFramePath); }
+   }catch(Exception ignored){}
+   return null;
+ }
+
+ public List<AdventureSeriesStore.Series> listSeries(){ return seriesStore.list(); }
+ public AdventureSeriesStore.Series series(String id){ return seriesStore.get(id); }
+ private static String quote(String v){ return "\""+(v==null?"":v.replace("\\","\\\\").replace("\"","\\\""))+"\""; }
+
+ /** Prompt for one storyboard frame (comedy or adventure). */
+ private String framePrompt(FunnySkitJob job, int i, String visual){
+   boolean adv=job.getMode()==FunnySkitJob.Mode.ADVENTURE;
+   String continuity;
+   if(i==0) continuity=adv&&job.getEpisodeNumber()>1
+       ? "Opening frame of this episode: continue EXACTLY from the reference end frame of the previous episode (same place, light and pose), then this shot's action."
+       : "Opening frame. Establish the situation clearly.";
+   else continuity="Continuation frame. Continue directly from the previous storyboard image; preserve the same character identity, wardrobe, location, props, lighting and camera context. Do not reset the scene.";
+   String head=adv ? "Vertical 9:16 cinematic adventure film frame, breathtaking composition, the hero clearly readable. "
+                   : "Vertical 9:16 viral comedy storyboard frame. ";
+   String acting=adv ? "Expressive wonder, awe and curiosity on the hero's face; epic scale and depth." : "Expressive comedic acting, exaggerated readable reaction, clear composition.";
+   return head+visual+" "+continuity+" The uploaded character is locked and must remain visually identical (same face, hair, outfit, age, props), redrawn in this style: "+styleText(job)+". "+acting+" No text, no subtitles.";
  }
 
  private void generateStoryboardImages(FunnySkitJob job, Path character, String[] visuals, List<Path> temp) throws Exception {
    String[] stored=new String[3];
+   Path episodeStart=previousEpisodeFrame(job);
    Path previous=character;
    for(int i=0;i<3;i++){
-     String continuity=i==0?"Opening frame of the skit. Establish the situation clearly.":"Continuation frame. Continue directly from the previous storyboard image; preserve the same character identity, wardrobe, location, props, lighting and camera context. Do not reset the scene.";
+     Path cont=i==0?episodeStart:previous;
      var req=new com.aistorystudio.provider.ImageGenerationProvider.ImageGenerationRequest(
-       "Vertical 9:16 viral comedy storyboard frame. "+visuals[i]+" "+continuity+" The uploaded character is locked and must remain visually identical (same face, hair, outfit, age), redrawn in this style: "+styleText(job)+". Expressive comedic acting, clear readable composition, no text, no subtitles.",
-       "deformed face, identity drift, extra limbs, duplicate character, text, subtitles, watermark, logo",768,1344,30,0,null,"qwen-image-2-1-16gb-ref",null,character.toString(),i==0?null:previous.toString());
+       framePrompt(job,i,visuals[i]),
+       "deformed face, identity drift, extra limbs, duplicate character, text, subtitles, watermark, logo",768,1344,30,0,null,"qwen-image-2-1-16gb-ref",null,character.toString(),cont==null?null:cont.toString());
      var result=gateway.generateImage(req);
      Path img=storage.store("funny-skits/jobs/"+job.getId()+"/scene-"+(i+1)+".png",result.imageBytes());
      stored[i]=img.toString(); previous=img;
@@ -114,10 +245,9 @@ public class FunnySkitService {
      Path character=findCharacterReference(id);
      for(int s=scene; s<=(cascade?3:scene); s++){
        String[] paths=job.getImagePaths().clone();
-       Path previous=s==1?character:(paths[s-2]==null?character:Path.of(paths[s-2]));
+       Path previous=s==1?previousEpisodeFrame(job):(paths[s-2]==null?character:Path.of(paths[s-2]));
        String visual=job.getVisualPrompts()[s-1];
-       String continuity=s==1?"Opening frame.":"Continue directly from the previous storyboard image. Preserve identity, wardrobe, location, props, lighting and camera context.";
-       var req=new com.aistorystudio.provider.ImageGenerationProvider.ImageGenerationRequest("Vertical 9:16 viral comedy storyboard frame. "+visual+" "+continuity+" Locked main character (same face, hair, outfit, age) in this style: "+styleText(job)+". Expressive comedic acting, no text.","deformed face, identity drift, extra limbs, duplicate character, text, subtitles, watermark",768,1344,30,0,null,"qwen-image-2-1-16gb-ref",null,character.toString(),s==1?null:previous.toString());
+       var req=new com.aistorystudio.provider.ImageGenerationProvider.ImageGenerationRequest(framePrompt(job,s-1,visual),"deformed face, identity drift, extra limbs, duplicate character, text, subtitles, watermark",768,1344,30,0,null,"qwen-image-2-1-16gb-ref",null,character.toString(),previous==null?null:previous.toString());
        var result=gateway.generateImage(req);
        Path img=storage.store("funny-skits/jobs/"+id+"/scene-"+s+"-regen-"+System.currentTimeMillis()+".png",result.imageBytes());
        paths[s-1]=img.toString(); job.setImagePaths(paths);
@@ -154,6 +284,7 @@ public class FunnySkitService {
   */
  @Async("videoGenerationExecutor") public void renderApprovedAsync(UUID id, String tone, String speaker, String speechEngine){
    FunnySkitJob job=jobs.get(id); if(job==null)return; job.setStatus(FunnySkitJob.Status.RUNNING);
+   if(job.getMode()==FunnySkitJob.Mode.ADVENTURE) updateEpisode(job,"RENDERING",null,null);
    Path work=null;
    try{
      Path character=findCharacterReference(id);
@@ -162,11 +293,15 @@ public class FunnySkitService {
      List<Path> parts=new ArrayList<>();
      for(int i=0;i<3;i++){
        Path storyboard=Path.of(job.getImagePaths()[i]);
-       List<H3SceneRenderer.Line> lines=skitLines(job.getDialogues()[i], tone);
-       String visual=job.getVisualPrompts()[i]+". Part "+(i+1)+" of 3 of a short comedy skit; expressive comedic acting and timing.";
-       String sound=job.getSoundscape()==null||job.getSoundscape().isBlank()?null:"Ambience: "+job.getSoundscape();
-       var spec=new H3SceneRenderer.SceneSpec(visual,null,tone,styleText(job),job.getLanguage(),
-           lines,null,sound,5.0,"skit-"+id,engine);
+       boolean adv=job.getMode()==FunnySkitJob.Mode.ADVENTURE;
+       job.setStage("Filming part "+(i+1)+" of 3");
+       List<H3SceneRenderer.Line> lines=adv?narrationLines(job.getDialogues()[i]):skitLines(job.getDialogues()[i], tone);
+       String visual=job.getVisualPrompts()[i]+(adv
+           ? ". Shot "+(i+1)+" of 3 of a cinematic adventure episode; slow, smooth, motivated camera move; wonder and scale; no text."
+           : ". Part "+(i+1)+" of 3 of a short comedy skit; expressive comedic acting and timing"+(i==2&&job.getButton()!=null?"; end on the silent reaction: "+job.getButton():"")+".");
+       String sound=job.getSoundscape()==null||job.getSoundscape().isBlank()?null:(adv?"Music and ambience: ":"Ambience: ")+job.getSoundscape();
+       var spec=new H3SceneRenderer.SceneSpec(visual,null,adv?"wonder":tone,styleText(job),job.getLanguage(),
+           lines,null,sound,5.0,(adv?"series-"+job.getSeriesId():"skit-"+id),engine);
        var r=h3SceneRenderer.render(spec,new H3SceneRenderer.Options(storyboard,0,0,work.resolve("part-"+(i+1)),()->false,character));
        Path part=work.resolve("skit-part-"+(i+1)+".mp4"); Files.copy(r.video(),part,java.nio.file.StandardCopyOption.REPLACE_EXISTING); parts.add(part);
      }
@@ -180,9 +315,23 @@ public class FunnySkitService {
      sharpen.getInputStream().readAllBytes();
      if(sharpen.waitFor()!=0) Files.copy(merged,out,java.nio.file.StandardCopyOption.REPLACE_EXISTING);
      Path stored=storage.store("funny-skits/results/"+id+".mp4",Files.readAllBytes(out));
-     job.setResultVideoPath(stored.toString()); job.setStatus(FunnySkitJob.Status.SUCCEEDED);
-   }catch(Exception e){job.setErrorMessage(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage());job.setStatus(FunnySkitJob.Status.FAILED);}
+     job.setResultVideoPath(stored.toString()); job.setStage(null);
+     if(job.getMode()==FunnySkitJob.Mode.ADVENTURE){
+       // the last frame becomes the first frame of the next episode
+       String frame=null;
+       try{ Path f=work.resolve("last-frame.png"); extractLastFrame(out,f); frame=storage.store("adventure-series/"+job.getSeriesId()+"/ep-"+job.getEpisodeNumber()+"-last.png",Files.readAllBytes(f)).toString(); }catch(Exception ignored){}
+       updateEpisode(job,"DONE",stored.toString(),frame);
+     }
+     job.setStatus(FunnySkitJob.Status.SUCCEEDED);
+   }catch(Exception e){job.setErrorMessage(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage());job.setStatus(FunnySkitJob.Status.FAILED);
+     if(job.getMode()==FunnySkitJob.Mode.ADVENTURE) updateEpisode(job,"FAILED",null,null);}
    finally{ if(work!=null) deleteTree(work); }
+ }
+
+ /** Adventure voice-over: one narrator line per shot (never lip-synced); empty = music only. */
+ private List<H3SceneRenderer.Line> narrationLines(String text){
+   if(text==null||text.isBlank()) return List.of();
+   return List.of(new H3SceneRenderer.Line("Narrator",text.trim(),"hushed, awe-struck storybook trailer narration",true,0,null));
  }
 
  /** Skit lines are spoken on screen. "Name: line" keeps the name; plain text = the main character. */
@@ -206,7 +355,7 @@ public class FunnySkitService {
    try(var walk=Files.walk(dir)){ walk.sorted(Comparator.reverseOrder()).forEach(this::deleteQuiet); }catch(Exception ignored){}
  }
  private void extractLastFrame(Path video,Path out)throws Exception{
-   Process p=new ProcessBuilder("ffmpeg","-y","-sseof","-0.08","-i",video.toString(),"-frames:v","1","-vf","scale=480:-2","-update","1",out.toString()).redirectErrorStream(true).start();
+   Process p=new ProcessBuilder("ffmpeg","-y","-sseof","-0.08","-i",video.toString(),"-frames:v","1","-update","1",out.toString()).redirectErrorStream(true).start();
    p.getInputStream().transferTo(java.io.OutputStream.nullOutputStream());
    if(!p.waitFor(3,java.util.concurrent.TimeUnit.MINUTES)||p.exitValue()!=0||!Files.exists(out)||Files.size(out)<256) throw new IllegalStateException("Could not extract continuation frame from skit part.");
  }
@@ -250,7 +399,8 @@ public class FunnySkitService {
  private void cleanup(Path a,Path b,Path c,Path d,List<Path> clips){cleanup(a,b,c,d);clips.forEach(this::deleteQuiet);}
  private void deleteQuiet(Path p){try{Files.deleteIfExists(p);}catch(Exception ignored){}}
  public FunnySkitJob job(UUID id){var j=jobs.get(id);if(j==null)throw new IllegalArgumentException("Skit job not found");return j;}
- public JobView status(UUID id){var j=jobs.get(id); if(j==null)throw new IllegalArgumentException("Skit job not found"); String[] urls=new String[3]; String[] p=j.getImagePaths(); for(int i=0;i<3;i++) urls[i]=(p!=null&&p[i]!=null)?"/api/funny-skits/jobs/"+id+"/images/"+(i+1):null; return new JobView(j.getId(),j.getStatus(),j.getErrorMessage(),j.getLanguage(),j.getScript(),j.getVisualPrompts(),j.getDialogues(),urls,j.getSoundscape(),j.getResultVideoPath(),j.getCharacterId(),j.getCharacterReferenceId());}
+ public JobView status(UUID id){var j=jobs.get(id); if(j==null)throw new IllegalArgumentException("Skit job not found"); String[] urls=new String[3]; String[] p=j.getImagePaths(); for(int i=0;i<3;i++) urls[i]=(p!=null&&p[i]!=null)?"/api/funny-skits/jobs/"+id+"/images/"+(i+1):null; return new JobView(j.getId(),j.getStatus(),j.getErrorMessage(),j.getLanguage(),j.getScript(),j.getVisualPrompts(),j.getDialogues(),urls,j.getSoundscape(),j.getResultVideoPath(),j.getCharacterId(),j.getCharacterReferenceId(),
+     j.getMode().name(),j.getTitle(),j.getEngine(),j.getButton(),j.getSeriesId(),j.getEpisodeNumber(),j.getSummary(),j.getCliffhanger(),j.getStage());}
  public Path image(UUID id,int scene){var j=jobs.get(id);if(j==null||scene<1||scene>3||j.getImagePaths()[scene-1]==null)throw new IllegalStateException("Storyboard image is not ready.");return Path.of(j.getImagePaths()[scene-1]);}
  public Path result(UUID id){var j=jobs.get(id);if(j==null||j.getStatus()!=FunnySkitJob.Status.SUCCEEDED||j.getResultVideoPath()==null)throw new IllegalStateException("Skit is not ready yet.");return Path.of(j.getResultVideoPath());}
 }

@@ -8,3 +8,10 @@ The three H3 visual/audio part calls are deliberately sequential to stay within 
 ## Storyboard-first workflow
 
 Funny Skit Studio now creates the three 5-second storyboard images before any H3 video generation. The user can review each frame and regenerate an individual scene. Regenerating scene N invalidates scenes after N because their visual continuity depends on the previous frame; those downstream frames must be regenerated before rendering. Only after all three images are approved does the app run Rumik speech + H3 video/soundscape sequentially and merge the three 5-second clips into the final 15-second video.
+
+## Writers' room (v25)
+Scripts are written in three passes - pitch five angles, write the best, punch it up - see SkitWritersRoom.
+
+## Adventure Series (v25)
+Switch the studio to "Adventure series": lock a hero, describe the premise, and generate 15-second cinematic
+episodes. Each episode continues from the previous cliffhanger and starts from the previous episode's last frame.

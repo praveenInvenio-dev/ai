@@ -99,6 +99,24 @@ public class ConceptExplainerJob {
         public int getAudioVersion() { return audioVersion; }
         public void bumpAudioVersion() { audioVersion++; }
         /** Final (complete) slide = last build step. */
+        /** Tutorial format: ffmpeg image-sequence pattern of the scene's opening motion (glide / zoom / fade), or null. */
+        private String introPattern;
+        /** Exact start and spoken length of every sentence inside the scene clip (for word captions). */
+        private List<Double> sentenceStarts = new ArrayList<>(), sentenceLengths = new ArrayList<>();
+        public List<Double> getSentenceStarts() { return sentenceStarts; }
+        public List<Double> getSentenceLengths() { return sentenceLengths; }
+        public void setSentenceTiming(List<Double> starts, List<Double> lengths) { sentenceStarts = starts; sentenceLengths = lengths; }
+        /** English subtitle per narration sentence (same order/count); empty = use the narration itself. */
+        private List<String> captions = new ArrayList<>();
+        public List<String> getCaptions() { return captions; }
+        public void setCaptions(List<String> v) { captions = v == null ? new ArrayList<>() : v; }
+        public String getIntroPattern() { return introPattern; }
+        public void setIntroPattern(String v) { introPattern = v; }
+        /** Typewriter reveals: "step|image-sequence pattern", played from the moment that step appears. */
+        private List<String> typeOverlays = new ArrayList<>();
+        public List<String> getTypeOverlays() { return typeOverlays; }
+        public void setTypeOverlays(List<String> v) { typeOverlays = v == null ? new ArrayList<>() : v; }
+
         public String getImagePath() { return stepPaths.isEmpty() ? null : stepPaths.get(stepPaths.size() - 1); }
     }
 
@@ -106,6 +124,21 @@ public class ConceptExplainerJob {
     private volatile String style = "neon";
     public String getStyle() { return style; }
     public void setStyle(String v) { style = ConceptSlideRenderer.style(v).id(); }
+
+    /**
+     * TUTORIAL (default): reference-video teaching - running example built up as a diagram, one element per sentence,
+     * drawn in the chosen visual style. CLASSIC: the older one-slide-per-scene templates with AI artwork.
+     */
+    private volatile String format = "TUTORIAL";
+    public String getFormat() { return format; }
+    public void setFormat(String v) {
+        String f = v == null ? "" : v.trim().toUpperCase(java.util.Locale.ROOT);
+        format = f.equals("CLASSIC") ? "CLASSIC" : f.equals("SHORT") ? "SHORT" : f.equals("BREAKDOWN") ? "BREAKDOWN" : "TUTORIAL";
+    }
+    /** 60-second vertical short (1080x1920, captions, title + outro cards) - the "60-second content" section. */
+    public boolean isShort() { return "SHORT".equals(format); }
+    /** 2-minute vertical real-world breakdown in the 3D blueprint look (explain a concept through a product people use). */
+    public boolean isBreakdown() { return "BREAKDOWN".equals(format); }
 
     /** ENGAGING_TECH_TUTOR | STORYTELLING_TEACHER | PROFESSIONAL_INSTRUCTOR | SIMPLE_BEGINNER */
     private volatile String teachingStyle = "ENGAGING_TECH_TUTOR";
@@ -149,5 +182,5 @@ public class ConceptExplainerJob {
     public void setWordCount(int v) { wordCount = v; }
     public List<Scene> getScenes() { return scenes; }
     public List<String> getWarnings() { return warnings; }
-    public boolean isDeepDive() { return duration != null && duration.contains("3"); }
+    public boolean isDeepDive() { return duration != null && (duration.contains("3") || duration.toLowerCase().contains("full")); }
 }

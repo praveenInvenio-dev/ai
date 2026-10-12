@@ -28,13 +28,14 @@ public class ConceptExplainerController {
     public record CreateRequest(String topic, String instructions, String language, String duration,
                                 String difficulty, String motion, String animationMode, String model,
                                 String track, String subject, Boolean examFocus, String voice, String style,
-                                String teachingStyle, String destination) {}
+                                String teachingStyle, String destination, String format) {}
 
     @PostMapping("/jobs")
     public ResponseEntity<Map<String, UUID>> create(@RequestBody CreateRequest r) {
         ConceptExplainerJob job = service.create(r.topic(), r.instructions(), r.language(), r.duration(), r.difficulty(),
                 r.motion() != null ? r.motion() : r.animationMode(), r.model(), r.track(), r.subject(), Boolean.TRUE.equals(r.examFocus()), r.voice());
         job.setStyle(r.style());
+        job.setFormat(r.format());                 // TUTORIAL (default, reference-video teaching) | CLASSIC
         job.setTeachingStyle(r.teachingStyle());   // ENGAGING_TECH_TUTOR (default) | STORYTELLING_TEACHER | PROFESSIONAL_INSTRUCTOR | SIMPLE_BEGINNER
         job.setDestination(r.destination());       // SOCIAL (default, subscribe closing) | CLASSROOM
         service.generateAsync(job.getId());

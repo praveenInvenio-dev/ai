@@ -18,6 +18,7 @@ services:
         TORCH_PACKAGES: "torch==2.7.1 torchaudio==2.7.1"
     environment:
       CHATTERBOX_DEVICE: ${CHATTERBOX_DEVICE:-cuda}
+      CHATTERBOX_IDLE_UNLOAD_SECONDS: ${CHATTERBOX_IDLE_UNLOAD_SECONDS:-300}
     deploy:
       resources:
         reservations:

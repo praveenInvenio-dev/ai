@@ -12,6 +12,10 @@ import com.aistorystudio.conceptexplainer.teaching.SectionType;
 import com.aistorystudio.conceptexplainer.teaching.TeachingPlanner;
 import com.aistorystudio.conceptexplainer.teaching.TeachingStyle;
 import com.aistorystudio.conceptexplainer.teaching.VoiceDirection;
+import com.aistorystudio.conceptexplainer.tutorial.DiagramRenderer;
+import com.aistorystudio.conceptexplainer.tutorial.DiagramSpec;
+import com.aistorystudio.conceptexplainer.tutorial.ShortCaptions;
+import com.aistorystudio.conceptexplainer.tutorial.TutorialPrompts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -55,6 +59,8 @@ public class ConceptExplainerService {
     private static final double FADE = 0.35;          // element fade-in
     private static final double SENTENCE_GAP = 0.28;  // breath between sentences
     private static final double SCENE_TAIL = 0.7;     // silence before next scene
+    private static final double TUTORIAL_TAIL = 0.45; // reference video: short hand-over between scenes
+    private static final int INTRO_FRAMES = 18;       // 0.6 s scene-opening motion at 30 fps
     private static final Pattern SENTENCE = Pattern.compile("(?<=[.!?।॥])\\s+");
 
     private final ProviderGateway gateway;
@@ -62,6 +68,7 @@ public class ConceptExplainerService {
     private final MediaProcessor media;
     private final ConceptExplainerJobStore jobs;
     private final ConceptSlideRenderer renderer = new ConceptSlideRenderer();
+    private final DiagramRenderer diagrams = new DiagramRenderer();
     private final ObjectMapper mapper = new ObjectMapper();
     /** Slow push-in over a whole scene (0.015 = 1.5 %). 0 disables motion entirely. */
     @org.springframework.beans.factory.annotation.Value("${studio.concept-explainer.subtle-zoom:0.015}")
@@ -109,37 +116,47 @@ public class ConceptExplainerService {
         try {
             job.setStatus(ConceptExplainerJob.Status.PLANNING);
             job.setStage("Writing the lesson plan");
-            Lesson lesson = plan(job);
-            job.setTitle(lesson.title());
-            job.setSummary(lesson.summary());
-            JsonNode scenes = lesson.scenes();
-            job.getScenes().clear();
-            for (int i = 0; i < scenes.size(); i++) {
-                ConceptExplainerJob.Scene s = new ConceptExplainerJob.Scene();
-                JsonNode n = scenes.get(i);
-                SceneDraft d = lesson.drafts().get(i);
-                s.setSceneNumber(i + 1);
-                s.setTemplate(d.template);
-                s.setTitle(blank(d.title) ? "Scene " + (i + 1) : d.title);
-                s.setSentences(new ArrayList<>(d.narration));          // validated + repaired narration
-                s.setNarration(String.join(" ", s.getSentences()));
-                s.setCode(text(n, "code", null));
-                s.setIllustrationPrompt(d.imagePrompt);                // derived from this scene's narration
-                s.setSectionType(d.sectionType);
-                s.setLearningObjective(d.objective);
-                s.setVisualDescription(d.visualDescription);
-                s.setVoiceDirection(d.emotion, d.pace, d.delivery);
-                s.setPlanJson(n.toString());
-                job.getScenes().add(s);
+            if (tutorial(job)) {
+                planTutorial(job);
+                if (isBreakdown(job)) generatePhotos(job);
+            } else {
+                Lesson lesson = plan(job);
+                job.setTitle(lesson.title());
+                job.setSummary(lesson.summary());
+                JsonNode scenes = lesson.scenes();
+                job.getScenes().clear();
+                for (int i = 0; i < scenes.size(); i++) {
+                    ConceptExplainerJob.Scene s = new ConceptExplainerJob.Scene();
+                    JsonNode n = scenes.get(i);
+                    SceneDraft d = lesson.drafts().get(i);
+                    s.setSceneNumber(i + 1);
+                    s.setTemplate(d.template);
+                    s.setTitle(blank(d.title) ? "Scene " + (i + 1) : d.title);
+                    s.setSentences(new ArrayList<>(d.narration));          // validated + repaired narration
+                    s.setNarration(String.join(" ", s.getSentences()));
+                    s.setCode(text(n, "code", null));
+                    s.setIllustrationPrompt(d.imagePrompt);                // derived from this scene's narration
+                    s.setSectionType(d.sectionType);
+                    s.setLearningObjective(d.objective);
+                    s.setVisualDescription(d.visualDescription);
+                    s.setVoiceDirection(d.emotion, d.pace, d.delivery);
+                    s.setPlanJson(n.toString());
+                    job.getScenes().add(s);
+                }
+
             }
 
             job.setStatus(ConceptExplainerJob.Status.GENERATING_SCENES);
+            // All ComfyUI artwork first, then all narration: the GPU switches engine once instead of twice per
+            // scene (each switch unloads one model and loads the other - see GpuMemoryManager).
             for (ConceptExplainerJob.Scene s : job.getScenes()) {
-                String base = "Scene " + s.getSceneNumber() + "/" + job.getScenes().size() + " - " + s.getTitle();
                 if (needsIllustration(job, s)) {
-                    job.setStage(base + ": drawing the real-world illustration");
+                    job.setStage("Scene " + s.getSceneNumber() + "/" + job.getScenes().size() + " - " + s.getTitle() + ": drawing the illustration");
                     makeIllustration(job, s);
                 }
+            }
+            for (ConceptExplainerJob.Scene s : job.getScenes()) {
+                String base = "Scene " + s.getSceneNumber() + "/" + job.getScenes().size() + " - " + s.getTitle();
                 job.setStage(base + ": drawing the slide");
                 renderSlide(job, s);
                 job.setStage(base + ": recording the narration");
@@ -209,6 +226,7 @@ public class ConceptExplainerService {
         ConceptExplainerJob copy = create(old.getTopic(), old.getInstructions(), old.getLanguage(), old.getDuration(), old.getDifficulty(),
                 old.getMotion(), old.getModel(), old.getTrack(), old.getSubject(), old.isExamFocus(), old.getVoice());
         copy.setStyle(old.getStyle());
+        copy.setFormat(old.getFormat());
         copy.setTeachingStyle(old.getTeachingStyle());
         copy.setDestination(old.getDestination());
         return copy;
@@ -435,9 +453,235 @@ public class ConceptExplainerService {
         return out;
     }
 
+    // =================================================================== plan (reference tutorial style)
+
+    /**
+     * Reference-video lessons: one outline for the whole lesson (running example + cast + scene list), then the scenes are
+     * written in batches of five/six so even a 10-minute lesson fits a local model. Every written scene is resolved against
+     * the previous one (kept elements, positions) and stored, fully resolved, as the scene's plan JSON.
+     */
+    private void planTutorial(ConceptExplainerJob job) {
+        boolean reel = isShort(job), bd = isBreakdown(job);
+        TutorialPrompts.Size size = reel ? TutorialPrompts.shortSize() : bd ? TutorialPrompts.breakdownSize() : TutorialPrompts.size(job.getDuration());
+        String model = blankToNull(job.getModel());
+        String topic = TeachingPlanner.cleanTopic(job.getTopic());
+        job.setStage(reel ? "Planning the 60-second short" : bd ? "Planning the real-world breakdown" : "Planning the lesson and its running example");
+        JsonNode outline = readJson(gateway.llm().generateStructured(
+                reel ? TutorialPrompts.shortOutlineSystemPrompt() : bd ? TutorialPrompts.breakdownOutlineSystemPrompt() : TutorialPrompts.outlineSystemPrompt(),
+                reel ? TutorialPrompts.shortOutlineUserPrompt(topic, job.getLanguage(), job.getDifficulty(), job.getInstructions(), trackInstruction(job), size)
+                     : bd ? TutorialPrompts.breakdownOutlineUserPrompt(topic, job.getLanguage(), job.getDifficulty(), job.getInstructions(), trackInstruction(job), size)
+                     : TutorialPrompts.outlineUserPrompt(topic, job.getLanguage(), job.getDifficulty(), job.getInstructions(), trackInstruction(job), size), model));
+        JsonNode planned = outline.path("scenes");
+        if (!planned.isArray() || planned.size() < 3) {
+            throw new IllegalStateException("The lesson planner returned no usable outline (needs at least 3 scenes).");
+        }
+        int total = Math.min(planned.size(), size.maxScenes() + 4);
+        job.setTitle(text(outline, "title", topic));
+        job.setSummary(text(outline, "summary", "A visual lesson on " + topic));
+        job.getScenes().clear();
+
+        String outlineText = outline.toString();
+        List<JsonNode> previous = new ArrayList<>();
+        String lastLine = "";
+        int words = 0, batch = reel ? total : total > 12 ? 5 : 6, dropped = 0;
+        for (int from = 1; from <= total; from += batch) {
+            int to = Math.min(total, from + batch - 1);
+            job.setStage("Writing scenes " + from + "-" + to + " of " + total + " (narration + diagrams)");
+            int target = (int) Math.round((size.minWords() + size.maxWords()) / 2.0 * (to - from + 1) / total);
+            JsonNode written = null;
+            for (int attempt = 0; attempt < 2 && written == null; attempt++) {
+                try {
+                    JsonNode w = readJson(gateway.llm().generateStructured(
+                            reel ? TutorialPrompts.shortWriteSystemPrompt() : bd ? TutorialPrompts.breakdownWriteSystemPrompt() : TutorialPrompts.writeSystemPrompt(),
+                            TutorialPrompts.writeUserPrompt(topic, job.getLanguage(), outlineText, from, to, total,
+                                    DiagramSpec.describe(previous), lastLine, target), model));
+                    if (w.path("scenes").isArray() && !w.path("scenes").isEmpty()) written = w;
+                } catch (Exception e) {
+                    if (attempt == 1) throw e;
+                }
+            }
+            if (written == null) throw new IllegalStateException("The model wrote no scenes for " + from + "-" + to + ".");
+            int taken = 0;
+            for (JsonNode sc : written.path("scenes")) {
+                if (taken >= to - from + 1) break;
+                List<String> sentences = rawSentences(sc.path("narration"));
+                if (sentences.isEmpty()) { dropped++; continue; }
+                taken++;
+                List<String> notes = new ArrayList<>();
+                ObjectNode resolved = DiagramSpec.resolve(sc, previous, sentences.size(), notes);
+                int number = job.getScenes().size() + 1;
+                JsonNode outlineScene = planned.path(Math.min(planned.size() - 1, number - 1));
+                ConceptExplainerJob.Scene s = new ConceptExplainerJob.Scene();
+                s.setSceneNumber(number);
+                s.setTemplate("diagram");
+                s.setTitle(text(sc, "title", text(sc, "heading", text(outlineScene, "keyIdea", "Scene " + number))));
+                s.setSentences(new ArrayList<>(sentences));
+                s.setNarration(String.join(" ", sentences));
+                s.setSectionType(text(outlineScene, "section", null));
+                s.setLearningObjective(text(outlineScene, "keyIdea", null));
+                s.setVisualDescription(text(outlineScene, "screen", null));
+                s.setVoiceDirection("confident", "normal", "calm conversational instructor");
+                s.setPlanJson(resolved.toString());
+                List<String> caps = rawSentences(sc.path("captions"));
+                if (caps.size() == sentences.size()) s.setCaptions(new ArrayList<>(caps));
+                job.getScenes().add(s);
+                previous = new ArrayList<>();
+                resolved.path("elements").forEach(previous::add);
+                lastLine = sentences.get(sentences.size() - 1);
+                for (String x : sentences) words += x.trim().isEmpty() ? 0 : x.trim().split("\\s+").length;
+                if (!notes.isEmpty()) job.getWarnings().add("Scene " + number + ": " + String.join("; ", notes));
+            }
+        }
+        if (reel) words += ensureShortBookends(job, outline, topic);
+        ensureEnglishCaptions(job, model);
+        if (job.getScenes().size() < 3) throw new IllegalStateException("The lesson came back with fewer than 3 usable scenes - try again or pick another model.");
+        if (dropped > 0) job.getWarnings().add(dropped + " scene(s) without narration were skipped.");
+        job.setWordCount(words);
+        if (words < size.minWords() * 0.75 || words > size.maxWords() * 1.3) {
+            job.getWarnings().add("Lesson has " + words + " spoken words (target " + size.minWords() + "-" + size.maxWords() + "), so it will run "
+                    + (words < size.minWords() ? "short" : "long") + ".");
+        }
+    }
+
+    /**
+     * Shorts always open on the title card and close on the outro card (as both reference reels do). If the model
+     * forgot one, it is added here: the opening asks the hook question, the closing says the tagline.
+     * Returns the number of spoken words added.
+     */
+    private int ensureShortBookends(ConceptExplainerJob job, JsonNode outline, String topic) {
+        int added = 0;
+        List<ConceptExplainerJob.Scene> sc = job.getScenes();
+        if (sc.isEmpty() || !sc.get(0).getPlanJson().contains("\"titlecard\"")) {
+            String hook = text(outline, "hook", topic + "?");
+            ObjectNode plan = mapper.createObjectNode();
+            plan.put("heading", "");
+            plan.put("label", "");
+            ObjectNode tc = plan.putArray("elements").addObject();
+            tc.put("id", "titlecard"); tc.put("type", "titlecard"); tc.put("at", 0); tc.put("dimAt", -1);
+            tc.put("title", text(outline, "subject", job.getSubject() == null || job.getSubject().equals("General") ? "Explained" : job.getSubject()));
+            tc.put("text", text(outline, "title", topic));
+            tc.put("content", text(outline, "summary", ""));
+            tc.put("style", TutorialPrompts.SHORT_TAGLINE.replace(".", ""));
+            tc.put("x", 50); tc.put("y", 42);
+            sc.add(0, bookend(plan, hook, "Title"));
+            added += hook.split("\\s+").length;
+        }
+        ConceptExplainerJob.Scene last = sc.get(sc.size() - 1);
+        if (!last.getPlanJson().contains("\"outro\"")) {
+            ObjectNode plan = mapper.createObjectNode();
+            plan.put("heading", "");
+            plan.put("label", "");
+            ObjectNode o = plan.putArray("elements").addObject();
+            o.put("id", "outro"); o.put("type", "outro"); o.put("at", 0); o.put("dimAt", -1);
+            o.put("text", TutorialPrompts.SHORT_TAGLINE); o.put("title", "concept"); o.put("x", 50); o.put("y", 42);
+            sc.add(bookend(plan, TutorialPrompts.SHORT_TAGLINE, "Outro"));
+            added += 5;
+        }
+        for (int i = 0; i < sc.size(); i++) sc.get(i).setSceneNumber(i + 1);
+        return added;
+    }
+
+    /**
+     * Subtitles are always English. English narration: captions = narration. Otherwise every scene whose model output
+     * had no matching "captions" list is translated in ONE extra call (sentence for sentence, so timing stays exact).
+     */
+    private void ensureEnglishCaptions(ConceptExplainerJob job, String model) {
+        if (TutorialPrompts.english(job.getLanguage())) {
+            for (ConceptExplainerJob.Scene s : job.getScenes()) s.setCaptions(new ArrayList<>(s.getSentences()));
+            return;
+        }
+        List<ConceptExplainerJob.Scene> missing = new ArrayList<>();
+        for (ConceptExplainerJob.Scene s : job.getScenes()) {
+            if (s.getCaptions().size() != s.getSentences().size()) {
+                if (s.getSentences().size() == 1 && s.getSentences().get(0).equals(TutorialPrompts.SHORT_TAGLINE)) s.setCaptions(new ArrayList<>(s.getSentences()));
+                else missing.add(s);
+            }
+        }
+        if (missing.isEmpty()) return;
+        job.setStage("Writing English subtitles");
+        try {
+            ArrayNode in = mapper.createArrayNode();
+            for (ConceptExplainerJob.Scene s : missing) {
+                ArrayNode a = in.addArray();
+                s.getSentences().forEach(a::add);
+            }
+            JsonNode out = readJson(gateway.llm().generateStructured(
+                    "You translate narration into natural, short English subtitles. Keep the meaning, keep numbers and technical terms, "
+                            + "one English sentence for each input sentence, same order, same count. Return JSON only: {\"captions\": [[...], [...]]}",
+                    "Narration language: " + job.getLanguage() + "\nScenes (each an array of sentences):\n" + in, model)).path("captions");
+            for (int i = 0; i < missing.size() && i < out.size(); i++) {
+                List<String> caps = rawSentences(out.get(i));
+                if (caps.size() == missing.get(i).getSentences().size()) missing.get(i).setCaptions(new ArrayList<>(caps));
+            }
+        } catch (Exception e) {
+            log.warn("English subtitle translation failed: {}", e.getMessage());
+        }
+        long still = job.getScenes().stream().filter(s -> s.getCaptions().size() != s.getSentences().size()).count();
+        if (still > 0) job.getWarnings().add(still + " scene(s) have no English subtitles (translation failed) - they show no captions.");
+    }
+
+    /**
+     * Breakdown reels open on (and revisit) a picture of the real-world example. Each "photo" element's description is
+     * rendered by the image model in the 3D-blueprint look; the file path is written into the scene plan so re-renders
+     * reuse it. A failed picture is simply dropped (the 3D room behind it is still drawn).
+     */
+    private void generatePhotos(ConceptExplainerJob job) {
+        int made = 0;
+        for (ConceptExplainerJob.Scene s : job.getScenes()) {
+            try {
+                ObjectNode plan = (ObjectNode) mapper.readTree(s.getPlanJson());
+                boolean changed = false;
+                var it = plan.withArray("elements").elements();
+                List<Integer> drop = new ArrayList<>();
+                int idx = 0;
+                while (it.hasNext()) {
+                    ObjectNode e = (ObjectNode) it.next();
+                    if ("photo".equals(e.path("type").asText()) && blank(e.path("content").asText(null))) {
+                        if (made >= 4) { drop.add(idx); idx++; continue; }
+                        job.setStage("Rendering the real-world picture for scene " + s.getSceneNumber());
+                        String what = e.path("text").asText("the real-world example");
+                        String prompt = "Vertical cinematic 3D render for a premium tech explainer: " + what + ". "
+                                + "Stylised 3D blueprint world: deep navy-blue palette, glowing cyan-white edges and window light, soft volumetric fog, "
+                                + "night-time, physically based materials, depth of field, high detail, dramatic perspective, centred subject, "
+                                + "a little warm yellow accent light. No people's faces in close-up, no text, no letters, no logos, no watermark.";
+                        try {
+                            var r = gateway.generateImage(new ImageGenerationProvider.ImageGenerationRequest(prompt,
+                                    "text, letters, words, logo, watermark, cartoon, flat illustration, low detail, blurry, oversaturated, bright daylight",
+                                    768, 1344, 28, 4.0, null, "qwen-image-2-1-16gb-t2i", null, null, null));
+                            Path p = storage.store(dir(job) + "/photos/scene-" + num(s) + "-" + e.path("id").asText("photo") + ".png", r.imageBytes());
+                            e.put("content", p.toString());
+                            made++;
+                        } catch (Exception ex) {
+                            drop.add(idx);
+                            job.getWarnings().add("Scene " + s.getSceneNumber() + ": real-world picture failed (" + rootMessage(ex) + ").");
+                        }
+                        changed = true;
+                    }
+                    idx++;
+                }
+                for (int k = drop.size() - 1; k >= 0; k--) plan.withArray("elements").remove(drop.get(k));
+                if (changed || !drop.isEmpty()) s.setPlanJson(plan.toString());
+            } catch (Exception ex) {
+                log.warn("Photo step failed for scene {}: {}", s.getSceneNumber(), ex.getMessage());
+            }
+        }
+    }
+
+    private ConceptExplainerJob.Scene bookend(ObjectNode plan, String line, String title) {
+        ConceptExplainerJob.Scene s = new ConceptExplainerJob.Scene();
+        s.setTemplate("diagram");
+        s.setTitle(title);
+        s.setSentences(new ArrayList<>(List.of(line)));
+        s.setNarration(line);
+        s.setVoiceDirection("confident", "normal", "calm explainer");
+        s.setPlanJson(plan.toString());
+        return s;
+    }
+
     // =================================================================== slide
 
     private boolean needsIllustration(ConceptExplainerJob job, ConceptExplainerJob.Scene s) {
+        if (tutorial(job)) return false;   // tutorial style is pure diagrams, like the reference video
         // Every scene gets a purpose-built visual asset; the selected style changes its art direction.
         return (s.getVisualDescription() != null && !s.getVisualDescription().isBlank())
                 || (s.getIllustrationPrompt() != null && !s.getIllustrationPrompt().isBlank());
@@ -471,6 +715,47 @@ public class ConceptExplainerService {
     }
 
     private void renderSlide(ConceptExplainerJob job, ConceptExplainerJob.Scene s) throws IOException {
+        if (tutorial(job)) {
+            // one frame per narration sentence: frame k = everything that has appeared by sentence k
+            DiagramRenderer.Scene scene = DiagramSpec.toScene(mapper.readTree(s.getPlanJson()), s.getSentences().size());
+            List<BufferedImage> frames = diagrams.render(scene, theme(job), vertical(job));
+            writeSteps(job, s, frames);
+            // opening motion from the previous scene: kept elements glide, the camera pulls back for overviews,
+            // old elements fade out, new ones fade in (played over the first INTRO_FRAMES of the clip)
+            s.setIntroPattern(null);
+            s.setTypeOverlays(new ArrayList<>());
+            if (!"STATIC".equals(job.getMotion())) {
+                int idx = job.getScenes().indexOf(s);
+                ConceptExplainerJob.Scene before = idx > 0 ? job.getScenes().get(idx - 1) : null;
+                DiagramRenderer.Scene prev = before == null ? null
+                        : DiagramSpec.toScene(mapper.readTree(before.getPlanJson()), before.getSentences().size());
+                List<BufferedImage> intro = diagrams.renderIntro(prev, scene, theme(job), INTRO_FRAMES, vertical(job));
+                if (!intro.isEmpty()) {
+                    String pattern = dir(job) + "/slides/scene-" + num(s) + "-v" + s.getImageVersion() + "-intro-%02d.png";
+                    for (int k = 0; k < intro.size(); k++) {
+                        Path p = storage.resolve(String.format(Locale.ROOT, pattern, k));
+                        Files.createDirectories(p.getParent());
+                        ImageIO.write(intro.get(k), "png", p.toFile());
+                    }
+                    s.setIntroPattern(storage.resolve(pattern).toString());
+                }
+                // typewriter reveals for callouts that appear later in the scene (breakdown look)
+                List<String> typed = new ArrayList<>();
+                for (int k = 1; k < s.getSentences().size(); k++) {
+                    List<BufferedImage> fr = diagrams.renderTyping(scene, k, theme(job), vertical(job), 30);
+                    if (fr.isEmpty()) continue;
+                    String tp = dir(job) + "/slides/scene-" + num(s) + "-v" + s.getImageVersion() + "-type" + k + "-%02d.png";
+                    for (int i = 0; i < fr.size(); i++) {
+                        Path p = storage.resolve(String.format(Locale.ROOT, tp, i));
+                        Files.createDirectories(p.getParent());
+                        ImageIO.write(fr.get(i), "png", p.toFile());
+                    }
+                    typed.add(k + "|" + storage.resolve(tp));
+                }
+                s.setTypeOverlays(typed);
+            }
+            return;
+        }
         BufferedImage ill = null;
         if (s.getIllustrationPath() != null) {
             try { ill = ImageIO.read(Path.of(s.getIllustrationPath()).toFile()); } catch (Exception ignored) { }
@@ -478,6 +763,10 @@ public class ConceptExplainerService {
         ConceptSlideRenderer.Slide slide = toSlide(mapper.readTree(s.getPlanJson()), s, ill);
         // style chosen by the user; the lesson id seeds colour rotation + mirrored/alternative layouts
         List<BufferedImage> steps = renderer.render(slide, job.getStyle(), job.getId().getMostSignificantBits());
+        writeSteps(job, s, steps);
+    }
+
+    private void writeSteps(ConceptExplainerJob job, ConceptExplainerJob.Scene s, List<BufferedImage> steps) throws IOException {
         s.bumpImageVersion();
         List<String> paths = new ArrayList<>();
         for (int k = 0; k < steps.size(); k++) {
@@ -528,7 +817,7 @@ public class ConceptExplainerService {
         Path work = storage.resolve(dir(job) + "/audio/work-" + num(s));
         Files.createDirectories(work);
         List<Path> parts = new ArrayList<>();
-        List<Double> starts = new ArrayList<>();
+        List<Double> starts = new ArrayList<>(), lengths = new ArrayList<>();
         double t = 0;
         for (int i = 0; i < s.getSentences().size(); i++) {
             String line = s.getSentences().get(i).trim();
@@ -536,10 +825,14 @@ public class ConceptExplainerService {
             boolean excited = line.endsWith("!") || line.contains("[laugh]") || line.contains("[chuckle]");
             double speed = question ? 0.96 : (excited ? 0.99 : (i % 3 == 1 ? 0.97 : 1.0));
             String v = job.getVoice() == null ? "" : job.getVoice();
+            boolean tut = tutorial(job);
+            if (tut) speed = question ? 0.98 : 1.0;          // reference: steady ~160 wpm, no theatrical slow-downs
+            if (isBreakdown(job)) speed = question ? 1.02 : 1.07;   // breakdown reference: brisk ~175 wpm
             if (v.startsWith("edge:")) speed *= 0.94;          // Edge is brisk; a calmer teacher pace sounds more human
             else if (v.startsWith("indic:")) speed *= 0.98;    // IndicF5 is already natural; tiny breath room
             else if (v.startsWith("speak:")) speed *= 1.0;     // Indic-Speak is paced for explanation already (unhurried by design)
             double pitch = question ? 1.015 : (excited ? 1.01 : (i % 4 == 0 ? 0.99 : 1.0));
+            if (tut) pitch = question ? 1.01 : 1.0;
             VoiceDirection vdir = VoiceDirection.of(s.getVoiceEmotion(), s.getVoicePace(), s.getVoiceDelivery(),
                     TeachingStyle.parse(job.getTeachingStyle()).baseEmotion());
             VoiceDirection.TtsParams tp = vdir.toTts(job.getVoice(), speed, pitch, question, excited);
@@ -549,7 +842,8 @@ public class ConceptExplainerService {
             }
             var audio = gateway.synthesizeForStoryLanguage(new TextToSpeechProvider.TtsRequest(
                     line, job.getVoice(), job.getLanguage(), tp.speed(), tp.pitch(),
-                    tp.emotion(), tp.intensity(), "natural conversational tutor, " + vdir.delivery(), List.of(), true,
+                    tp.emotion(), tp.intensity(), tut ? "calm, confident senior instructor recording a course, conversational, steady pace, no drama"
+                            : "natural conversational tutor, " + vdir.delivery(), List.of(), true,
                     (line.contains("[laugh]") || line.contains("[chuckle]")) ? "chuckle" : null, tp.acting(), null));
             if (audio.providerWarning() != null && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice:"))) {
                 job.getWarnings().add("Voice: " + audio.providerWarning());
@@ -560,7 +854,8 @@ public class ConceptExplainerService {
             starts.add(t);
             double d = media.probeDurationSeconds(p);
             if (d <= 0) d = audio.durationSeconds();
-            double gap = i < s.getSentences().size() - 1 ? sentenceGap(s.getSentences().get(i)) : 0.0;
+            lengths.add(d);
+            double gap = i < s.getSentences().size() - 1 ? gap(job, s.getSentences().get(i)) : 0.0;
             t += d + gap;
         }
         // join sentences with short breaths, then the shared voice polish (length unchanged)
@@ -570,7 +865,7 @@ public class ConceptExplainerService {
         StringBuilder g = new StringBuilder();
         for (int i = 0; i < parts.size(); i++) {
             g.append('[').append(i).append(":a]aresample=48000,aformat=channel_layouts=stereo")
-                    .append(i < parts.size() - 1 ? ",apad=pad_dur=" + fmt(sentenceGap(s.getSentences().get(i))) : "").append("[s").append(i).append("];");
+                    .append(i < parts.size() - 1 ? ",apad=pad_dur=" + fmt(gap(job, s.getSentences().get(i))) : "").append("[s").append(i).append("];");
         }
         for (int i = 0; i < parts.size(); i++) g.append("[s").append(i).append(']');
         g.append("concat=n=").append(parts.size()).append(":v=0:a=1[out]");
@@ -582,9 +877,38 @@ public class ConceptExplainerService {
         Path out = storage.store(dir(job) + "/audio/scene-" + num(s) + "-v" + s.getAudioVersion() + ".wav", wav);
         s.setAudioPath(out.toString());
         double speech = media.probeDurationSeconds(out);
-        s.setDurationSeconds((speech > 0 ? speech : t) + SCENE_TAIL);
+        s.setDurationSeconds((speech > 0 ? speech : t) + tail(job));
+        s.setSentenceTiming(starts, lengths);
         s.setStepTimes(stepTimes(starts, s.getStepPaths().size(), speech > 0 ? speech : t, job));
     }
+
+    private double gap(ConceptExplainerJob job, String sentence) {
+        if (!tutorial(job)) return sentenceGap(sentence);
+        if (vertical(job)) {   // reels: tighter (measured 0.20-0.36 s between sentences)
+            String y = sentence == null ? "" : sentence.trim();
+            return y.endsWith("?") ? 0.38 : 0.28;
+        }
+        // measured on the reference narration: median pause 0.34 s, questions a little longer
+        String x = sentence == null ? "" : sentence.trim();
+        if (x.endsWith("?")) return 0.42;
+        if (x.endsWith(":")) return 0.40;
+        return 0.34;
+    }
+
+    private double tail(ConceptExplainerJob job) { return vertical(job) ? 0.3 : tutorial(job) ? TUTORIAL_TAIL : SCENE_TAIL; }
+
+    /** 60-second vertical short: reel look (both reference reels), 1080x1920, word captions, title + outro cards. */
+    static boolean isShort(ConceptExplainerJob job) { return job != null && job.isShort(); }
+
+    static boolean isBreakdown(ConceptExplainerJob job) { return job != null && job.isBreakdown(); }
+
+    /** Vertical 1080x1920 output (60-second short, real-world breakdown). */
+    static boolean vertical(ConceptExplainerJob job) { return isShort(job) || isBreakdown(job); }
+
+    private String theme(ConceptExplainerJob job) { return isShort(job) ? "reel" : isBreakdown(job) ? "blueprint3d" : job.getStyle(); }
+
+    /** Reference-video teaching + diagram engine, for every visual style unless the user picked the classic slides. */
+    static boolean tutorial(ConceptExplainerJob job) { return job != null && !"CLASSIC".equals(job.getFormat()); }
 
     private static double sentenceGap(String sentence) {
         if (sentence == null) return SENTENCE_GAP;
@@ -641,9 +965,9 @@ public class ConceptExplainerService {
         if (s.getStepTimes() == null || s.getStepTimes().size() != s.getStepPaths().size()) {
             // slide re-rendered without new narration: keep timing rule consistent
             List<Double> starts = new ArrayList<>();
-            double per = Math.max(0.5, (s.getDurationSeconds() - SCENE_TAIL) / Math.max(1, s.getSentences().size()));
+            double per = Math.max(0.5, (s.getDurationSeconds() - tail(job)) / Math.max(1, s.getSentences().size()));
             for (int i = 0; i < s.getSentences().size(); i++) starts.add(i * per);
-            s.setStepTimes(stepTimes(starts, s.getStepPaths().size(), s.getDurationSeconds() - SCENE_TAIL, job));
+            s.setStepTimes(stepTimes(starts, s.getStepPaths().size(), s.getDurationSeconds() - tail(job), job));
         }
         double total = s.getDurationSeconds();
         List<String> steps = s.getStepPaths();
@@ -672,27 +996,97 @@ public class ConceptExplainerService {
             }
             f.setLength(f.length() - 1);
         }
-        // Subtle still-image motion, applied ONCE to the whole scene after the reveal cross-fades:
-        // a slow centred push-in of SUBTLE_ZOOM over the scene. (The old per-step zoompan restarted
-        // the zoom at every reveal - a visible jump - and its scale+pad to 2000x1125 could round to
-        // 2001 px, making pad fail with "Padded dimensions cannot be smaller than input dimensions",
-        // which surfaced as "Could not open encoder before EOF".)
-        if (subtleZoom > 0 && !"STATIC".equals(job.getMotion())) {
-            f.append(";[v0]scale=w='2*trunc(1920*(1+").append(fmt(subtleZoom)).append("*t/").append(fmt(Math.max(1, total)))
-                    .append(")/2)':h=-2:eval=frame:flags=bicubic,crop=1920:1080,setsar=1,format=yuv420p[v]");
-        } else {
-            f.append(";[v0]null[v]");
+        // Overlays on the reveal timeline: the scene-opening motion, then typewriter reveals at their steps.
+        boolean moving = !"STATIC".equals(job.getMotion());
+        String cur = "v0";
+        int input = n;
+        if (s.getIntroPattern() != null && moving) {
+            args.addAll(List.of("-framerate", "30", "-start_number", "0", "-i", s.getIntroPattern()));
+            f.append(";[").append(input).append(":v]fps=30,format=yuv420p,setsar=1[intro];[").append(cur).append("][intro]overlay=eof_action=pass:format=auto[vi]");
+            cur = "vi";
+            input++;
         }
-        int audioIndex = n;
+        if (moving && n > 1) {
+            int o = 0;
+            for (String entry : s.getTypeOverlays()) {
+                int bar = entry.indexOf('|');
+                if (bar <= 0) continue;
+                int k = Integer.parseInt(entry.substring(0, bar));
+                if (k <= 0 || k >= t.size()) continue;
+                double at = Math.max(0, t.get(k) - FADE);   // cover the cross-fade with the typing frames
+                args.addAll(List.of("-framerate", "30", "-start_number", "0", "-i", entry.substring(bar + 1)));
+                String lbl = "vt" + o;
+                f.append(";[").append(input).append(":v]fps=30,format=yuv420p,setsar=1,setpts=PTS+").append(fmt(at)).append("/TB[ty").append(o)
+                        .append("];[").append(cur).append("][ty").append(o).append("]overlay=eof_action=pass:format=auto[").append(lbl).append(']');
+                cur = lbl;
+                input++;
+                o++;
+            }
+        }
+        // Camera: classic slides get the subtle push-in; breakdown reels a slow, steady dolly-in like the reference's
+        // 3D camera. Applied after every overlay so nothing jumps when an overlay ends. Lessons/shorts stay still.
+        double zoom = !moving ? 0 : isBreakdown(job) ? 0.045 : !tutorial(job) ? subtleZoom : 0;
+        int vw = vertical(job) ? 1080 : 1920, vh = vertical(job) ? 1920 : 1080;
+        if (zoom > 0) {
+            f.append(";[").append(cur).append("]scale=w='2*trunc(").append(vw).append("*(1+").append(fmt(zoom)).append("*t/").append(fmt(Math.max(1, total)))
+                    .append(")/2)':h=-2:eval=frame:flags=bicubic,crop=").append(vw).append(':').append(vh).append(",setsar=1,format=yuv420p[v]");
+        } else {
+            f.append(";[").append(cur).append("]null[v]");
+        }
+        int audioIndex = input;
         args.addAll(List.of("-i", s.getAudioPath()));
         f.append(";[").append(audioIndex).append(":a]aresample=48000,aformat=channel_layouts=stereo,apad[a]");
         Path out = storage.resolve(dir(job) + "/clips/scene-" + num(s) + "-i" + s.getImageVersion() + "-a" + s.getAudioVersion() + ".mp4");
         Files.createDirectories(out.getParent());
-        args.addAll(List.of("-filter_complex", f.toString(), "-map", "[v]", "-map", "[a]", "-t", fmt(total),
+        String videoLabel = "[v]";
+        List<String> captionText = s.getCaptions().size() == s.getSentences().size() ? s.getCaptions()
+                : TutorialPrompts.english(job.getLanguage()) ? s.getSentences() : List.of();
+        if (isShort(job) && !s.getSentenceStarts().isEmpty() && !captionText.isEmpty()) {
+            // word-by-word captions (spoken words white, the rest of the chunk grey) burned in with libass
+            Path ass = storage.resolve(dir(job) + "/clips/scene-" + num(s) + "-a" + s.getAudioVersion() + ".ass");
+            Files.createDirectories(ass.getParent());
+            Files.writeString(ass, ShortCaptions.ass(captionText, s.getSentenceStarts(), s.getSentenceLengths(), 1080, 1920, ShortCaptions.FONT), StandardCharsets.UTF_8);
+            String fontDir = captionFonts();
+            filterInsertCaptions(f, videoLabel, ass, fontDir);
+            videoLabel = "[vc]";
+        }
+        args.addAll(List.of("-filter_complex", f.toString(), "-map", videoLabel, "-map", "[a]", "-t", fmt(total),
                 "-c:v", "libx264", "-preset", "medium", "-tune", "stillimage", "-crf", "17", "-pix_fmt", "yuv420p", "-r", "30",
                 "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", out.toString()));
         ffmpeg(args);
         s.setClipPath(out.toString());
+    }
+
+    private static void filterInsertCaptions(StringBuilder f, String in, Path ass, String fontDir) {
+        f.append(';').append(in).append("ass=filename='").append(escFilter(ass.toAbsolutePath().toString())).append('\'');
+        if (fontDir != null) f.append(":fontsdir='").append(escFilter(fontDir)).append('\'');
+        f.append("[vc]");
+    }
+
+    /** ffmpeg filter-graph quoting for paths inside '...'. */
+    private static String escFilter(String p) { return p.replace("\\", "/"); }   // storage paths: no quotes or colons
+
+    private volatile String captionFontDir;
+
+    /** Lato + the Indian-script Noto fonts copied out of the jar once, so libass can draw every language. */
+    private String captionFonts() {
+        if (captionFontDir != null) return captionFontDir;
+        try {
+            Path d = storage.resolve("concept-explainers/_fonts");
+            Files.createDirectories(d);
+            for (String f : List.of("Poppins-ExtraBold.ttf", "Poppins-Bold.ttf", "Lato-Bold.ttf", "Lato-Regular.ttf", "NotoSansDevanagari.ttf", "NotoSansKannada.ttf", "NotoSansTamil.ttf",
+                    "NotoSansTelugu.ttf", "NotoSansMalayalam.ttf", "NotoSansBengali.ttf", "NotoSansGujarati.ttf", "NotoSansGurmukhi.ttf", "NotoSansOriya.ttf")) {
+                Path out = d.resolve(f);
+                if (Files.isRegularFile(out)) continue;
+                try (var in = ConceptExplainerService.class.getResourceAsStream("/concept-fonts/" + f)) {
+                    if (in != null) Files.copy(in, out);
+                }
+            }
+            captionFontDir = d.toAbsolutePath().toString();
+        } catch (IOException e) {
+            log.warn("Caption fonts not available ({}); libass will use system fonts", e.getMessage());
+        }
+        return captionFontDir;
     }
 
     /** Scenes back to back (no overlap, nothing cut), soft fade in/out, calm music ducked under the voice. */
@@ -711,7 +1105,9 @@ public class ConceptExplainerService {
         ffmpeg(List.of("ffmpeg", "-nostdin", "-y", "-f", "concat", "-safe", "0", "-i", list.toString(), "-c", "copy", joined.toString()));
         double total = media.probeDurationSeconds(joined);
         Path music = null;
-        try { music = media.musicPresetPath("calm"); } catch (Exception ignored) { }
+        if (!tutorial(job) || isShort(job)) {   // lessons + breakdowns: clean voice like their references; shorts: quiet bed like the reel
+            try { music = media.musicPresetPath("calm"); } catch (Exception ignored) { }
+        }
         Path out = dir.resolve("concept-explainer-" + (job.getVideoVersion() + 1) + ".mp4");
         String fadeOut = fmt(Math.max(0, total - 0.8));
         List<String> args = new ArrayList<>(List.of("ffmpeg", "-nostdin", "-y", "-i", joined.toString()));
@@ -719,7 +1115,7 @@ public class ConceptExplainerService {
         if (music != null && Files.isRegularFile(music)) {
             args.addAll(List.of("-stream_loop", "-1", "-i", music.toString()));
             filter = "[0:v]fade=t=in:st=0:d=0.5,fade=t=out:st=" + fadeOut + ":d=0.8[v];"
-                    + "[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.10[m];"
+                    + "[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=" + (isShort(job) ? "0.06" : "0.10") + "[m];"
                     + "[0:a]asplit=2[voice][key];[m][key]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=450[duck];"
                     + "[voice][duck]amix=inputs=2:duration=first:normalize=0,afade=t=out:st=" + fadeOut + ":d=0.8[a]";
         } else {

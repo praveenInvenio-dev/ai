@@ -42,6 +42,11 @@ DEVICE = os.environ.get("INDICF5_DEVICE", "auto").strip().lower()
 PRELOAD = os.environ.get("INDICF5_PRELOAD", "true").strip().lower() in ("1", "true", "yes")
 _device = "cpu"
 _loading = False
+# Weights live in CPU RAM; they are moved onto the GPU only while speaking and moved back by
+# /api/unload (called by the backend before Ollama/ComfyUI/Chatterbox use the card) or after
+# INDICF5_IDLE_UNLOAD_SECONDS of silence. Moving 1.6 GB RAM <-> VRAM takes ~1-2 s, a cold load minutes.
+IDLE_UNLOAD_SECONDS = int(os.environ.get("INDICF5_IDLE_UNLOAD_SECONDS", "300"))
+_last_used = 0.0
 
 # Languages IndicF5 covers. English is deliberately absent - it is not supported
 # and asking for it produces garbled output rather than an error.
@@ -97,13 +102,9 @@ def get_model():
                     requested = "cuda" if torch.cuda.is_available() else "cpu"
                 except Exception:
                     requested = "cpu"
-            if requested == "cuda":
-                try:
-                    _model = _model.to("cuda")
-                    _device = "cuda"
-                    app.logger.info("Loaded %s on CUDA", REPO_ID)
-                except Exception as exc:
-                    app.logger.warning("CUDA load failed (%s); keeping IndicF5 on CPU", exc)
+            global _want_cuda
+            _want_cuda = requested == "cuda"
+            # stay in CPU RAM until the first line is spoken (see _ensure_gpu)
             _model.eval()
             _load_error = None
             app.logger.info("Loaded %s on %s", REPO_ID, _device)
@@ -222,9 +223,14 @@ def synthesize():
         return jsonify({"error": "IndicF5 speaks Indian languages only. Send text in an Indian script "
                                  "(e.g. Kannada, Hindi, Tamil) or pick an English voice."}), 400
 
+    global _last_used
     with _model_lock:
         try:
+            import time
+            _ensure_gpu()
+            model = _model
             audio = _synthesize(model, text, prompt["wav"], ref_text)
+            _last_used = time.time()
         except Exception as exc:  # noqa: BLE001
             app.logger.exception("IndicF5 synthesis failed")
             return jsonify({"error": f"IndicF5 synthesis failed: {type(exc).__name__}: {exc}"}), 500
@@ -282,6 +288,61 @@ def _fix_vocoder_weights(model, hf_token):
         app.logger.exception("IndicF5 vocoder weight fix failed: %s", exc)
 
 
+_want_cuda = False
+
+
+def _ensure_gpu():
+    """Move the weights onto the GPU for this line (no-op on CPU setups or when already there)."""
+    global _model, _device
+    if not _want_cuda or _device == "cuda" or _model is None:
+        return
+    try:
+        _model = _model.to("cuda")
+        _device = "cuda"
+        app.logger.info("IndicF5 moved to CUDA")
+    except Exception as exc:  # noqa: BLE001 - not enough VRAM right now: speak on CPU this time
+        app.logger.warning("IndicF5 could not move to CUDA (%s); using CPU for this line", exc)
+        try:
+            _model = _model.to("cpu")
+            import torch
+            torch.cuda.empty_cache()
+        except Exception:  # noqa: BLE001
+            pass
+        _device = "cpu"
+
+
+def _release_gpu(reason: str) -> bool:
+    """Move the weights back to CPU RAM and return the VRAM. Caller holds _model_lock."""
+    global _model, _device
+    if _model is None or _device != "cuda":
+        return False
+    _model = _model.to("cpu")
+    _device = "cpu"
+    try:
+        import torch
+        torch.cuda.empty_cache()
+    except Exception:  # noqa: BLE001
+        pass
+    app.logger.info("IndicF5 released the GPU (%s)", reason)
+    return True
+
+
+@app.post("/api/unload")
+def api_unload():
+    with _model_lock:
+        released = _release_gpu("requested by backend")
+    return jsonify({"released": released, "device": _device})
+
+
+def _idle_watcher():
+    import time
+    while True:
+        time.sleep(30)
+        if IDLE_UNLOAD_SECONDS > 0 and _device == "cuda" and _last_used and time.time() - _last_used > IDLE_UNLOAD_SECONDS:
+            with _model_lock:
+                _release_gpu("idle")
+
+
 def _synthesize(model, text, ref_wav, ref_text):
     """Run IndicF5; on a CUDA problem (out of memory while ComfyUI holds the GPU, device
     mismatch) retry once on CPU instead of failing the whole narration."""
@@ -319,6 +380,7 @@ def _preload():
 
 if __name__ == "__main__":
     os.makedirs(PROMPTS_DIR, exist_ok=True)
+    threading.Thread(target=_idle_watcher, daemon=True).start()
     if PRELOAD:
         # Load in the background so the first "Play sample" does not wait minutes for the
         # 1.6 GB download + load (and time out in the backend). /health shows progress.

@@ -77,6 +77,46 @@ _model_lock = threading.Lock()
 _generation_lock = threading.Lock()
 
 MODEL_TYPE = os.environ.get("CHATTERBOX_MODEL_TYPE", "standard").strip().lower()
+# The backend calls /api/unload before Ollama / ComfyUI / IndicF5 use the GPU; as a safety net the
+# model is also dropped after this many idle seconds (0 = never). Reload from the local HF cache ~5-15 s.
+IDLE_UNLOAD_SECONDS = int(os.environ.get("CHATTERBOX_IDLE_UNLOAD_SECONDS", "300"))
+_last_used = 0.0
+
+
+def _free_cuda():
+    try:
+        import gc
+        import torch
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def unload_models(reason: str) -> list:
+    """Drop every loaded model and return its VRAM. Waits for a running generation to finish."""
+    with _generation_lock, _model_lock:
+        names = sorted(_models.keys())
+        _models.clear()
+    _free_cuda()
+    if names:
+        log.info("Chatterbox unloaded %s (%s)", names, reason)
+    return names
+
+
+def _idle_watcher():
+    import time
+    while True:
+        time.sleep(30)
+        if IDLE_UNLOAD_SECONDS > 0 and _models and _last_used and time.time() - _last_used > IDLE_UNLOAD_SECONDS:
+            unload_models("idle")
+
+
+def _is_oom(exc: Exception) -> bool:
+    m = str(exc).lower()
+    return "out of memory" in m or "cuda error" in m or "cublas" in m
 DEFAULT_LANGUAGE = os.environ.get("CHATTERBOX_DEFAULT_LANGUAGE", "en").strip().lower()
 
 
@@ -242,6 +282,11 @@ def voices():
     })
 
 
+@app.post("/api/unload")
+def api_unload():
+    return jsonify({"unloaded": unload_models("requested by backend"), "device": DEVICE})
+
+
 @app.post("/api/tts")
 def synthesize():
     body = request.get_json(force=True, silent=True) or {}
@@ -280,8 +325,18 @@ def synthesize():
     try:
         model = get_model(language)
     except Exception as exc:
-        log.exception("Could not load Chatterbox")
-        return jsonify({"error": f"Chatterbox model failed to load: {exc}"}), 500
+        if _is_oom(exc):
+            # another engine still holds the card: free our cache and try once more
+            _free_cuda()
+            try:
+                model = get_model(language)
+            except Exception as exc2:
+                log.exception("Chatterbox could not load - GPU out of memory")
+                return jsonify({"error": f"Chatterbox: CUDA out of memory while loading the model ({exc2}). "
+                                         "Another GPU engine (Ollama, ComfyUI, IndicF5) is holding the card."}), 503
+        else:
+            log.exception("Could not load Chatterbox")
+            return jsonify({"error": f"Chatterbox model failed to load: {exc}"}), 500
 
     try:
         import torchaudio as ta
@@ -298,14 +353,28 @@ def synthesize():
                  voice, type(model).__name__, language, emotion, intensity, reference)
         # Chatterbox mutates model conditionals during generate(); serialize
         # requests so concurrent scenes cannot corrupt each other's voice.
+        global _last_used
         with _generation_lock:
-            wav_tensor = model.generate(text, **kwargs)
+            try:
+                wav_tensor = model.generate(text, **kwargs)
+            except Exception as exc:
+                if not _is_oom(exc):
+                    raise
+                log.warning("Chatterbox CUDA out of memory - clearing cache and retrying once")
+                _free_cuda()
+                wav_tensor = model.generate(text, **kwargs)
             buf = io.BytesIO()
             ta.save(buf, wav_tensor, model.sr, format="wav")
             wav_bytes = buf.getvalue()
+            import time
+            _last_used = time.time()
+        _free_cuda()   # return activations to the pool other engines draw from
     except Exception as exc:
         log.exception("Chatterbox synthesis failed for voice=%s", voice)
-        return jsonify({"error": f"Voice generation failed for '{voice}': {exc}"}), 500
+        code = 503 if _is_oom(exc) else 500
+        msg = (f"Chatterbox: CUDA out of memory for '{voice}' ({exc}). Another GPU engine is holding the card."
+               if _is_oom(exc) else f"Voice generation failed for '{voice}': {exc}")
+        return jsonify({"error": msg}), code
 
     if len(wav_bytes) < 1000:
         return jsonify({"error": "Chatterbox returned an invalid/empty WAV."}), 502
@@ -321,4 +390,5 @@ def synthesize():
 if __name__ == "__main__":
     os.makedirs(VOICES_DIR, exist_ok=True)
     threading.Thread(target=bootstrap_reference_voices, daemon=True).start()
+    threading.Thread(target=_idle_watcher, daemon=True).start()
     app.run(host="0.0.0.0", port=5004)
