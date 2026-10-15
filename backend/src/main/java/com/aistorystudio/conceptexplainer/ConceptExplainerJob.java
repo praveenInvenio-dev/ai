@@ -9,8 +9,7 @@ import java.util.UUID;
 /** One Concept Explainer lesson (in memory, files under concept-explainers/<id>/). */
 public class ConceptExplainerJob {
 
-    /** STORYBOARD: kids lessons pause here - every scene's picture is ready to review / redo before the video is made. */
-    public enum Status { QUEUED, PLANNING, PLAN_REVIEW, GENERATING_SCENES, STORYBOARD, ASSEMBLING, REGENERATING, SUCCEEDED, FAILED }
+    public enum Status { QUEUED, PLANNING, GENERATING_SCENES, ASSEMBLING, REGENERATING, SUCCEEDED, FAILED }
 
     private final UUID id;
     private final String topic, instructions, language, duration, difficulty, motion, model, track, subject, voice;
@@ -102,10 +101,6 @@ public class ConceptExplainerJob {
         /** Final (complete) slide = last build step. */
         /** Tutorial format: ffmpeg image-sequence pattern of the scene's opening motion (glide / zoom / fade), or null. */
         private String introPattern;
-        /** Illustrated (kids) scenes: the full-screen picture animated underneath the overlay frames, or null. */
-        private String backdropPath;
-        public String getBackdropPath() { return backdropPath; }
-        public void setBackdropPath(String v) { backdropPath = v; }
         /** Exact start and spoken length of every sentence inside the scene clip (for word captions). */
         private List<Double> sentenceStarts = new ArrayList<>(), sentenceLengths = new ArrayList<>();
         public List<Double> getSentenceStarts() { return sentenceStarts; }
@@ -122,28 +117,7 @@ public class ConceptExplainerJob {
         public List<String> getTypeOverlays() { return typeOverlays; }
         public void setTypeOverlays(List<String> v) { typeOverlays = v == null ? new ArrayList<>() : v; }
 
-        public String getImagePath() {
-            if (previewPath != null) return previewPath;   // illustrated scenes: the picture with its overlays
-            return stepPaths.isEmpty() ? null : stepPaths.get(stepPaths.size() - 1);
-        }
-        private String previewPath, animationPath;
-        // voice plan for this scene: a pause after each sentence (seconds), words to stress, the camera idea
-        private List<Double> pauseAfter = new ArrayList<>();
-        private List<String> emphasis = new ArrayList<>();
-        private String camera, deliveryNote;
-        public List<Double> getPauseAfter() { return pauseAfter; }
-        public void setPauseAfter(List<Double> v) { pauseAfter = v == null ? new ArrayList<>() : v; }
-        public List<String> getEmphasis() { return emphasis; }
-        public void setEmphasis(List<String> v) { emphasis = v == null ? new ArrayList<>() : v; }
-        public String getCamera() { return camera; }
-        public void setCamera(String v) { camera = v; }
-        public String getDeliveryNote() { return deliveryNote; }
-        public void setDeliveryNote(String v) { deliveryNote = v; }
-        public String getPreviewPath() { return previewPath; }
-        public void setPreviewPath(String v) { previewPath = v; }
-        /** Wan animation of this scene's picture ("animated cartoon" videos), or null. */
-        public String getAnimationPath() { return animationPath; }
-        public void setAnimationPath(String v) { animationPath = v; }
+        public String getImagePath() { return stepPaths.isEmpty() ? null : stepPaths.get(stepPaths.size() - 1); }
     }
 
     /** Visual style: neon | sketchnote | storyboard | chalkboard | blueprint | anime. */
@@ -165,52 +139,6 @@ public class ConceptExplainerJob {
     public boolean isShort() { return "SHORT".equals(format); }
     /** 2-minute vertical real-world breakdown in the 3D blueprint look (explain a concept through a product people use). */
     public boolean isBreakdown() { return "BREAKDOWN".equals(format); }
-    /** Subject area found while planning (technology, medical, biology, finance, everyday ...) - picks icons and look. */
-    private volatile String domain = "technology";
-    public String getDomain() { return domain; }
-    /** Kids lessons: one exact description of the recurring characters, reused for every illustrated scene. */
-    // ---- pre-production: the brief, the creative dials, the chosen concept and the script review gate
-    private volatile String audience, outcome, tone, concept;
-    private volatile boolean reviewScript;
-    private volatile String visualVariance = "MID", motionIntensity = "MID", density = "MID";
-    private volatile com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.Report scriptReport;
-    public String getAudience() { return audience; }
-    public void setAudience(String v) { audience = clean(v, 160); }
-    public String getOutcome() { return outcome; }
-    public void setOutcome(String v) { outcome = clean(v, 200); }
-    public String getTone() { return tone; }
-    public void setTone(String v) { tone = clean(v, 80); }
-    public String getConcept() { return concept; }
-    public void setConcept(String v) { concept = clean(v, 1500); }
-    public boolean isReviewScript() { return reviewScript; }
-    public void setReviewScript(boolean v) { reviewScript = v; }
-    public String getVisualVariance() { return visualVariance; }
-    public String getMotionIntensity() { return motionIntensity; }
-    public String getDensity() { return density; }
-    public void setDials(String variance, String motion, String dens) { visualVariance = dial(variance); motionIntensity = dial(motion); density = dial(dens); }
-    public com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.Report getScriptReport() { return scriptReport; }
-    public void setScriptReport(com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.Report r) { scriptReport = r; }
-    private static String dial(String v) { String x = v == null ? "MID" : v.trim().toUpperCase(java.util.Locale.ROOT); return x.equals("LOW") || x.equals("HIGH") ? x : "MID"; }
-    private static String clean(String v, int max) { if (v == null) return null; String t = v.replaceAll("\\s+", " ").trim(); return t.isEmpty() ? null : t.length() > max ? t.substring(0, max) : t; }
-
-    /** Animated maths / physics scenes (Manim sidecar): wanted by the creator, and actually available when the plan was made. */
-    private volatile boolean useManim = true, manimActive;
-    public boolean isUseManim() { return useManim; }
-    public void setUseManim(boolean v) { useManim = v; }
-    public boolean isManimActive() { return manimActive; }
-    public void setManimActive(boolean v) { manimActive = v; }
-
-    private volatile String illustrationCast;
-    /** First kids picture: the character reference every later (or redone) picture is drawn from. */
-    private volatile String castReferencePath;
-    private volatile boolean animatedCartoon;
-    public boolean isAnimatedCartoon() { return animatedCartoon; }
-    public void setAnimatedCartoon(boolean v) { animatedCartoon = v; }
-    public String getCastReferencePath() { return castReferencePath; }
-    public void setCastReferencePath(String v) { castReferencePath = v; }
-    public String getIllustrationCast() { return illustrationCast; }
-    public void setIllustrationCast(String v) { illustrationCast = v; }
-    public void setDomain(String v) { domain = v == null || v.isBlank() ? "technology" : v.trim().toLowerCase(java.util.Locale.ROOT); }
 
     /** ENGAGING_TECH_TUTOR | STORYTELLING_TEACHER | PROFESSIONAL_INSTRUCTOR | SIMPLE_BEGINNER */
     private volatile String teachingStyle = "ENGAGING_TECH_TUTOR";

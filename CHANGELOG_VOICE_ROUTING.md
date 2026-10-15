@@ -39,17 +39,3 @@ madhur (IndicF5), female -> Swara / Kavya / swara. Same for Kannada, Tamil, Telu
 Log: `No reference audio found for voice 'profile:d6501dd7-...'`. Lessons passed the raw "profile:<id>" pointer to
 Chatterbox. Now the gateway resolves it like the story pipeline does: the saved profile's engine + reference file +
 transcript are used (synthesizeWithVoice). A deleted clone leaves a note on the lesson instead of failing it.
-
-## Your own (Voice Lab) voice in Hindi / Kannada / Tamil ... sounded bad
-Videos (53) and (55): long dead air - 29 s at 0:16 in (53); (55) only 14 % speech with ~26-30 s silent blocks.
-Cause: the recorded voice went to Chatterbox. Its multilingual model runs on into near-silence up to its length
-limit on Indian text, and it does not speak Kannada / Tamil / Telugu ... at all.
-- Voice Lab voices now follow the LESSON language:
-  English -> Chatterbox (as before; works well).
-  Indian language + the recording has its transcript -> IndicF5 clones YOUR recording (sent with the request;
-  tts-indic now accepts reference_wav_b64 + reference_text). This is the engine built for Indian languages.
-  Hindi without a transcript / IndicF5 down -> Chatterbox multilingual, with a note.
-  Otherwise -> a native voice of that language, with a note saying why.
-- Chatterbox runaway guard: pauses longer than 0.6 s are shortened, trailing silence trimmed; a line still far longer
-  than its text can take is regenerated once with calmer settings and capped. Non-English uses gentler settings
-  (cfg 0.3, exaggeration <= 0.55, temperature <= 0.7). Unit-tested: 31.5 s line with 25 s runaway -> 4.2 s.

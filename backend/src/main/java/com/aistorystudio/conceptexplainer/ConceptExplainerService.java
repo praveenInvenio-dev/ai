@@ -67,12 +67,6 @@ public class ConceptExplainerService {
     private final StorageProvider storage;
     private final MediaProcessor media;
     private final ConceptExplainerJobStore jobs;
-
-    /** Optional animated maths / physics scenes: only present when the Manim sidecar is configured (compose profile "manim"). */
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private com.aistorystudio.manim.ManimClient manim;
-
-    public boolean manimAvailable() { return manim != null && manim.available(); }
     private final ConceptSlideRenderer renderer = new ConceptSlideRenderer();
     private final DiagramRenderer diagrams = new DiagramRenderer();
     private final ObjectMapper mapper = new ObjectMapper();
@@ -104,7 +98,7 @@ public class ConceptExplainerService {
         String m = motion == null ? "REVEAL" : motion.trim().toUpperCase(Locale.ROOT);
         if (!m.equals("STATIC")) m = "REVEAL";
         String t = blank(track) ? "GENERAL" : track.trim().toUpperCase(Locale.ROOT);
-        if (!List.of("TECHNOLOGY", "JEE", "NEET", "GENERAL", "GK", "KIDS", "KIDS_2_5", "KIDS_10_15").contains(t)) t = "GENERAL";
+        if (!List.of("TECHNOLOGY", "JEE", "NEET", "GENERAL").contains(t)) t = "GENERAL";
         String sub = blank(subject) ? (t.equals("JEE") ? "Physics" : t.equals("NEET") ? "Biology" : "General") : subject.trim();
         boolean exam = examFocus && (t.equals("JEE") || t.equals("NEET"));
         return jobs.create(topic.trim(), instructions == null ? "" : instructions.trim(),
@@ -124,10 +118,7 @@ public class ConceptExplainerService {
             job.setStage("Writing the lesson plan");
             if (tutorial(job)) {
                 planTutorial(job);
-                if (job.isReviewScript()) {   // pre-production gate: read, edit and have the script checked BEFORE any GPU time is spent
-                    enterPlanReview(job);
-                    return;
-                }
+                if (isBreakdown(job)) generatePhotos(job);
             } else {
                 Lesson lesson = plan(job);
                 job.setTitle(lesson.title());
@@ -155,328 +146,22 @@ public class ConceptExplainerService {
 
             }
 
-            produce(job);
-        } catch (Exception e) {
-            log.warn("Concept explainer {} failed: {}", id, e.getMessage(), e);
-            job.setErrorMessage(rootMessage(e));
-            job.setStage("Generation failed");
-            job.setStatus(ConceptExplainerJob.Status.FAILED);
-        }
-    }
-
-
-    /** Everything after the plan: pictures, voice, clips, final video (or, for kids lessons, the pictures-only storyboard). */
-    private void produce(ConceptExplainerJob job) throws Exception {
-        if (tutorial(job)) {
-            ensureEnglishCaptions(job, blankToNull(job.getModel()));   // a scene edited at the review step needs its subtitle line again
-            generatePhotos(job);   // breakdown: full-screen 3D shots; lessons: framed illustrations (anatomy, real objects)
-            if (kids(job)) {
-                // picture-book flow, like Create Story: stop here so every picture can be reviewed / redone first
-                job.setStatus(ConceptExplainerJob.Status.GENERATING_SCENES);
-                for (ConceptExplainerJob.Scene s : job.getScenes()) {
-                    job.setStage("Scene " + s.getSceneNumber() + "/" + job.getScenes().size() + ": laying out the page");
-                    renderSlide(job, s);
-                }
-                job.setStage("Pictures ready - check each scene, redo any picture, then make the video");
-                job.setStatus(ConceptExplainerJob.Status.STORYBOARD);
-                return;
-            }
-        }
-        job.setStatus(ConceptExplainerJob.Status.GENERATING_SCENES);
-        // All ComfyUI artwork first, then all narration: the GPU switches engine once instead of twice per
-        // scene (each switch unloads one model and loads the other - see GpuMemoryManager).
-        for (ConceptExplainerJob.Scene s : job.getScenes()) {
-            if (needsIllustration(job, s)) {
-                job.setStage("Scene " + s.getSceneNumber() + "/" + job.getScenes().size() + " - " + s.getTitle() + ": drawing the illustration");
-                makeIllustration(job, s);
-            }
-        }
-        for (ConceptExplainerJob.Scene s : job.getScenes()) {
-            String base = "Scene " + s.getSceneNumber() + "/" + job.getScenes().size() + " - " + s.getTitle();
-            job.setStage(base + ": drawing the slide");
-            renderSlide(job, s);
-            job.setStage(base + ": recording the narration");
-            makeNarration(job, s);
-            if (manimSpec(s) != null && s.getBackdropPath() != null) {
-                job.setStage(base + ": animating the maths (Manim)");
-                renderManimAnimation(job, s);
-            }
-            job.setStage(base + ": syncing the slide to the voice");
-            buildClip(job, s);
-        }
-        job.setStatus(ConceptExplainerJob.Status.ASSEMBLING);
-        assemble(job);
-        job.setStage("Ready");
-        job.setStatus(ConceptExplainerJob.Status.SUCCEEDED);
-    }
-
-    @Async("videoGenerationExecutor")
-    public void continueAsync(UUID id) {
-        ConceptExplainerJob job = jobs.get(id);
-        if (job == null) return;
-        try {
-            produce(job);
-        } catch (Exception e) {
-            log.warn("Concept explainer {} failed after the script review: {}", id, e.getMessage(), e);
-            job.setErrorMessage(rootMessage(e));
-            job.setStage("Generation failed");
-            job.setStatus(ConceptExplainerJob.Status.FAILED);
-        }
-    }
-
-    // =================================================================== script review gate (pre-production)
-
-    private TutorialPrompts.Size sizeFor(ConceptExplainerJob job) {
-        return isShort(job) ? TutorialPrompts.shortSize() : isBreakdown(job) ? TutorialPrompts.breakdownSize() : TutorialPrompts.size(job.getDuration());
-    }
-
-    private static String pictureText(ConceptExplainerJob.Scene s, com.fasterxml.jackson.databind.ObjectMapper m) {
-        try {
-            for (JsonNode e : m.readTree(s.getPlanJson() == null ? "{}" : s.getPlanJson()).path("elements"))
-                if ("photo".equals(e.path("type").asText())) return e.path("text").asText(null);
-        } catch (Exception ignored) { }
-        return null;
-    }
-
-    /** Runs the deterministic script review over the current narration (English subtitles stand in for non-English narration). */
-    com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.Report doctor(ConceptExplainerJob job) {
-        TutorialPrompts.Size size = sizeFor(job);
-        boolean english = TutorialPrompts.english(job.getLanguage());
-        boolean anyCaptions = false;
-        List<com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.SceneInput> in = new ArrayList<>();
-        for (ConceptExplainerJob.Scene s : job.getScenes()) {
-            List<String> sents = new ArrayList<>(s.getSentences());
-            int spoken = 0;
-            for (String x : sents) spoken += x.trim().isEmpty() ? 0 : x.trim().split("\\s+").length;
-            if (!english && s.getCaptions().size() == sents.size() && !sents.isEmpty()) { sents = new ArrayList<>(s.getCaptions()); anyCaptions = true; }
-            in.add(new com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.SceneInput(s.getSceneNumber(), s.getSectionType(), sents, pictureText(s, mapper), spoken));
-        }
-        int band = ageBand(job);
-        double wpm = isBreakdown(job) ? 175 : band == 1 ? 135 : band == 2 ? 145 : 155;
-        return com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.review(in, size.minWords(), size.maxWords(), wpm, band, english || anyCaptions);
-    }
-
-    private void enterPlanReview(ConceptExplainerJob job) {
-        var r = doctor(job);
-        job.setScriptReport(r);
-        job.setStage("Script ready: " + r.words() + " words, about " + r.seconds() + " s"
-                + (r.issues().isEmpty() ? ", nothing to flag" : ", " + r.issues().size() + " thing(s) to look at")
-                + ". Edit it if you like, then continue.");
-        job.setStatus(ConceptExplainerJob.Status.PLAN_REVIEW);
-    }
-
-    private ConceptExplainerJob reviewJob(UUID id) {
-        ConceptExplainerJob job = jobs.get(id);
-        if (job == null) throw new IllegalArgumentException("Lesson not found (it may have expired).");
-        if (job.getStatus() != ConceptExplainerJob.Status.PLAN_REVIEW) throw new IllegalStateException("The script can be changed while the lesson waits at the review step.");
-        return job;
-    }
-
-    /** Flips the status synchronously (so a double click cannot start two runs); the run itself is {@link #continueAsync}. */
-    public synchronized void continueAfterReview(UUID id) {
-        ConceptExplainerJob job = reviewJob(id);
-        job.setStatus(ConceptExplainerJob.Status.GENERATING_SCENES);
-        job.setStage("Drawing the pictures and recording the narration");
-    }
-
-    public synchronized void startScriptFix(UUID id) {
-        ConceptExplainerJob job = reviewJob(id);
-        var r = job.getScriptReport() == null ? doctor(job) : job.getScriptReport();
-        if (r.issues().stream().noneMatch(i -> i.fixable())) throw new IllegalStateException("There is nothing the app can fix automatically - edit the flagged lines yourself.");
-        job.setStatus(ConceptExplainerJob.Status.REGENERATING);
-        job.setStage("Rewriting the flagged scenes");
-    }
-
-    @Async("videoGenerationExecutor")
-    public void fixScriptAsync(UUID id) {
-        ConceptExplainerJob job = jobs.get(id);
-        if (job == null) return;
-        try {
-            var report = job.getScriptReport() == null ? doctor(job) : job.getScriptReport();
-            java.util.Map<Integer, java.util.LinkedHashSet<String>> problems = new java.util.TreeMap<>();
-            int shrink = 0;
-            for (var i : report.issues()) {
-                if (!i.fixable()) continue;
-                if (i.scene() == 0 && i.code().equals("too-long")) { shrink = Math.max(0, report.words() - sizeFor(job).maxWords()); continue; }
-                if (i.scene() > 0) problems.computeIfAbsent(i.scene(), k -> new java.util.LinkedHashSet<>()).add(i.code() + ": " + i.message());
-                else for (ConceptExplainerJob.Scene s : job.getScenes()) problems.computeIfAbsent(s.getSceneNumber(), k -> new java.util.LinkedHashSet<>()).add(i.code() + ": " + i.message());
-            }
-            if (shrink > 0) {   // too long overall: ask the three longest scenes to give up the excess
-                job.getScenes().stream().sorted((x, y) -> y.getNarration().length() - x.getNarration().length()).limit(3)
-                        .forEach(s -> problems.computeIfAbsent(s.getSceneNumber(), k -> new java.util.LinkedHashSet<>()).add("too-long: shorten this scene"));
-            }
-            if (problems.isEmpty()) { job.setStatus(ConceptExplainerJob.Status.PLAN_REVIEW); return; }
-            com.fasterxml.jackson.databind.node.ArrayNode arr = mapper.createArrayNode();
-            for (var e : problems.entrySet()) {
-                ConceptExplainerJob.Scene s = job.getScenes().get(e.getKey() - 1);
-                ObjectNode o = arr.addObject();
-                o.put("scene", e.getKey());
-                var pr = o.putArray("problems");
-                e.getValue().forEach(pr::add);
-                var na = o.putArray("narration");
-                s.getSentences().forEach(na::add);
-            }
-            JsonNode out = readJson(gateway.llm().generateStructured(TutorialPrompts.doctorSystemPrompt(),
-                    TutorialPrompts.doctorUserPrompt(arr.toString(), shrink), blankToNull(job.getModel())));
-            int changed = 0, skipped = 0;
-            for (JsonNode sc : out.path("scenes")) {
-                int n = sc.path("scene").asInt(0);
-                if (n < 1 || n > job.getScenes().size()) continue;
-                ConceptExplainerJob.Scene s = job.getScenes().get(n - 1);
-                List<String> fixed = rawSentences(sc.path("narration"));
-                if (fixed.size() != s.getSentences().size()) { skipped++; continue; }   // sentence count must not change: visuals are timed to it
-                s.setSentences(new ArrayList<>(fixed));
-                s.setNarration(String.join(" ", fixed));
-                s.setCaptions(new ArrayList<>());
-                s.setPauseAfter(new ArrayList<>(com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.silenceBeats(fixed, kids(job))));
-                changed++;
-            }
-            ensureEnglishCaptions(job, blankToNull(job.getModel()));
-            job.setScriptReport(doctor(job));
-            job.getWarnings().add("Script doctor rewrote " + changed + " scene(s)" + (skipped > 0 ? " (" + skipped + " answer(s) were ignored because the sentence count changed)" : "") + ".");
-        } catch (Exception e) {
-            log.warn("Script fix failed for {}: {}", id, e.getMessage());
-            job.getWarnings().add("The automatic rewrite did not work (" + rootMessage(e) + ") - edit the flagged lines yourself.");
-        }
-        enterPlanReviewKeepReport(job);
-    }
-
-    private void enterPlanReviewKeepReport(ConceptExplainerJob job) {
-        var r = job.getScriptReport() == null ? doctor(job) : job.getScriptReport();
-        job.setScriptReport(r);
-        job.setStage("Script updated: " + r.words() + " words, about " + r.seconds() + " s"
-                + (r.issues().isEmpty() ? ", nothing to flag" : ", " + r.issues().size() + " thing(s) left to look at") + ".");
-        job.setStatus(ConceptExplainerJob.Status.PLAN_REVIEW);
-    }
-
-    // =================================================================== concepts first (the proposal step)
-
-    /** Three differentiated concepts for the topic, before anything is made. Nothing is stored; the creator picks one (or none). */
-    public List<java.util.Map<String, String>> proposeConcepts(String topic, String language, String duration, String difficulty,
-                                                                String audience, String outcome, String tone, String track, String model) throws Exception {
-        if (blank(topic)) throw new IllegalArgumentException("Type the topic first.");
-        String notes = switch (track == null ? "" : track) {
-            case "KIDS_2_5" -> "The audience is children aged 2-5: simple, concrete, playful, one idea.";
-            case "KIDS" -> "The audience is children aged 5-10: a small mystery, everyday examples, curiosity.";
-            case "KIDS_10_15" -> "The audience is teenagers aged 10-15: respect their intelligence, a real puzzle, no talking down.";
-            default -> "";
-        };
-        JsonNode out = readJson(gateway.llm().generateStructured(TutorialPrompts.conceptsSystemPrompt(),
-                TutorialPrompts.conceptsUserPrompt(topic.trim(), blank(language) ? "English" : language, blank(duration) ? "about 1 minute" : duration,
-                        blank(difficulty) ? "Beginner" : difficulty, audience, outcome, tone, notes), blankToNull(model)));
-        List<java.util.Map<String, String>> list = new ArrayList<>();
-        for (JsonNode c : out.path("concepts")) {
-            if (list.size() >= 3) break;
-            java.util.Map<String, String> m = new java.util.LinkedHashMap<>();
-            for (String k : List.of("title", "hookType", "hook", "angle", "approach", "visualIdea", "whyItWorks")) {
-                String v = text(c, k, "");
-                m.put(k, v.length() > 300 ? v.substring(0, 300) : v);
-            }
-            if (!m.get("hook").isBlank() || !m.get("angle").isBlank()) list.add(m);
-        }
-        if (list.isEmpty()) throw new IllegalStateException("The model did not return usable concepts - try again, or pick a larger model.");
-        return list;
-    }
-
-    // =================================================================== storyboard (kids picture-book flow)
-
-    private ConceptExplainerJob storyboardJob(UUID id) {
-        ConceptExplainerJob job = jobs.get(id);
-        if (job == null) throw new IllegalArgumentException("Lesson not found (it may have expired).");
-        if (job.getStatus() != ConceptExplainerJob.Status.STORYBOARD)
-            throw new IllegalStateException("Pictures can be changed while the lesson is waiting at the storyboard step.");
-        return job;
-    }
-
-    /** Edit what a scene says before the video is made (one sentence per line). */
-    public synchronized void updateNarration(UUID id, int sceneNumber, List<String> sentences) throws IOException {
-        ConceptExplainerJob early = jobs.get(id);
-        if (early != null && early.getStatus() == ConceptExplainerJob.Status.PLAN_REVIEW) {   // before any picture or voice exists: just edit the text
-            if (sceneNumber < 1 || sceneNumber > early.getScenes().size()) throw new IllegalArgumentException("Invalid scene number.");
-            List<String> clean = new ArrayList<>();
-            for (String x : sentences == null ? List.<String>of() : sentences) if (x != null && !x.isBlank()) clean.add(x.trim());
-            if (clean.isEmpty()) throw new IllegalArgumentException("A scene needs at least one sentence.");
-            ConceptExplainerJob.Scene es = early.getScenes().get(sceneNumber - 1);
-            es.setSentences(clean);
-            es.setNarration(String.join(" ", clean));
-            es.setCaptions(new ArrayList<>());
-            es.setPauseAfter(new ArrayList<>(com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.silenceBeats(clean, kids(early))));
-            early.setScriptReport(doctor(early));
-            return;
-        }
-        ConceptExplainerJob job = storyboardJob(id);
-        if (sceneNumber < 1 || sceneNumber > job.getScenes().size()) throw new IllegalArgumentException("Invalid scene number.");
-        List<String> clean = new ArrayList<>();
-        for (String x : sentences == null ? List.<String>of() : sentences) if (x != null && !x.isBlank()) clean.add(x.trim());
-        if (clean.isEmpty()) throw new IllegalArgumentException("A scene needs at least one sentence.");
-        ConceptExplainerJob.Scene s = job.getScenes().get(sceneNumber - 1);
-        s.setSentences(clean);
-        s.setNarration(String.join(" ", clean));
-        s.setCaptions(new ArrayList<>());
-        renderSlide(job, s);   // overlays are timed per sentence
-    }
-
-    /** Synchronous part of "redo this picture": flips the status so a double click cannot start two. */
-    public synchronized void redoPicture(UUID id, int sceneNumber, String newDescription) throws IOException {
-        ConceptExplainerJob job = storyboardJob(id);
-        if (sceneNumber < 1 || sceneNumber > job.getScenes().size()) throw new IllegalArgumentException("Invalid scene number.");
-        ConceptExplainerJob.Scene s = job.getScenes().get(sceneNumber - 1);
-        ObjectNode plan = (ObjectNode) mapper.readTree(s.getPlanJson());
-        for (JsonNode e : plan.withArray("elements")) {
-            if (!"photo".equals(e.path("type").asText())) continue;
-            ((ObjectNode) e).remove("content");
-            if (newDescription != null && !newDescription.isBlank()) ((ObjectNode) e).put("text", newDescription.trim());
-        }
-        s.setPlanJson(plan.toString());
-        job.setStatus(ConceptExplainerJob.Status.REGENERATING);
-        job.setStage("Drawing a new picture for scene " + sceneNumber);
-    }
-
-    @Async("videoGenerationExecutor")
-    public void redoPictureAsync(UUID id, int sceneNumber) {
-        ConceptExplainerJob job = jobs.get(id);
-        if (job == null) return;
-        try {
-            generatePhotos(job);   // only the scene whose picture was cleared is drawn (same cast reference)
-            renderSlide(job, job.getScenes().get(sceneNumber - 1));
-            job.setStage("Pictures ready - check each scene, redo any picture, then make the video");
-        } catch (Exception e) {
-            job.getWarnings().add("Scene " + sceneNumber + ": the new picture failed (" + rootMessage(e) + ").");
-        }
-        job.setStatus(ConceptExplainerJob.Status.STORYBOARD);
-    }
-
-    /** Synchronous part of "make the video": animated = Wan animates every picture; otherwise slow camera moves. */
-    public synchronized void startVideo(UUID id, boolean animated) {
-        ConceptExplainerJob job = storyboardJob(id);
-        job.setAnimatedCartoon(animated);
-        job.setStatus(ConceptExplainerJob.Status.GENERATING_SCENES);
-        job.setStage(animated ? "Recording the narration, then animating every picture" : "Recording the narration");
-    }
-
-    @Async("videoGenerationExecutor")
-    public void makeVideoAsync(UUID id) {
-        ConceptExplainerJob job = jobs.get(id);
-        if (job == null) return;
-        try {
-            int n = job.getScenes().size();
-            for (ConceptExplainerJob.Scene s : job.getScenes()) {   // all voices first (one GPU switch), they set each scene's length
-                job.setStage("Scene " + s.getSceneNumber() + "/" + n + ": recording the narration");
-                makeNarration(job, s);
-            }
-            if (job.isAnimatedCartoon()) {
-                for (ConceptExplainerJob.Scene s : job.getScenes()) {   // then all Wan animations
-                    job.setStage("Scene " + s.getSceneNumber() + "/" + n + ": animating the picture (Wan)");
-                    try {
-                        animateScene(job, s);
-                    } catch (Exception e) {
-                        s.setAnimationPath(null);
-                        job.getWarnings().add("Scene " + s.getSceneNumber() + ": animation failed (" + rootMessage(e) + ") - used a camera move instead.");
-                    }
+            job.setStatus(ConceptExplainerJob.Status.GENERATING_SCENES);
+            // All ComfyUI artwork first, then all narration: the GPU switches engine once instead of twice per
+            // scene (each switch unloads one model and loads the other - see GpuMemoryManager).
+            for (ConceptExplainerJob.Scene s : job.getScenes()) {
+                if (needsIllustration(job, s)) {
+                    job.setStage("Scene " + s.getSceneNumber() + "/" + job.getScenes().size() + " - " + s.getTitle() + ": drawing the illustration");
+                    makeIllustration(job, s);
                 }
             }
             for (ConceptExplainerJob.Scene s : job.getScenes()) {
-                job.setStage("Scene " + s.getSceneNumber() + "/" + n + ": putting picture, words and voice together");
+                String base = "Scene " + s.getSceneNumber() + "/" + job.getScenes().size() + " - " + s.getTitle();
+                job.setStage(base + ": drawing the slide");
+                renderSlide(job, s);
+                job.setStage(base + ": recording the narration");
+                makeNarration(job, s);
+                job.setStage(base + ": syncing the slide to the voice");
                 buildClip(job, s);
             }
             job.setStatus(ConceptExplainerJob.Status.ASSEMBLING);
@@ -484,59 +169,11 @@ public class ConceptExplainerService {
             job.setStage("Ready");
             job.setStatus(ConceptExplainerJob.Status.SUCCEEDED);
         } catch (Exception e) {
-            log.warn("Kids video {} failed: {}", id, e.getMessage(), e);
+            log.warn("Concept explainer {} failed: {}", id, e.getMessage(), e);
             job.setErrorMessage(rootMessage(e));
-            job.setStage("Video failed - the pictures are kept, press Make video again");
-            job.setStatus(ConceptExplainerJob.Status.STORYBOARD);
+            job.setStage("Generation failed");
+            job.setStatus(ConceptExplainerJob.Status.FAILED);
         }
-    }
-
-    /**
-     * Animates one scene's picture with Wan image-to-video (the Story flow's engine): gentle character life - blinks,
-     * smiles, small gestures, drifting light - with the scene unchanged. A narration longer than one Wan clip is covered by
-     * chaining: the next clip starts from the previous clip's last frame (max 3); any remainder holds the last frame.
-     */
-    private void animateScene(ConceptExplainerJob job, ConceptExplainerJob.Scene s) throws Exception {
-        String picture = s.getBackdropPath();
-        if (picture == null || !Files.isRegularFile(Path.of(picture))) return;
-        double need = Math.max(2, s.getDurationSeconds());
-        double seg = 5.0;
-        int clips = (int) Math.min(3, Math.ceil(need / seg));
-        String what = "";
-        for (JsonNode e : mapper.readTree(s.getPlanJson()).path("elements")) if ("photo".equals(e.path("type").asText())) what = e.path("text").asText("");
-        String prompt = what + ". Gentle, natural character animation: the characters blink, smile, breathe and make small expressive "
-                + "gestures (pointing, nodding, a little wave); hair and clothes move slightly; soft light and sparkles drift; very slow "
-                + "camera drift. The scene, characters and colours stay exactly the same. High-end 3D animated feature film, smooth motion.";
-        String neg = "scene change, new characters, distorted face, extra limbs, flicker, text, subtitles, fast motion, camera shake";
-        int w = vertical(job) ? 480 : 832, h = vertical(job) ? 832 : 480;
-        Path dirp = storage.resolve(dir(job) + "/anim");
-        Files.createDirectories(dirp);
-        List<Path> parts = new ArrayList<>();
-        String start = picture;
-        for (int i = 0; i < clips; i++) {
-            var r = gateway.generateVideo(new com.aistorystudio.provider.VideoGenerationProvider.VideoGenerationRequest(
-                    start, prompt, neg, seg, w, h, null, null, null, 0));
-            Path part = dirp.resolve("scene-" + num(s) + "-part" + i + "." + (r.fileExtension() == null ? "mp4" : r.fileExtension().replace(".", "")));
-            Files.write(part, r.videoBytes());
-            parts.add(part);
-            if (i < clips - 1) {   // continue from where this clip ends
-                Path last = dirp.resolve("scene-" + num(s) + "-part" + i + "-last.png");
-                ffmpeg(new ArrayList<>(List.of("ffmpeg", "-nostdin", "-y", "-sseof", "-0.1", "-i", part.toString(), "-frames:v", "1", "-update", "1", last.toString())));
-                start = last.toString();
-            }
-        }
-        Path out = dirp.resolve("scene-" + num(s) + "-anim.mp4");
-        if (parts.size() == 1) Files.copy(parts.get(0), out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        else {
-            List<String> a = new ArrayList<>(List.of("ffmpeg", "-nostdin", "-y"));
-            StringBuilder f = new StringBuilder();
-            for (int i = 0; i < parts.size(); i++) { a.addAll(List.of("-i", parts.get(i).toString())); f.append('[').append(i).append(":v]fps=24,setsar=1,format=yuv420p[p").append(i).append("];"); }
-            for (int i = 0; i < parts.size(); i++) f.append("[p").append(i).append(']');
-            f.append("concat=n=").append(parts.size()).append(":v=1:a=0[v]");
-            a.addAll(List.of("-filter_complex", f.toString(), "-map", "[v]", "-an", "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", out.toString()));
-            ffmpeg(a);
-        }
-        s.setAnimationPath(out.toString());
     }
 
     // =================================================================== regenerate
@@ -765,136 +402,8 @@ public class ConceptExplainerService {
         return w;
     }
 
-    /** Which visual devices suit a subject - appended to every track instruction so diagrams match the discipline. */
-    static String subjectVisuals(String subject) {
-        String x = subject == null ? "" : subject.toLowerCase(Locale.ROOT);
-        if (x.contains("physics")) return " VISUALS FOR PHYSICS: forces (free-body), wave, circuit, plot (graphs with real values), formula with legend, "
-                + "steps for derivations, compare (vector vs scalar...), meter, quiz for a numerical checkpoint.";
-        if (x.contains("chem")) return " VISUALS FOR CHEMISTRY: atom (shells), molecule (ball-and-stick), reaction (balanced, subscripts), element tiles, "
-                + "layers / tree for classification, compare (ionic vs covalent...), cycle, quiz.";
-        if (x.contains("bio") || x.contains("science") && x.contains("life")) return " VISUALS FOR BIOLOGY: a framed photo of the structure + pins to label "
-                + "its parts, cycle (life cycles, Krebs...), steps (processes), layers / tree (classification, levels of organisation), compare, checklist "
-                + "(symptoms, functions), quiz. Use body / cell / plant icons, never tech icons.";
-        if (x.contains("math")) return " VISUALS FOR MATHS: numberline, triangle, fraction, plot, formula with legend, steps for each solution step, "
-                + "matrix / compare for methods, quiz with a worked answer.";
-        if (x.contains("general") || x.contains("social") || x.contains("history") || x.contains("geograph") || x.contains("knowledge"))
-            return " VISUALS FOR GENERAL KNOWLEDGE: timeline, factcard, compare, tree, pie (real figures only), a framed photo + pins (places, monuments), "
-                    + "quiz. Facts must be accurate and well established; say 'about' for rounded numbers.";
-        return " VISUALS: choose devices that fit the subject (see the catalog), not tech diagrams by default.";
-    }
-
     private String trackInstruction(ConceptExplainerJob job) {
-        return trackInstructionBase(job) + subjectVisuals(job.getSubject()) + briefText(job) + "\n" + com.aistorystudio.conceptexplainer.tutorial.IconLibrary.catalog(iconProfile(job));
-    }
-
-    /** Which icon names the planner is shown: what a lesson about this needs, not all 800. */
-    static String iconProfile(ConceptExplainerJob job) {
-        String t = job.getTrack() == null ? "" : job.getTrack();
-        String subj = job.getSubject() == null ? "" : job.getSubject().toLowerCase(Locale.ROOT);
-        if (t.startsWith("KIDS")) return "KIDS";
-        if (t.equals("GK")) return "GK";
-        if (subj.contains("math")) return "MATHS";
-        if (subj.contains("physic") || subj.contains("chem") || subj.contains("bio") || subj.contains("science") || subj.contains("health") || subj.contains("medical")
-                || t.equals("NEET") || t.equals("JEE")) return "SCIENCE";
-        if (subj.contains("business") || subj.contains("finance") || subj.contains("econom")) return "BUSINESS";
-        if (t.equals("TECHNOLOGY")) return "TECH";
-        return "GENERAL";
-    }
-
-    /** The creator's brief, the chosen concept and the creative dials, as instructions for the planner and the scene writer. */
-    private String briefText(ConceptExplainerJob job) {
-        StringBuilder b = new StringBuilder();
-        if (job.getAudience() != null || job.getOutcome() != null || job.getTone() != null) {
-            b.append(" BRIEF FROM THE CREATOR (honour it in word choice, examples and depth):");
-            if (job.getAudience() != null) b.append(" audience: ").append(job.getAudience()).append(';');
-            if (job.getOutcome() != null) b.append(" after watching, the viewer should ").append(job.getOutcome()).append(';');
-            if (job.getTone() != null) b.append(" tone: ").append(job.getTone()).append('.');
-        }
-        if (job.getConcept() != null) {
-            try {
-                JsonNode c = mapper.readTree(job.getConcept());
-                b.append(" CHOSEN CONCEPT - build the whole video on exactly this: title \"").append(text(c, "title", "")).append("\"; hook type ")
-                        .append(text(c, "hookType", "")).append("; opening line idea: \"").append(text(c, "hook", "")).append("\"; angle: ")
-                        .append(text(c, "angle", "")).append("; approach: ").append(text(c, "approach", "")).append("; visuals: ").append(text(c, "visualIdea", "")).append('.');
-            } catch (Exception e) {
-                b.append(" CHOSEN CONCEPT: ").append(job.getConcept());
-            }
-        }
-        String v = job.getVisualVariance(), m = job.getMotionIntensity(), d = job.getDensity();
-        if ("LOW".equals(v)) b.append(" Visual variety LOW: keep one tight visual system and reuse the same device family.");
-        if ("HIGH".equals(v)) b.append(" Visual variety HIGH: every beat may use a different visual device.");
-        if ("LOW".equals(m)) b.append(" Motion LOW: calm holds, soft changes, few new elements.");
-        if ("HIGH".equals(m)) b.append(" Motion HIGH: quick changes, a new element almost every sentence.");
-        if ("LOW".equals(d)) b.append(" Information density LOW: one idea per frame, at most 3 elements.");
-        if ("HIGH".equals(d)) b.append(" Information density HIGH: layered detail, 5-8 elements, call-outs.");
-        return b.toString();
-    }
-
-    private String trackInstructionBase(ConceptExplainerJob job) {
         String t = job.getTrack();
-        int band = ageBand(job);
-        String story = band == 3
-                ? " NARRATION AS A STORY: follow the named teen maker through one real project from problem to working result; their"
-                  + " thoughts, a failed first try, the fix. Short spoken sentences, a hook at the start of every scene."
-                : " NARRATION AS A STORYBOOK, NOT A LECTURE: a storyteller tells a little adventure about the named child hero and the"
-                  + " robot buddy (give them names in the outline, e.g. Aarav and Bolt, Mira and Pixel). Open like a story ('One sunny"
-                  + " morning...'), let the characters talk in short quoted lines ('\"Look!\" said Mira.'), use sound words (whoosh, beep,"
-                  + " pop), wonder and feelings ('Mira's eyes went wide.'). The idea is discovered INSIDE the story, never listed. Every"
-                  + " scene also gives a \"picture\" field: one rich picture-book shot - who, doing what, where, the expression, the"
-                  + " camera (close-up / wide), the light.";
-        String scenes = story + " ILLUSTRATED SCENES (required): EVERY scene starts with ONE full-screen 'photo' element (no x/y/w/h, style \"full\") "
-                + "whose text describes that scene's picture: the same characters in the same world doing what the narration says. Keep the top "
-                + "third of the picture calm and empty (sky, wall, soft light) for the title, characters in the lower two thirds. On top of it put "
-                + "at most 2 overlays: 'cloudtitle' (text = title, title = 3 short words joined by ' · ') on the first scene and at each new part, "
-                + "'iconrow' (lines \"Label|icon or 3-letter text|colour\", 3-4 items) when listing ideas, 'speech' for a line said to the child, and "
-                + "the age's interaction device below. Place overlays at y 10-34 or y 70-90, never over the middle of the picture. Include in the "
-                + "outline JSON a \"characters\" field: one exact visual description of the recurring characters (age, hair, clothes, colours, the "
-                + "robot buddy's look) that is reused word for word for every picture.";
-        if (band == 1) {
-            // Ages 2-5 (preoperational): slow, realistic pacing - 9 min of a fast fantastical cartoon impaired 4-year-olds' executive
-            // function, a slow realistic one did not (Lillard & Peterson 2011, Pediatrics); at 2.5-4.5 a character who talks WITH the
-            // child (parasocial interaction) improves learning from video; familiar characters teach better (Calvert); repetition
-            // builds mastery (Blue's Clues). AAP: high-quality programmes, watched together with a caregiver.
-            return "LITTLE LEARNERS MODE (ages 2-5): a toddler hero and a round, friendly white robot buddy in a cozy playroom with toys, "
-                    + "soft warm morning light. ONE thing per scene, shown big, said slowly. Sentences of 3-7 very simple words. Say the key "
-                    + "word three times ('Ball! A big ball! Ball!'). Talk to the child and wait: ask 'Can you find the red one?' as its own "
-                    + "sentence ending with '?', then answer gently. Name colours, shapes, sounds, numbers 1-5, big and small, same and "
-                    + "different. Calm, warm, happy - no fast changes, no scary or loud moments, no sarcasm, no reading needed. Interaction "
-                    + "devices: 'choose' (2 big pictures, right one lights up on the answer sentence via highlightAt), 'count' (1-5 things), "
-                    + "'sizes', 'bigpic'. A gentle song-like repeated line at the end. Topics must be what a toddler can see and touch."
-                    + scenes;
-        }
-        if (band == 3) {
-            // Ages 10-15 (formal operations emerging): teens are more sensitive to being respected and given status, and messages framed
-            // as autonomy work where 'you should' messages fail (Yeager, Dahl & Dweck 2018; Bryan, Yeager et al. 2016/2019); curiosity
-            // activates reward circuitry and improves memory, also for nearby material (Gruber, Gelman & Ranganath 2014, Neuron).
-            return "TECH TEENS MODE (ages 10-15): a teen maker in a modern home studio with laptops and soft holographic screens, cool "
-                    + "blue and purple light - no baby robot, nothing childish. Open with a curiosity gap: a real puzzle about something they "
-                    + "use (games, phones, YouTube, music, sport) whose answer arrives later. Talk to them as capable people: 'you might "
-                    + "try', never 'you should'. Show how it really works, including the trade-offs; let them reason before the answer. Use "
-                    + "'level' headers with an XP bar (style = progress %), 'challenge' cards (answer revealed by highlightAt on the answer "
-                    + "sentence), compare (myth vs fact), steps for an IDEA-PLAN-BUILD-TEST-IMPROVE flow, and a final 'build this yourself' idea. "
-                    + "Light humour, no talking down, correct technical words explained once."
-                    + scenes;
-        }
-        if (band == 2) {
-            // Ages 5-10 (late preoperational -> concrete operations): logic works best on concrete things and pictures of them
-            // (Piaget); a familiar guide and pseudo-interaction with pauses (Blue's Clues, Disney Research); repetition (mastery);
-            // gentle story + humour (Sesame Street); segmenting / signalling / weeding (Mayer; Ibrahim et al. 2012).
-            return "YOUNG EXPLORERS MODE (ages 5-10): a curious child hero and a friendly white robot buddy in a cozy evening study with a "
-                    + "night sky, glowing light bulb ideas, rocket and doodles. Make the lesson a small mystery with three clues the child helps "
-                    + "solve. Talk to the child: 'you', 'let's', 'can you guess?' - ask, pause, answer. Explain with things they can picture: "
-                    + "school, lunch boxes, toys, the playground, posting a letter, pizza. Sentences of 4-10 easy words; every new word "
-                    + "explained like to a 7-year-old; the key idea repeated three ways. Interaction devices: analogy, steps, quiz (2 easy "
-                    + "questions with picture-like options), factcard ('Did you know?'), and a 'badge' to finish. Warm and funny, never scary."
-                    + scenes;
-        }
-        if ("GK".equals(t)) {
-            return "GENERAL KNOWLEDGE MODE: Tell it like a short documentary - a surprising hook, the who / when / where / why, the turning "
-                    + "point, why it matters today, and one memorable fact. Only well-established facts; give years and names exactly or not "
-                    + "at all. End with a 1-question quiz.";
-        }
-
         if ("JEE".equals(t)) {
             return "JEE TEACHING MODE: Teach for competitive-exam understanding, not rote memorization. For Physics use intuition -> diagram/free-body diagram -> law/formula -> units/meaning -> worked numerical -> common trap. For Mathematics use concept -> formula/identity -> worked example -> shortcut only when mathematically valid -> common trap. For Chemistry use particle-level intuition -> equation/formula -> application -> common exam trap. Use standard school/JEE terminology and SI units. Never invent a formula, derivation, answer, or syllabus claim. If a derivation is too long for the chosen duration, explain the key reasoning instead of faking steps."
                     + (job.isExamFocus() ? " EXAM FOCUS IS ON: include one JEE-style mini question/checkpoint and explain why the correct answer is correct; avoid trick questions unless the trick is genuinely educational." : "");
@@ -954,19 +463,14 @@ public class ConceptExplainerService {
     private void planTutorial(ConceptExplainerJob job) {
         boolean reel = isShort(job), bd = isBreakdown(job);
         TutorialPrompts.Size size = reel ? TutorialPrompts.shortSize() : bd ? TutorialPrompts.breakdownSize() : TutorialPrompts.size(job.getDuration());
-        int craftSeconds = (int) Math.round((size.minWords() + size.maxWords()) / 2.0 * 60.0 / (bd ? 175.0 : 155.0));
-        boolean manimOn = job.isUseManim() && manimAvailable();        // animated maths scenes only when the service is really there
-        job.setManimActive(manimOn);
         String model = blankToNull(job.getModel());
         String topic = TeachingPlanner.cleanTopic(job.getTopic());
         job.setStage(reel ? "Planning the 60-second short" : bd ? "Planning the real-world breakdown" : "Planning the lesson and its running example");
-        // a different teaching approach per lesson (seeded by the lesson id), so lessons do not all follow the same arc
-        String approach = TutorialPrompts.approachFor(job.getId().getLeastSignificantBits() ^ System.nanoTime());
         JsonNode outline = readJson(gateway.llm().generateStructured(
-                TutorialPrompts.withCraft(reel ? TutorialPrompts.shortOutlineSystemPrompt() : bd ? TutorialPrompts.breakdownOutlineSystemPrompt() : TutorialPrompts.outlineSystemPrompt(), craftSeconds, manimOn),
-                reel ? TutorialPrompts.shortOutlineUserPrompt(topic, job.getLanguage(), job.getDifficulty(), job.getInstructions(), trackInstruction(job), size, approach)
+                reel ? TutorialPrompts.shortOutlineSystemPrompt() : bd ? TutorialPrompts.breakdownOutlineSystemPrompt() : TutorialPrompts.outlineSystemPrompt(),
+                reel ? TutorialPrompts.shortOutlineUserPrompt(topic, job.getLanguage(), job.getDifficulty(), job.getInstructions(), trackInstruction(job), size)
                      : bd ? TutorialPrompts.breakdownOutlineUserPrompt(topic, job.getLanguage(), job.getDifficulty(), job.getInstructions(), trackInstruction(job), size)
-                     : TutorialPrompts.outlineUserPrompt(topic, job.getLanguage(), job.getDifficulty(), job.getInstructions(), trackInstruction(job), size, approach), model));
+                     : TutorialPrompts.outlineUserPrompt(topic, job.getLanguage(), job.getDifficulty(), job.getInstructions(), trackInstruction(job), size), model));
         JsonNode planned = outline.path("scenes");
         if (!planned.isArray() || planned.size() < 3) {
             throw new IllegalStateException("The lesson planner returned no usable outline (needs at least 3 scenes).");
@@ -974,18 +478,6 @@ public class ConceptExplainerService {
         int total = Math.min(planned.size(), size.maxScenes() + 4);
         job.setTitle(text(outline, "title", topic));
         job.setSummary(text(outline, "summary", "A visual lesson on " + topic));
-        job.setDomain(detectDomain(text(outline, "domain", null), topic));
-        if (kids(job)) job.setIllustrationCast(text(outline, "characters", null));
-        if (kids(job)) {
-            int b = ageBand(job);
-            job.getWarnings().add(b == 1 ? "Ages 2-5: illustrated scenes with Pip's robot-buddy world, one thing at a time, slow calm pace, long answer pauses. Best watched together with a grown-up."
-                    : b == 3 ? "Ages 10-15: illustrated maker-studio scenes, a curiosity hook, challenges and levels, respectful tone."
-                    : "Ages 5-10: illustrated scenes with the child hero and robot buddy, a mystery to solve, questions with answer pauses, quiz + badge.");
-            if (b == 1 && !String.valueOf(job.getDuration()).startsWith("1") && !isShort(job))
-                job.getWarnings().add("For ages 2-5, a 1-minute lesson works best; longer lessons ask a lot of a young child's attention.");
-        }
-        else if ("reference".equals(job.getStyle()) && healthDomain(job.getDomain()) && !reel && !bd)
-            job.getWarnings().add("Health topic detected - drawn in the clinical look with anatomy icons (pick another visual style to override).");
         job.getScenes().clear();
 
         String outlineText = outline.toString();
@@ -1000,9 +492,9 @@ public class ConceptExplainerService {
             for (int attempt = 0; attempt < 2 && written == null; attempt++) {
                 try {
                     JsonNode w = readJson(gateway.llm().generateStructured(
-                            TutorialPrompts.withCraft(reel ? TutorialPrompts.shortWriteSystemPrompt() : bd ? TutorialPrompts.breakdownWriteSystemPrompt() : TutorialPrompts.writeSystemPrompt(), craftSeconds, manimOn),
+                            reel ? TutorialPrompts.shortWriteSystemPrompt() : bd ? TutorialPrompts.breakdownWriteSystemPrompt() : TutorialPrompts.writeSystemPrompt(),
                             TutorialPrompts.writeUserPrompt(topic, job.getLanguage(), outlineText, from, to, total,
-                                    DiagramSpec.describe(previous), lastLine, target) + "\n\nTRACK RULES (apply to every scene you write):\n" + trackInstruction(job), model));
+                                    DiagramSpec.describe(previous), lastLine, target), model));
                     if (w.path("scenes").isArray() && !w.path("scenes").isEmpty()) written = w;
                 } catch (Exception e) {
                     if (attempt == 1) throw e;
@@ -1018,7 +510,6 @@ public class ConceptExplainerService {
                 taken++;
                 List<String> notes = new ArrayList<>();
                 ObjectNode resolved = DiagramSpec.resolve(sc, previous, sentences.size(), notes);
-                if (kids(job)) ensureScenePicture(resolved, sc, sentences);
                 int number = job.getScenes().size() + 1;
                 JsonNode outlineScene = planned.path(Math.min(planned.size() - 1, number - 1));
                 ConceptExplainerJob.Scene s = new ConceptExplainerJob.Scene();
@@ -1031,10 +522,7 @@ public class ConceptExplainerService {
                 s.setLearningObjective(text(outlineScene, "keyIdea", null));
                 s.setVisualDescription(text(outlineScene, "screen", null));
                 s.setVoiceDirection("confident", "normal", "calm conversational instructor");
-                ObjectNode mz = manimFor(job, sc, job.getScenes().size() + 1);
-                if (mz != null) resolved.set("manim", mz);
                 s.setPlanJson(resolved.toString());
-                applyVoicePlan(s, sc, kids(job));
                 List<String> caps = rawSentences(sc.path("captions"));
                 if (caps.size() == sentences.size()) s.setCaptions(new ArrayList<>(caps));
                 job.getScenes().add(s);
@@ -1048,118 +536,12 @@ public class ConceptExplainerService {
         if (reel) words += ensureShortBookends(job, outline, topic);
         ensureEnglishCaptions(job, model);
         if (job.getScenes().size() < 3) throw new IllegalStateException("The lesson came back with fewer than 3 usable scenes - try again or pick another model.");
-        reportVariety(job, bd ? null : approach, reel ? 4 : bd ? 6 : size.maxScenes() >= 30 ? 9 : size.maxScenes() >= 15 ? 6 : 4);
         if (dropped > 0) job.getWarnings().add(dropped + " scene(s) without narration were skipped.");
         job.setWordCount(words);
         if (words < size.minWords() * 0.75 || words > size.maxWords() * 1.3) {
             job.getWarnings().add("Lesson has " + words + " spoken words (target " + size.minWords() + "-" + size.maxWords() + "), so it will run "
                     + (words < size.minWords() ? "short" : "long") + ".");
         }
-    }
-
-    // =================================================================== animated maths / physics (Manim)
-
-    /** The scene's "manim" request, checked against the sidecar NOW (a bad formula is dropped with a note, before any render time). */
-    private ObjectNode manimFor(ConceptExplainerJob job, JsonNode sc, int sceneNo) {
-        JsonNode raw = sc.path("manim");
-        if (!raw.isObject()) return null;
-        if (!job.isManimActive()) {
-            job.getWarnings().add("Scene " + sceneNo + " asked for an animated maths scene, but the Manim service is not running - start it with: docker compose --profile manim up -d --build manim");
-            return null;
-        }
-        String template = raw.path("template").asText("");
-        JsonNode params = raw.path("params");
-        if (!com.aistorystudio.manim.ManimClient.TEMPLATES.contains(template) || !params.isObject() || params.toString().length() > 4000) {
-            job.getWarnings().add("Scene " + sceneNo + ": the maths animation was left out (unknown template or parameters).");
-            return null;
-        }
-        String err = manim.validate(template, params, 10);
-        if (err != null) {
-            job.getWarnings().add("Scene " + sceneNo + ": the maths animation was left out (" + err + ").");
-            return null;
-        }
-        ObjectNode o = mapper.createObjectNode();
-        o.put("template", template);
-        o.set("params", params);
-        return o;
-    }
-
-    private JsonNode manimSpec(ConceptExplainerJob.Scene s) {
-        if (manim == null) return null;
-        try {
-            JsonNode m = mapper.readTree(s.getPlanJson() == null ? "{}" : s.getPlanJson()).path("manim");
-            return m.isObject() ? m : null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /** The finished frame of the scene's animation (about a second to render): the backdrop for the slide, storyboard and fallback. */
-    private String manimStill(ConceptExplainerJob job, ConceptExplainerJob.Scene s) {
-        JsonNode mz = manimSpec(s);
-        if (mz == null) return null;
-        try {
-            byte[] png = manim.render(mz.path("template").asText(), mz.path("params"), 8, vertical(job) ? 720 : 1280, vertical(job) ? 1280 : 720, theme(job), true);
-            return storage.store(dir(job) + "/manim/scene-" + num(s) + "-still-v" + s.getImageVersion() + ".png", png).toString();
-        } catch (Exception e) {
-            job.getWarnings().add("Scene " + s.getSceneNumber() + ": the maths animation could not be drawn (" + rootMessage(e) + ") - the slide is shown without it.");
-            return null;
-        }
-    }
-
-    /** After the narration (its length is known): renders the animation paced to the voice; the clip builder plays it under the overlays. */
-    private void renderManimAnimation(ConceptExplainerJob job, ConceptExplainerJob.Scene s) {
-        JsonNode mz = manimSpec(s);
-        if (mz == null || s.getBackdropPath() == null) return;
-        try {
-            double secs = Math.max(2.5, Math.min(60, s.getDurationSeconds()));
-            byte[] mp4 = manim.render(mz.path("template").asText(), mz.path("params"), secs, vertical(job) ? 720 : 1280, vertical(job) ? 1280 : 720, theme(job), false);
-            s.setAnimationPath(storage.store(dir(job) + "/manim/scene-" + num(s) + "-a" + s.getAudioVersion() + ".mp4", mp4).toString());
-        } catch (Exception e) {
-            s.setAnimationPath(null);
-            job.getWarnings().add("Scene " + s.getSceneNumber() + ": the maths animation failed (" + rootMessage(e) + ") - its final picture is shown instead.");
-        }
-    }
-
-    /**
-     * The scene's voice plan from the model's "delivery" and "camera": a pause after each sentence (silence after the reveal),
-     * words to stress, pace / energy. If the model gave no pauses, default silence beats are placed after reveal sentences.
-     */
-    private void applyVoicePlan(ConceptExplainerJob.Scene s, JsonNode sc, boolean kidsMode) {
-        JsonNode d = sc.path("delivery");
-        int n = s.getSentences().size();
-        List<Double> pauses = new ArrayList<>();
-        JsonNode pa = d.path("pauseAfter");
-        if (pa.isArray()) for (int i = 0; i < n; i++) pauses.add(i < pa.size() ? Math.max(0, Math.min(2.5, pa.get(i).asDouble(0))) : 0.0);
-        if (pauses.stream().noneMatch(x -> x > 0.05)) pauses = new ArrayList<>(com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.silenceBeats(s.getSentences(), kidsMode));
-        double total = 0;                                     // at most 3 s of added silence in a scene
-        for (int i = 0; i < pauses.size(); i++) { total += pauses.get(i); if (total > 3.0) pauses.set(i, 0.0); }
-        s.setPauseAfter(pauses);
-        List<String> em = new ArrayList<>();
-        if (d.path("emphasis").isArray()) for (JsonNode e : d.path("emphasis")) if (!e.asText("").isBlank() && em.size() < 4) em.add(e.asText().trim());
-        s.setEmphasis(em);
-        s.setCamera(text(sc, "camera", null));
-        s.setDeliveryNote(text(d, "note", null));
-        String pace = text(d, "pace", null), energy = text(d, "energy", null);
-        if (pace != null || energy != null) {
-            String p = pace == null ? "normal" : pace.equalsIgnoreCase("brisk") ? "fast" : pace.equalsIgnoreCase("measured") ? "normal" : pace;
-            s.setVoiceDirection(energy == null ? "confident" : energy, p, text(d, "note", "calm conversational instructor"));
-        }
-    }
-
-    /** Pause after sentence i: the larger of the format's normal gap and the planned silence beat (a beat never shortens a gap). */
-    private double gapAt(ConceptExplainerJob job, ConceptExplainerJob.Scene s, int i) {
-        double base = gap(job, s.getSentences().get(i));
-        List<Double> p = s.getPauseAfter();
-        return Math.max(base, i < p.size() ? p.get(i) : 0.0);
-    }
-
-    /** The planned stress words that actually occur in this sentence. */
-    private static List<String> emphasisFor(ConceptExplainerJob.Scene s, String line) {
-        List<String> out = new ArrayList<>();
-        String low = line.toLowerCase(Locale.ROOT);
-        for (String w : s.getEmphasis()) if (low.contains(w.toLowerCase(Locale.ROOT))) out.add(w);
-        return out;
     }
 
     /**
@@ -1253,8 +635,7 @@ public class ConceptExplainerService {
      * reuse it. A failed picture is simply dropped (the 3D room behind it is still drawn).
      */
     private void generatePhotos(ConceptExplainerJob job) {
-        int made = 0, cap = kids(job) ? 16 : 4;
-        String castRef = job.getCastReferencePath();   // kids: the first picture becomes the character reference for every later scene
+        int made = 0;
         for (ConceptExplainerJob.Scene s : job.getScenes()) {
             try {
                 ObjectNode plan = (ObjectNode) mapper.readTree(s.getPlanJson());
@@ -1265,30 +646,20 @@ public class ConceptExplainerService {
                 while (it.hasNext()) {
                     ObjectNode e = (ObjectNode) it.next();
                     if ("photo".equals(e.path("type").asText()) && blank(e.path("content").asText(null))) {
-                        if (!isBreakdown(job) && !kids(job)) {   // lessons: a framed picture next to the diagram, not a backdrop
-                            if (!e.path("style").asText("").contains("framed")) e.put("style", "framed");
-                            if (!e.has("w")) e.put("w", vertical(job) ? 70 : 34);
-                            if (!e.has("h")) e.put("h", vertical(job) ? 30 : 52);
-                        }
-                        if (made >= cap) { drop.add(idx); idx++; continue; }
+                        if (made >= 4) { drop.add(idx); idx++; continue; }
                         job.setStage("Rendering the real-world picture for scene " + s.getSceneNumber());
                         String what = e.path("text").asText("the real-world example");
-                        String prompt = kids(job) ? kidsScenePrompt(job, what, castRef != null) : !isBreakdown(job) ? illustrationPrompt(job, what) : "Vertical cinematic 3D render for a premium tech explainer: " + what + ". "
+                        String prompt = "Vertical cinematic 3D render for a premium tech explainer: " + what + ". "
                                 + "Stylised 3D blueprint world: deep navy-blue palette, glowing cyan-white edges and window light, soft volumetric fog, "
                                 + "night-time, physically based materials, depth of field, high detail, dramatic perspective, centred subject, "
                                 + "a little warm yellow accent light. No people's faces in close-up. ABSOLUTELY NO TEXT anywhere: no letters, no numbers, "
                                 + "no signs, no screens with writing, no UI, no labels, no logos, no watermark (all words are added later as overlays).";
                         try {
-                            int pw = isBreakdown(job) || vertical(job) ? 768 : kids(job) ? 1344 : 1152, ph = isBreakdown(job) || vertical(job) ? 1344 : kids(job) ? 768 : 864;
-                            boolean chained = kids(job) && castRef != null;
                             var r = gateway.generateImage(new ImageGenerationProvider.ImageGenerationRequest(prompt,
-                                    kids(job) ? "text, letters, words, numbers, logo, watermark, scary, horror, dark gloomy, violence, weapons, distorted face, extra fingers, deformed hands, low detail, blurry, photo-realistic skin, uncanny"
-                                              : "text, letters, words, numbers, digits, signage, captions, user interface, screen text, logo, watermark, cartoon, flat illustration, low detail, blurry, oversaturated, bright daylight",
-                                    pw, ph, chained ? 30 : 28, chained ? 0 : 4.0, null, chained ? "qwen-image-2-1-16gb-ref" : "qwen-image-2-1-16gb-t2i", null,
-                                    chained ? castRef : null, null));
+                                    "text, letters, words, numbers, digits, signage, captions, user interface, screen text, logo, watermark, cartoon, flat illustration, low detail, blurry, oversaturated, bright daylight",
+                                    768, 1344, 28, 4.0, null, "qwen-image-2-1-16gb-t2i", null, null, null));
                             Path p = storage.store(dir(job) + "/photos/scene-" + num(s) + "-" + e.path("id").asText("photo") + ".png", r.imageBytes());
                             e.put("content", p.toString());
-                            if (kids(job) && castRef == null) { castRef = p.toString(); job.setCastReferencePath(castRef); }
                             made++;
                         } catch (Exception ex) {
                             drop.add(idx);
@@ -1322,7 +693,7 @@ public class ConceptExplainerService {
                         + best + "\n\nRewrite ALL scenes so the narration totals " + size.minWords() + "-" + size.maxWords() + " words (60 seconds). "
                         + "Do not pad: explain the mechanism more concretely on the example, add the missing step or the before/after, "
                         + "and add matching on-screen elements for the new sentences (update every \"at\"). Keep the title card first and the outro last.";
-                JsonNode w = readJson(gateway.llm().generateStructured(TutorialPrompts.withCraft(TutorialPrompts.shortWriteSystemPrompt(), 60),
+                JsonNode w = readJson(gateway.llm().generateStructured(TutorialPrompts.shortWriteSystemPrompt(),
                         TutorialPrompts.writeUserPrompt(topic, job.getLanguage(), outlineText, 1, total, total, "", "", target) + feedback, model));
                 int words = narrationWords(w);
                 if (w.path("scenes").isArray() && w.path("scenes").size() >= 3 && words > bestWords && words <= size.maxWords() * 1.25) {
@@ -1347,78 +718,6 @@ public class ConceptExplainerService {
                 if (!t.isEmpty()) n += t.split("\\s+").length;
             }
         return n;
-    }
-
-    /**
-     * Kids lessons are picture books: every scene gets one full-screen illustration, whether or not the model remembered to
-     * add it. The picture description comes from the scene's "picture" field, else the model's photo text, else the first line.
-     */
-    private void ensureScenePicture(ObjectNode resolved, JsonNode written, List<String> sentences) {
-        var els = resolved.withArray("elements");
-        for (JsonNode e : els) {
-            if ("photo".equals(e.path("type").asText())) {
-                ObjectNode pe = (ObjectNode) e;
-                pe.put("style", "full"); pe.remove("x"); pe.remove("y"); pe.remove("w"); pe.remove("h"); pe.put("at", 0);
-                if (blank(pe.path("text").asText(null))) pe.put("text", text(written, "picture", sentences.get(0)));
-                return;
-            }
-        }
-        ObjectNode pic = mapper.createObjectNode();
-        pic.put("id", "scene-picture");
-        pic.put("type", "photo");
-        pic.put("style", "full");
-        pic.put("text", text(written, "picture", text(written, "title", sentences.get(0))));
-        pic.put("at", 0);
-        pic.put("dimAt", -1);
-        els.insert(0, pic);
-    }
-
-    /** Kids scene art direction per age band (modelled on the reference poster: rich 3D animated-film scenes, a recurring child,
-     *  a robot buddy for the younger bands, a maker studio for teens). */
-    private String kidsScenePrompt(ConceptExplainerJob job, String what, boolean hasReference) {
-        int b = ageBand(job);
-        String world = b == 1
-                ? "a warm cozy children's playroom, soft morning sunlight, plush toys, colourful stacking rings and wooden blocks, a rounded white robot buddy with a glowing blue smiling face; very clean uncluttered composition, the main object large and clear, soft saturated colours"
-                : b == 3
-                ? "a modern teen maker studio, laptops, soft holographic interface panels, sketch notebooks, cool blue and purple ambient light with a warm desk lamp; confident expressions, clean modern design, subtle tech glow"
-                : "a cozy evening study room with a starry night window, a glowing light bulb, a toy rocket, books and doodles, a friendly white robot buddy with a glowing smiling face; warm lamp light with magical blue night tones, playful details";
-        String cast = job.getIllustrationCast() == null || job.getIllustrationCast().isBlank() ? "" : " Recurring characters (exactly this look): " + job.getIllustrationCast() + ".";
-        return (hasReference ? "Same characters, same art style and same world as the reference image. " : "")
-                + "Scene: " + what + "." + cast + " Setting: " + world + ". High-end 3D animated feature film style, soft global illumination, gentle "
-                + "rim light, expressive friendly faces, wholesome and cheerful, child-safe. Keep the top third of the frame calm and empty (soft wall, "
-                + "sky or light) for a title; characters in the lower two thirds, faces clearly visible. ABSOLUTELY NO TEXT: no letters, words, "
-                + "numbers, labels, signs, logos or watermarks anywhere.";
-    }
-
-    /** Lesson illustration in the subject's own visual language (medical = clean educational anatomy art). */
-    private String illustrationPrompt(ConceptExplainerJob job, String what) {
-        String look = healthDomain(job.getDomain())
-                ? "clean educational medical illustration, anatomically accurate, soft clinical lighting, calm teal and coral palette, plain light background, textbook quality"
-                : "clean educational illustration, clear subject, soft studio lighting, calm palette, plain light background";
-        return what + ". " + look + ". Centred subject, nothing cut off. ABSOLUTELY NO TEXT: no letters, labels, numbers, arrows or captions "
-                + "(labels are added separately), no watermark, no logo.";
-    }
-
-    private static final java.util.Set<String> SCAFFOLD = java.util.Set.of("arrow", "label", "pill", "heading", "journey", "titlecard", "outro",
-            "particles", "cables", "icon", "container");
-
-    /** Note the approach and how many different main visuals the lesson really used (low variety = a note, not a failure). */
-    private void reportVariety(ConceptExplainerJob job, String approach, int wanted) {
-        java.util.Set<String> used = new java.util.LinkedHashSet<>();
-        for (ConceptExplainerJob.Scene sc : job.getScenes()) {
-            try {
-                JsonNode plan = mapper.readTree(sc.getPlanJson());
-                for (JsonNode e : plan.path("elements")) {
-                    String t = e.path("type").asText();
-                    if (!SCAFFOLD.contains(t)) used.add(t);
-                }
-                if (plan.path("manim").isObject()) used.add("manim:" + plan.path("manim").path("template").asText());
-            } catch (Exception ignored) { }
-        }
-        if (approach != null) job.getWarnings().add("Teaching approach: " + approach.substring(0, approach.indexOf(':') > 0 ? approach.indexOf(':') : approach.length()).toLowerCase(Locale.ROOT)
-                + " · visuals used: " + String.join(", ", used));
-        if (used.size() < wanted)
-            job.getWarnings().add("Only " + used.size() + " kinds of visuals were used (aim " + wanted + "+). A larger model follows the variety rules better - or regenerate for a different approach.");
     }
 
     private ConceptExplainerJob.Scene bookend(ObjectNode plan, String line, String title) {
@@ -1472,25 +771,6 @@ public class ConceptExplainerService {
         if (tutorial(job)) {
             // one frame per narration sentence: frame k = everything that has appeared by sentence k
             DiagramRenderer.Scene scene = DiagramSpec.toScene(mapper.readTree(s.getPlanJson()), s.getSentences().size());
-            String still = manimStill(job, s);
-            if (still != null) {
-                scene = DiagramRenderer.withBackdrop(scene, still);
-                s.setAnimationPath(null);   // a fresh animation is rendered after the narration
-            }
-            String backdrop = (kids(job) || still != null) ? DiagramRenderer.backdropPath(scene) : null;
-            s.setBackdropPath(backdrop);
-            if (backdrop != null) {
-                // illustrated scene (like the Story flow): the picture is animated underneath with a slow camera move,
-                // the overlays (titles, bubbles, quiz cards) are transparent frames revealed sentence by sentence on top
-                writeSteps(job, s, diagrams.renderOverlays(scene, theme(job), vertical(job)));
-                List<BufferedImage> full = diagrams.render(scene, theme(job), vertical(job));   // picture + overlays, for the storyboard
-                Path prev = storage.resolve(dir(job) + "/slides/scene-" + num(s) + "-v" + s.getImageVersion() + "-preview.png");
-                ImageIO.write(full.get(full.size() - 1), "png", prev.toFile());
-                s.setPreviewPath(prev.toString());
-                s.setIntroPattern(null);
-                s.setTypeOverlays(new ArrayList<>());
-                return;
-            }
             List<BufferedImage> frames = diagrams.render(scene, theme(job), vertical(job));
             writeSteps(job, s, frames);
             // opening motion from the previous scene: kept elements glide, the camera pulls back for overviews,
@@ -1601,9 +881,6 @@ public class ConceptExplainerService {
             boolean tut = tutorial(job);
             if (tut) speed = question ? 0.98 : 1.0;          // reference: steady ~160 wpm, no theatrical slow-downs
             if (isBreakdown(job)) speed = question ? 1.02 : 1.07;   // breakdown reference: brisk ~175 wpm
-            if (kids(job)) speed = ageBand(job) == 1 ? (question ? 0.82 : 0.86)    // 2-5: slow, warm, clear
-                               : ageBand(job) == 3 ? 1.0                            // 10-15: normal conversational pace
-                               : (question ? 0.9 : 0.93);                            // 5-10: unhurried
             if (v.startsWith("edge:")) speed *= 0.94;          // Edge is brisk; a calmer teacher pace sounds more human
             else if (v.startsWith("indic:")) speed *= 0.98;    // IndicF5 is already natural; tiny breath room
             else if (v.startsWith("speak:")) speed *= 1.0;     // Indic-Speak is paced for explanation already (unhurried by design)
@@ -1619,13 +896,8 @@ public class ConceptExplainerService {
             if (i == 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice used:"))) job.getWarnings().add("Voice used: " + describeVoice(job));
             var audio = gateway.synthesizeForStoryLanguage(new TextToSpeechProvider.TtsRequest(
                     line, job.getVoice(), job.getLanguage(), tp.speed(), tp.pitch(),
-                    tp.emotion(), tp.intensity(), kids(job) ? (ageBand(job) == 1
-                            ? "warm, gentle children's storyteller, smiling voice, slow and clear, soft wonder, like reading a picture book to a toddler"
-                            : ageBand(job) == 3
-                            ? "friendly, energetic young creator talking to a capable teen, curious and real, never childish"
-                            : "warm, playful children's storyteller, smiling voice, gentle excitement, expressive character voices for dialogue")
-                            : tut ? "calm, confident senior instructor recording a course, conversational, steady pace, no drama"
-                            : "natural conversational tutor, " + vdir.delivery(), emphasisFor(s, line), true,
+                    tp.emotion(), tp.intensity(), tut ? "calm, confident senior instructor recording a course, conversational, steady pace, no drama"
+                            : "natural conversational tutor, " + vdir.delivery(), List.of(), true,
                     (line.contains("[laugh]") || line.contains("[chuckle]")) ? "chuckle" : null, tp.acting(), null));
             if (audio.providerWarning() != null && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice:"))) {
                 job.getWarnings().add("Voice: " + audio.providerWarning());
@@ -1637,7 +909,7 @@ public class ConceptExplainerService {
             double d = media.probeDurationSeconds(p);
             if (d <= 0) d = audio.durationSeconds();
             lengths.add(d);
-            double gap = i < s.getSentences().size() - 1 ? gapAt(job, s, i) : 0.0;
+            double gap = i < s.getSentences().size() - 1 ? gap(job, s.getSentences().get(i)) : 0.0;
             t += d + gap;
         }
         // join sentences with short breaths, then the shared voice polish (length unchanged)
@@ -1647,7 +919,7 @@ public class ConceptExplainerService {
         StringBuilder g = new StringBuilder();
         for (int i = 0; i < parts.size(); i++) {
             g.append('[').append(i).append(":a]aresample=48000,aformat=channel_layouts=stereo")
-                    .append(i < parts.size() - 1 ? ",apad=pad_dur=" + fmt(gapAt(job, s, i)) : "").append("[s").append(i).append("];");
+                    .append(i < parts.size() - 1 ? ",apad=pad_dur=" + fmt(gap(job, s.getSentences().get(i))) : "").append("[s").append(i).append("];");
         }
         for (int i = 0; i < parts.size(); i++) g.append("[s").append(i).append(']');
         g.append("concat=n=").append(parts.size()).append(":v=0:a=1[out]");
@@ -1666,13 +938,6 @@ public class ConceptExplainerService {
 
     private double gap(ConceptExplainerJob job, String sentence) {
         if (!tutorial(job)) return sentenceGap(sentence);
-        if (kids(job)) {   // pseudo-interaction: after a question to the child, leave time to answer out loud
-            String k = sentence == null ? "" : sentence.trim();
-            int b = ageBand(job);
-            if (b == 1) return k.endsWith("?") ? 2.5 : 0.8;   // toddlers: long, patient pauses
-            if (b == 3) return k.endsWith("?") ? 0.7 : 0.32;  // teens: rhetorical questions, normal pace
-            return k.endsWith("?") ? 1.4 : 0.5;
-        }
         if (vertical(job)) {   // reels: tighter (measured 0.20-0.36 s between sentences)
             String y = sentence == null ? "" : sentence.trim();
             return y.endsWith("?") ? 0.38 : 0.28;
@@ -1694,51 +959,7 @@ public class ConceptExplainerService {
     /** Vertical 1080x1920 output (60-second short, real-world breakdown). */
     static boolean vertical(ConceptExplainerJob job) { return isShort(job) || isBreakdown(job); }
 
-    /** 0 = not a kids lesson, 1 = ages 2-5, 2 = ages 5-10, 3 = ages 10-15. */
-    static int ageBand(ConceptExplainerJob job) {
-        String t = job == null ? null : job.getTrack();
-        if ("KIDS_2_5".equals(t)) return 1;
-        if ("KIDS".equals(t)) return 2;
-        if ("KIDS_10_15".equals(t)) return 3;
-        return 0;
-    }
-
-    static boolean kids(ConceptExplainerJob job) { return ageBand(job) > 0; }
-
-    /** Cross-fade length: calm and slow for the youngest (fast cutting taxes their attention), brisk for teens. */
-    private static double fade(ConceptExplainerJob job) {
-        int b = ageBand(job);
-        double base = b == 1 ? 0.8 : b == 2 ? 0.5 : FADE;
-        String m = job.getMotionIntensity();          // creative dial: calm = longer, softer fades; high energy = quicker changes
-        return "LOW".equals(m) ? base + 0.2 : "HIGH".equals(m) ? Math.max(0.25, base - 0.1) : base;
-    }
-
-    private String theme(ConceptExplainerJob job) {
-        if (kids(job)) return ageBand(job) == 1 ? "toddler" : ageBand(job) == 3 ? "teen" : "kids";
-        if (isShort(job)) return "reel";
-        if (isBreakdown(job)) return "blueprint3d";
-        // the default tech look on a health / biology lesson is the wrong world: switch to the clinical look automatically
-        if ("reference".equals(job.getStyle()) && healthDomain(job.getDomain())) return "clinical";
-        return job.getStyle();
-    }
-
-    static boolean healthDomain(String d) {
-        String x = d == null ? "" : d.toLowerCase(Locale.ROOT);
-        return x.contains("medic") || x.contains("health") || x.contains("biolog") || x.contains("anatom") || x.contains("body");
-    }
-
-    /** Subject area from the planner, with a keyword safety net for when the model leaves it out. */
-    static String detectDomain(String fromModel, String topic) {
-        if (fromModel != null && !fromModel.isBlank() && !fromModel.equalsIgnoreCase("other")) return fromModel.toLowerCase(Locale.ROOT);
-        String t = topic == null ? "" : topic.toLowerCase(Locale.ROOT);
-        String[] med = {"ear", "eye", "heart", "blood", "lung", "breath", "brain", "tooth", "teeth", "bone", "skin", "fever", "virus", "bacteria",
-                "vaccine", "immune", "disease", "doctor", "medicine", "diabetes", "sugar level", "cancer", "pain", "sleep", "digest", "stomach",
-                "kidney", "liver", "muscle", "allergy", "infection", "pregnan", "hormone", "body", "health", "cell", "dna", "gene"};
-        for (String k : med) if (t.matches(".*\\b" + k + ".*")) return "medical";
-        String[] fin = {"money", "loan", "interest", "tax", "invest", "stock", "mutual fund", "emi", "budget", "salary", "inflation", "bank"};
-        for (String k : fin) if (t.contains(k)) return "finance";
-        return "technology";
-    }
+    private String theme(ConceptExplainerJob job) { return isShort(job) ? "reel" : isBreakdown(job) ? "blueprint3d" : job.getStyle(); }
 
     /** Reference-video teaching + diagram engine, for every visual style unless the user picked the classic slides. */
     /** Plain-language name of the narrator, so a US / Indian / native voice choice is visible on the lesson. */
@@ -1820,27 +1041,25 @@ public class ConceptExplainerService {
         List<String> steps = s.getStepPaths();
         List<Double> t = s.getStepTimes();
         int n = "STATIC".equals(job.getMotion()) ? 1 : steps.size();
-        String backdrop = s.getBackdropPath() != null && Files.isRegularFile(Path.of(s.getBackdropPath())) ? s.getBackdropPath() : null;
-        String pix = backdrop != null ? "yuva420p" : "yuv420p";   // overlay frames keep their transparency over the picture
         List<String> args = new ArrayList<>(List.of("ffmpeg", "-nostdin", "-y"));
         StringBuilder f = new StringBuilder();
         if (n == 1) {
             args.addAll(List.of("-loop", "1", "-framerate", "30", "-t", fmt(total), "-i", steps.get(steps.size() - 1)));
-            f.append("[0:v]fps=30,format=").append(pix).append(",setsar=1[v0]");
+            f.append("[0:v]fps=30,format=yuv420p,setsar=1[v0]");
         } else {
             for (int k = 0; k < n; k++) {
                 double end = k + 1 < n ? t.get(k + 1) : total;
-                double len = (end - t.get(k)) + (k == 0 ? 0 : fade(job));
+                double len = (end - t.get(k)) + (k == 0 ? 0 : FADE);
                 if (k == 0) len = t.get(1);
-                if (k == n - 1 && k > 0) len = total - t.get(k) + fade(job);
+                if (k == n - 1 && k > 0) len = total - t.get(k) + FADE;
                 args.addAll(List.of("-loop", "1", "-framerate", "30", "-t", fmt(len), "-i", steps.get(k)));
-                f.append('[').append(k).append(":v]fps=30,format=").append(pix).append(",setsar=1[i").append(k).append("];");
+                f.append('[').append(k).append(":v]fps=30,format=yuv420p,setsar=1[i").append(k).append("];");
             }
             String prev = "i0";
             for (int k = 1; k < n; k++) {
                 String out = k == n - 1 ? "v0" : "x" + k;
-                f.append('[').append(prev).append("][i").append(k).append("]xfade=transition=fade:duration=").append(fmt(fade(job)))
-                        .append(":offset=").append(fmt(t.get(k) - fade(job))).append('[').append(out).append("];");
+                f.append('[').append(prev).append("][i").append(k).append("]xfade=transition=fade:duration=").append(fmt(FADE))
+                        .append(":offset=").append(fmt(t.get(k) - FADE)).append('[').append(out).append("];");
                 prev = out;
             }
             f.setLength(f.length() - 1);
@@ -1849,24 +1068,6 @@ public class ConceptExplainerService {
         boolean moving = !"STATIC".equals(job.getMotion());
         String cur = "v0";
         int input = n;
-        int vw0 = vertical(job) ? 1080 : 1920, vh0 = vertical(job) ? 1920 : 1080;
-        String anim = s.getAnimationPath() != null && Files.isRegularFile(Path.of(s.getAnimationPath())) ? s.getAnimationPath() : null;
-        if (backdrop != null && anim != null) {
-            // animated cartoon: the Wan clip of this picture, held on its last frame if the narration is longer
-            args.addAll(List.of("-i", anim));
-            f.append(";[").append(input).append(":v]scale=").append(vw0).append(':').append(vh0)
-                    .append(":force_original_aspect_ratio=increase:flags=lanczos,crop=").append(vw0).append(':').append(vh0)
-                    .append(",fps=30,setsar=1,tpad=stop_mode=clone:stop_duration=").append(fmt(total)).append(",format=yuv420p[bg]")
-                    .append(";[bg][").append(cur).append("]overlay=format=auto,format=yuv420p[vb]");
-            cur = "vb";
-            input++;
-        } else if (backdrop != null) {
-            args.addAll(List.of("-loop", "1", "-framerate", "30", "-t", fmt(total), "-i", backdrop));
-            f.append(';').append(kenBurns(input, vw0, vh0, total, s.getSceneNumber(), ageBand(job), moving, cameraMove(s.getCamera()), motionFactor(job)))
-                    .append(";[bg][").append(cur).append("]overlay=format=auto,format=yuv420p[vb]");
-            cur = "vb";
-            input++;
-        }
         if (s.getIntroPattern() != null && moving) {
             args.addAll(List.of("-framerate", "30", "-start_number", "0", "-i", s.getIntroPattern()));
             f.append(";[").append(input).append(":v]fps=30,format=yuv420p,setsar=1[intro];[").append(cur).append("][intro]overlay=eof_action=pass:format=auto[vi]");
@@ -1880,7 +1081,7 @@ public class ConceptExplainerService {
                 if (bar <= 0) continue;
                 int k = Integer.parseInt(entry.substring(0, bar));
                 if (k <= 0 || k >= t.size()) continue;
-                double at = Math.max(0, t.get(k) - fade(job));   // cover the cross-fade with the typing frames
+                double at = Math.max(0, t.get(k) - FADE);   // cover the cross-fade with the typing frames
                 args.addAll(List.of("-framerate", "30", "-start_number", "0", "-i", entry.substring(bar + 1)));
                 String lbl = "vt" + o;
                 f.append(";[").append(input).append(":v]fps=30,format=yuv420p,setsar=1,setpts=PTS+").append(fmt(at)).append("/TB[ty").append(o)
@@ -1892,7 +1093,7 @@ public class ConceptExplainerService {
         }
         // Camera: classic slides get the subtle push-in; breakdown reels a slow, steady dolly-in like the reference's
         // 3D camera. Applied after every overlay so nothing jumps when an overlay ends. Lessons/shorts stay still.
-        double zoom = !moving ? 0 : isBreakdown(job) ? 0.045 * motionFactor(job) : !tutorial(job) ? subtleZoom : 0;
+        double zoom = !moving ? 0 : isBreakdown(job) ? 0.045 : !tutorial(job) ? subtleZoom : 0;
         int vw = vertical(job) ? 1080 : 1920, vh = vertical(job) ? 1920 : 1080;
         if (zoom > 0) {
             f.append(";[").append(cur).append("]scale=w='2*trunc(").append(vw).append("*(1+").append(fmt(zoom)).append("*t/").append(fmt(Math.max(1, total)))
@@ -1900,17 +1101,12 @@ public class ConceptExplainerService {
         } else {
             f.append(";[").append(cur).append("]null[v]");
         }
-        String finalLabel = "[v]";
-        if (backdrop != null && kids(job)) {   // kids: each scene opens with a soft dip from white, like a page turn in a picture book (never on a dark maths scene)
-            f.append(";[v]fade=t=in:st=0:d=").append(fmt(ageBand(job) == 1 ? 0.6 : 0.4)).append(":color=white[vf]");
-            finalLabel = "[vf]";
-        }
         int audioIndex = input;
         args.addAll(List.of("-i", s.getAudioPath()));
         f.append(";[").append(audioIndex).append(":a]aresample=48000,aformat=channel_layouts=stereo,apad[a]");
         Path out = storage.resolve(dir(job) + "/clips/scene-" + num(s) + "-i" + s.getImageVersion() + "-a" + s.getAudioVersion() + ".mp4");
         Files.createDirectories(out.getParent());
-        String videoLabel = finalLabel;
+        String videoLabel = "[v]";
         List<String> captionText = s.getCaptions().size() == s.getSentences().size() ? s.getCaptions()
                 : TutorialPrompts.english(job.getLanguage()) ? s.getSentences() : List.of();
         if (isShort(job) && !s.getSentenceStarts().isEmpty() && !captionText.isEmpty()) {
@@ -1923,62 +1119,10 @@ public class ConceptExplainerService {
             videoLabel = "[vc]";
         }
         args.addAll(List.of("-filter_complex", f.toString(), "-map", videoLabel, "-map", "[a]", "-t", fmt(total),
-                "-c:v", "libx264", "-preset", "medium"));
-        // illustrated scenes keep the film tune; flat slides get NO tune plus adaptive quantisation 3, which (measured) leaves no flat bands
-        // in the soft backgrounds after two encodes, where the old stillimage tune smoothed the dither away
-        if (backdrop != null) args.addAll(List.of("-tune", "film"));
-        args.addAll(List.of("-aq-mode", "3", "-crf", "17", "-pix_fmt", "yuv420p", "-r", "30",
+                "-c:v", "libx264", "-preset", "medium", "-tune", "stillimage", "-crf", "17", "-pix_fmt", "yuv420p", "-r", "30",
                 "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", out.toString()));
         ffmpeg(args);
         s.setClipPath(out.toString());
-    }
-
-    /**
-     * Slow camera across a still illustration (the Story-flow look, no image-to-video): push-in, pan right, pull-out, pan
-     * left or a gentle rise, chosen by scene number so consecutive scenes move differently. Eased (smoothstep). Ages 2-5
-     * get half the movement (calm), teens a little more.
-     */
-    static String kenBurns(int input, int vw, int vh, double total, int sceneNumber, int band, boolean moving) {
-        return kenBurns(input, vw, vh, total, sceneNumber, band, moving, -1, 1.0);
-    }
-
-    /** Camera idea written by the story planner: 0 push-in, 1 pan-right, 2 pull-out, 3 pan-left, 4 rise, -2 hold, -1 = by scene number. */
-    static int cameraMove(String camera) {
-        String c = camera == null ? "" : camera.toLowerCase(Locale.ROOT);
-        if (c.contains("hold") || c.contains("static")) return -2;
-        if (c.contains("push") || c.contains("zoom-in") || c.contains("zoom in")) return 0;
-        if (c.contains("pan-right") || c.contains("pan right")) return 1;
-        if (c.contains("pull") || c.contains("zoom-out") || c.contains("zoom out")) return 2;
-        if (c.contains("pan-left") || c.contains("pan left")) return 3;
-        if (c.contains("rise") || c.contains("tilt-up") || c.contains("tilt up")) return 4;
-        return -1;
-    }
-
-    static double motionFactor(ConceptExplainerJob job) {
-        String m = job == null ? "MID" : job.getMotionIntensity();
-        return "LOW".equals(m) ? 0.6 : "HIGH".equals(m) ? 1.4 : 1.0;
-    }
-
-    static String kenBurns(int input, int vw, int vh, double total, int sceneNumber, int band, boolean moving, int forcedMove, double motionFactor) {
-        double amp = (band == 1 ? 0.5 : band == 3 ? 1.2 : 1.0) * motionFactor;
-        if (forcedMove == -2) moving = false;
-        String T = String.valueOf(Math.max(1.0, total));
-        String p = "(t/" + T + ")*(t/" + T + ")*(3-2*(t/" + T + "))";   // smoothstep 0 -> 1
-        String base = "[" + input + ":v]scale=" + vw + ":" + vh + ":force_original_aspect_ratio=increase:flags=lanczos,crop=" + vw + ":" + vh + ",setsar=1";
-        if (!moving) return base + ",fps=30,format=yuv420p[bg]";
-        int move = forcedMove >= 0 ? forcedMove : Math.floorMod(sceneNumber - 1, 5);
-        double z0, z1;
-        String x, y;
-        switch (move) {
-            case 0 -> { z0 = 1.02; z1 = 1.02 + 0.10 * amp; x = "(iw-ow)/2"; y = "(ih-oh)/2"; }                 // push in
-            case 1 -> { z0 = z1 = 1.06 + 0.08 * amp; x = "(iw-ow)*" + p; y = "(ih-oh)/2"; }                       // pan right
-            case 2 -> { z0 = 1.02 + 0.10 * amp; z1 = 1.02; x = "(iw-ow)/2"; y = "(ih-oh)/2"; }                 // pull out
-            case 3 -> { z0 = z1 = 1.06 + 0.08 * amp; x = "(iw-ow)*(1-" + p + ")"; y = "(ih-oh)/2"; }              // pan left
-            default -> { z0 = z1 = 1.05 + 0.08 * amp; x = "(iw-ow)/2"; y = "(ih-oh)*(1-0.8*" + p + ")"; }        // gentle rise
-        }
-        String z = z0 == z1 ? String.valueOf(z0) : "(" + z0 + "+(" + (z1 - z0) + ")*" + p + ")";
-        return base + ",fps=30,scale=w='2*trunc(" + vw + "*" + z + "/2)':h=-2:eval=frame:flags=bicubic"
-                + ",crop=" + vw + ":" + vh + ":x='" + x + "':y='" + y + "',format=yuv420p[bg]";
     }
 
     private static void filterInsertCaptions(StringBuilder f, String in, Path ass, String fontDir) {
@@ -2046,34 +1190,12 @@ public class ConceptExplainerService {
             filter = "[0:v]fade=t=in:st=0:d=0.5,fade=t=out:st=" + fadeOut + ":d=0.8[v];[0:a]afade=t=out:st=" + fadeOut + ":d=0.8[a]";
         }
         args.addAll(List.of("-filter_complex", filter, "-map", "[v]", "-map", "[a]", "-t", fmt(total),
-                "-c:v", "libx264", "-preset", "medium", "-aq-mode", "3", "-crf", "17", "-pix_fmt", "yuv420p",
+                "-c:v", "libx264", "-preset", "medium", "-tune", "stillimage", "-crf", "17", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out.toString()));
         ffmpeg(args);
         String previous = job.getVideoPath();
-        // One volume for every lesson, whichever voice engine spoke it (Piper, Edge, Chatterbox and Indic voices differ a lot):
-        // -14 LUFS for social, -16 LUFS for classroom use. Two-pass, linear gain, picture untouched; never fails the lesson.
-        try {
-            var target = com.aistorystudio.qa.Loudness.of("CLASSROOM".equalsIgnoreCase(job.getDestination()) ? "podcast" : "social");
-            Path leveled = out.resolveSibling("ln-" + out.getFileName());
-            Double before = com.aistorystudio.qa.Loudness.normalize("ffmpeg", out, leveled, target);
-            if (before != null) {
-                Files.move(leveled, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                job.getWarnings().removeIf(w -> w.startsWith("Loudness:"));
-                job.getWarnings().add(String.format(Locale.ROOT, "Loudness evened out: %.1f LUFS -> %.0f LUFS.", before, target.lufs()));
-            } else Files.deleteIfExists(leveled);
-        } catch (Exception e) {
-            log.warn("Loudness step skipped: {}", e.getMessage());
-        }
         job.setVideoPath(out.toString());
         job.setTotalDurationSeconds(media.probeDurationSeconds(out));
-        try {   // look at the finished file the way a viewer would: silent gaps, black frames, clipping (never fails the lesson)
-            var findings = com.aistorystudio.qa.RenderQa.review("ffmpeg", out, new com.aistorystudio.qa.RenderQa.Options(ageBand(job) == 1 ? 5.5 : 4.5, 0, true));
-            job.getWarnings().removeIf(w -> w.startsWith("Quality check"));
-            job.getWarnings().add(findings.isEmpty() ? "Quality check passed: no silent gaps, black frames or clipping found."
-                    : "Quality check: " + String.join(" ", com.aistorystudio.qa.RenderQa.summarise(findings, 4)));
-        } catch (Exception e) {
-            log.warn("Quality check skipped: {}", e.getMessage());
-        }
         if (previous != null && !previous.equals(out.toString())) {
             try { Files.deleteIfExists(Path.of(previous)); } catch (IOException ignored) { }
         }

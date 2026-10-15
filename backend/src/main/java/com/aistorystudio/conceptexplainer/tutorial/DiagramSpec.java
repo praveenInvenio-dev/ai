@@ -117,8 +117,7 @@ public final class DiagramSpec {
         res.put("label", text(scene, "label", ""));
         ArrayNode arr = res.putArray("elements");
         out.values().forEach(arr::add);
-        boolean manimScene = scene.path("manim").isObject();   // the animation IS the content: never add a text note on top of it
-        boolean content = manimScene, breakdownLook = false;
+        boolean content = false, breakdownLook = false;
         for (JsonNode e : arr) {
             String ty = e.path("type").asText();
             if (!List.of("journey", "photo", "particles", "arrow", "cables").contains(ty)) content = true;
@@ -146,7 +145,7 @@ public final class DiagramSpec {
                 if (warnings != null) warnings.add("scene had no content elements - showed its key line instead");
             }
         }
-        if (arr.isEmpty() && !manimScene) { // never an empty screen: show the scene's key idea as a note
+        if (arr.isEmpty()) { // never an empty screen: show the scene's key idea as a note
             ObjectNode note = M.createObjectNode();
             note.put("id", "keyidea");
             note.put("type", "note");
@@ -163,7 +162,6 @@ public final class DiagramSpec {
     /** Field aliases + type mapping. Returns null for elements that cannot be drawn. */
     static ObjectNode normalise(ObjectNode e) {
         String type = e.path("type").asText("").trim().toLowerCase(Locale.ROOT);
-        String asked = type;   // what the model called it, before mapping (array / queue / linked_list ... keep their shape)
         type = switch (type) {
             case "box", "step", "action" -> "button";
             case "cube", "vm", "process" -> "node";
@@ -173,50 +171,6 @@ public final class DiagramSpec {
             case "compare_bars", "bar" -> "bars";
             case "title_card", "intro" -> "titlecard";
             case "end", "closing" -> "outro";
-            case "flow", "stepper", "procedure", "howto", "how_to", "process_steps" -> "steps";
-            case "history", "chronology", "time_line" -> "timeline";
-            case "versus", "vs", "comparison", "compare_table", "before_after" -> "compare";
-            case "loop", "circle", "cycle_diagram" -> "cycle";
-            case "stack", "pyramid", "levels" -> "layers";
-            case "overlap", "venn_diagram" -> "venn";
-            case "gauge_meter", "dial", "score", "level" -> "meter";
-            case "todo", "dos_donts", "do_dont", "check" -> "checklist";
-            case "metaphor", "like", "comparison_analogy" -> "analogy";
-            case "quadrant", "2x2", "grid2x2" -> "matrix";
-            case "equation", "rule", "math" -> "formula";
-            case "donut", "piechart", "pie_chart" -> "pie";
-            case "hierarchy", "taxonomy", "mindmap", "mind_map" -> "tree";
-            case "fbd", "free_body", "freebody", "force_diagram" -> "forces";
-            case "sine", "sinewave", "waveform", "sound_wave" -> "wave";
-            case "electric_circuit", "circuit_diagram" -> "circuit";
-            case "bohr", "atom_model", "shells" -> "atom";
-            case "compound", "structure", "ball_and_stick" -> "molecule";
-            case "chemical_equation", "chem_equation", "reaction_equation" -> "reaction";
-            case "periodic", "periodic_tile", "element_tile" -> "element";
-            case "labels", "annotate", "annotations", "labelled", "labeled" -> "pins";
-            case "number_line" -> "numberline";
-            case "geometry", "right_triangle" -> "triangle";
-            case "fractions", "fraction_bar" -> "fraction";
-            case "mcq", "question", "test" -> "quiz";
-            case "fact", "didyouknow", "did_you_know", "fun_fact" -> "factcard";
-            case "robot", "guide", "robo", "mascot_robot" -> "mascot";
-            case "bubble", "says", "speech_bubble" -> "speech";
-            case "star", "reward", "celebrate", "celebration" -> "badge";
-            case "banner", "title_cloud", "cloud_title", "cloud" -> "cloudtitle";
-            case "process_flow", "algorithm", "decision_flow", "flow_chart" -> "flowchart";
-            case "sequence_diagram", "uml_sequence", "interaction", "request_flow" -> "sequence";
-            case "array", "queue", "linked_list", "linkedlist", "hash_table", "hashmap", "data_structure" -> "datastruct";
-            case "periodic_table", "elements_table" -> "periodic";
-            case "energy_diagram", "energy_profile", "reaction_profile", "reaction_energy" -> "energy";
-            case "ray_diagram", "lens_diagram", "optics" -> "lens";
-            case "sales_funnel", "conversion_funnel", "pipeline_funnel" -> "funnel";
-            case "badges", "icon_row", "icon_badges" -> "iconrow";
-            case "pick", "which_one", "choose_picture" -> "choose";
-            case "counting", "counter" -> "count";
-            case "xp", "levelup", "level_up", "xpbar" -> "level";
-            case "puzzle", "brain_teaser" -> "challenge";
-            case "big_picture", "big_object" -> "bigpic";
-            case "big_small", "size_compare" -> "sizes";
             case "database", "db3d", "cylinder" -> "db";
             case "rack", "server3d" -> "server";
             case "mobile", "smartphone" -> "phone";
@@ -249,10 +203,6 @@ public final class DiagramSpec {
             type = "label";
             e.put("text", words);
         }
-        if (type.equals("datastruct") && e.path("style").asText("").isBlank()) {
-            String shape = switch (asked) { case "queue" -> "queue"; case "linked_list", "linkedlist" -> "linkedlist"; case "hash_table", "hashmap" -> "hash"; default -> "array"; };
-            e.put("style", shape);
-        }
         e.put("type", type);
         alias(e, "text", "label", "name", "value", "message", "command");
         alias(e, "title", "file", "filename", "url", "app");
@@ -277,7 +227,6 @@ public final class DiagramSpec {
                 try { e.put("content", M.writerWithDefaultPrettyPrinter().writeValueAsString(c)); } catch (Exception ex) { e.remove("content"); }
             }
         }
-        if (type.equals("pins")) alias(e, "from", "target", "on", "image", "photo");
         if (type.equals("arrow") || type.equals("cables")) {
             alias(e, "from", "source", "start");
             alias(e, "to", "target", "end");

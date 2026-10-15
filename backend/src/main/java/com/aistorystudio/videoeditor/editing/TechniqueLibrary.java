@@ -49,8 +49,7 @@ public class TechniqueLibrary {
             RenderKindEnum renderKind,
             String xfadeTransition,
             Map<String, Double> defaults,
-            Map<String, double[]> ranges,
-            String group) {
+            Map<String, double[]> ranges) {
 
         /** Clamps a parameter to its declared range, falling back to the default. */
         public double param(String key, Double requested) {
@@ -133,8 +132,7 @@ public class TechniqueLibrary {
                 kind,
                 render.path("xfadeTransition").asText(null),
                 defaults,
-                ranges,
-                n.path("group").asText(null));
+                ranges);
     }
 
     private Template parseTemplate(JsonNode n) {

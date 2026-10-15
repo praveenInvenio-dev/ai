@@ -16,8 +16,6 @@ x-app-env: &app-env
   OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
   # one engine in VRAM at a time (Ollama / ComfyUI / Chatterbox / IndicF5 / Indic-Speak): exclusive | off
   GPU_MODE: ${GPU_MODE:-exclusive}
-  # Manim sidecar (animated maths / physics scenes): only used when its profile is running
-  MANIM_BASE_URL: ${MANIM_BASE_URL:-http://manim:5008}
   # OLLAMA_MODEL is only a fallback default — the UI lets you pick any model
   # actually installed on your Ollama server from a dropdown per-story.
   OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
@@ -299,20 +297,6 @@ services:
       - indicspeak-cache:/hf-cache
     ports:
       - "127.0.0.1:5006:5006"
-    networks:
-      - ai-story-studio-net
-    restart: unless-stopped
-
-  # Manim (MIT): animated maths / physics scenes (graphs, vectors, projectile motion, algebra steps, waves ...). CPU only.
-  # Off by default. Start it with:  docker compose --profile manim up -d --build manim
-  manim:
-    profiles: ["manim"]
-    build:
-      context: ./manim-render
-    environment:
-      MANIM_PORT: 5008
-    ports:
-      - "127.0.0.1:5008:5008"
     networks:
       - ai-story-studio-net
     restart: unless-stopped

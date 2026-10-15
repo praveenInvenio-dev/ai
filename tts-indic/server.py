@@ -185,19 +185,7 @@ def synthesize():
     if not text:
         return jsonify({"error": "text is required"}), 400
 
-    # A caller-supplied reference (e.g. the user's own Voice Lab recording + its exact transcript): IndicF5 clones
-    # THAT voice, so "my voice" can speak Hindi / Kannada / Tamil ... natively.
-    custom_wav = None
-    if body.get("reference_wav_b64") and (body.get("reference_text") or "").strip():
-        import base64, tempfile
-        custom_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        custom_wav.write(base64.b64decode(body["reference_wav_b64"]))
-        custom_wav.close()
-
     prompts = {p["id"]: p for p in list_prompts()}
-    if custom_wav is not None:
-        prompts = {"custom": {"id": "custom", "ready": True, "wav": custom_wav.name, "transcript": None,
-                              "text": body["reference_text"].strip()}}
     if not prompts:
         return jsonify({
             "error": f"No reference prompts found in {PROMPTS_DIR}. IndicF5 cannot "
@@ -205,7 +193,7 @@ def synthesize():
                      "containing that clip's exact transcript."
         }), 400
 
-    prompt = prompts.get("custom") or prompts.get(voice) or next(iter(prompts.values()))
+    prompt = prompts.get(voice) or next(iter(prompts.values()))
     if not prompt["ready"]:
         return jsonify({
             "error": f"Reference '{prompt['id']}' has no transcript file. "
@@ -213,11 +201,8 @@ def synthesize():
                      "exactly what is spoken in it."
         }), 400
 
-    if prompt.get("text"):
-        ref_text = prompt["text"]
-    else:
-        with open(prompt["transcript"], "r", encoding="utf-8") as f:
-            ref_text = f.read().strip()
+    with open(prompt["transcript"], "r", encoding="utf-8") as f:
+        ref_text = f.read().strip()
 
     if _loading and _model is None:
         return jsonify({"error": "IndicF5 is still loading (first start downloads ~1.6 GB). "
@@ -250,11 +235,6 @@ def synthesize():
             app.logger.exception("IndicF5 synthesis failed")
             return jsonify({"error": f"IndicF5 synthesis failed: {type(exc).__name__}: {exc}"}), 500
 
-    if custom_wav is not None:
-        try:
-            os.unlink(custom_wav.name)
-        except OSError:
-            pass
     audio = np.asarray(audio)
     # The model returns int16 in some paths and float in others; soundfile needs
     # float32 in [-1, 1], so normalise rather than assuming one of them.

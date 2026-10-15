@@ -235,23 +235,6 @@ export class ApiService {
     return this.http.post<VideoEditorProject>(`${this.base}/video-editor/projects/${projectId}/upload/complete`, {});
   }
 
-  /** Dubs the latest rendered cut into another language (translate to fit, speak, store as the voiceover). */
-  dubVideo(projectId: string, body: { language: string; voice?: string }): Observable<{ language: string; lines: number; placed: number; sped: number; silent: number; seconds: number; preview: string[]; notes: string[] }> {
-    return this.http.post<any>(`${this.base}/video-editor/projects/${projectId}/dub`, body);
-  }
-
-  /** Measures a reference video (cut pace, loudness, silence, colour, shape) and suggests editor / lesson settings. Nothing is stored. */
-  analyseReference(file: File): Observable<{ profile: any; suggestions: any }> {
-    const fd = new FormData();
-    fd.append('file', file);
-    return this.http.post<any>(`${this.base}/reference/analyse`, fd);
-  }
-
-  generateVideoVoiceover(projectId: string, body: { script: string; voice?: string; language?: string; speed?: number }):
-      Observable<{ track: any; sentences: number; seconds: number; note?: string | null }> {
-    return this.http.post<any>(`${this.base}/video-editor/projects/${projectId}/voiceover/generate`, body);
-  }
-
   updateVideoEditorProject(projectId: string, body: Partial<VideoEditorProject>): Observable<VideoEditorProject> {
     return this.http.patch<VideoEditorProject>(`${this.base}/video-editor/projects/${projectId}`, body);
   }
@@ -732,15 +715,6 @@ export interface VoiceSegment {
 // ---- AI Video Editor ------------------------------------------------------
 
 export interface VideoEditorCapabilities {
-  dubLanguages?: string[];
-  loudnessTargets?: { id: string; label: string; lufs: number }[];
-  platforms?: { id: string; label: string; aspect: string; shortSide: number; fps: number; loudness: string; note: string }[];
-  transitions?: { id: string; name: string; group: string; seconds: number; purpose: string }[];
-  soundEffects?: string[];
-  overlayColors?: string[];
-  exportFormats?: string[];
-  exportHeights?: number[];
-  exportFps?: number[];
   maxClips: number;
   maxUploadMb: number;
   allowedVideoExtensions: string[];
@@ -768,13 +742,6 @@ export interface VideoEditorCapabilities {
 }
 
 export interface VideoEditorProject {
-  voiceoverReplace?: boolean;
-  loudness?: string | null;
-  lookIntensity?: number;
-  overlays?: string | null;
-  exportFormat?: string | null;
-  exportHeight?: number | null;
-  exportFps?: number | null;
   look?: string | null;
   titleText?: string | null;
   stabilize?: boolean;

@@ -63,9 +63,6 @@ public class VideoRenderService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private AutoCaptionService autoCaptions;
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private FinishingStep finishing;
-
     public VideoRenderService(VideoEditorProperties properties,
                               VideoEditorProjectService projectService,
                               VideoClipRepository clips,
@@ -154,8 +151,7 @@ public class VideoRenderService {
 
         // the preview cache key must change with look / stabilise (same cuts, different pixels)
         String hash = VideoEditorProjectService.hashTimeline(rows)
-                + Integer.toHexString((String.valueOf(project.getLook()) + project.isStabilize() + project.getEffects()
-                        + (finishing == null ? "" : finishing.cacheKey(project, projectId))).hashCode());
+                + Integer.toHexString((String.valueOf(project.getLook()) + project.isStabilize() + project.getEffects()).hashCode());
         Path output = kind == RenderKind.PREVIEW
                 ? storage.resolveWithin(storage.previewsDir(projectId), hash + ".mp4")
                 : storage.resolveWithin(storage.rendersDir(projectId), jobId + ".mp4");
@@ -216,20 +212,12 @@ public class VideoRenderService {
                 project.isSmartReframing(),
                 effectiveGrade(project),
                 project.isStabilize(),
-                project.getEffects(),
-                project.getLookIntensity());
+                project.getEffects());
 
         Path result = renderer.render(request,
                 (percent, stage) -> progress.report(jobId, stage, percent, null));
 
         String note = null;
-        String finishNote = null;   // kept apart: the title / caption steps below assign `note` and must not erase it
-        // Overlays (text, zoom moments, sound effects) + the voiceover with the rest of the sound ducked under it.
-        // Runs before the title and captions so they sit on top of it.
-        if (finishing != null) {
-            progress.report(jobId, "Finishing", 93, "Adding overlays, sound effects and voiceover");
-            finishNote = finishing.applyContent(project, projectId, result);
-        }
         // Title text (CapCut "Text"): animated title over the first seconds of the final cut
         if (project.getTitleText() != null && !project.getTitleText().isBlank() && kind == RenderKind.FINAL && autoCaptions != null) {
             try {
@@ -249,16 +237,7 @@ public class VideoRenderService {
                 note = "Rendered without captions (captions failed: " + e.getMessage() + ")";
             }
         }
-        // Final only: export container / resolution / frame rate, then a quick quality look at the finished file
-        StringBuilder extra = new StringBuilder();
-        for (String part : new String[]{finishNote, note}) if (part != null && !part.isBlank()) extra.append(extra.length() > 0 ? " " : "").append(part);
-        if (kind == RenderKind.FINAL && finishing != null) {
-            result = finishing.applyExport(project, result, jobId, extra);
-            finishing.applyLoudness(project, result, extra);     // last: the delivered audio sits exactly on the target
-            String qa = finishing.qualityNote(result, 0);
-            if (qa != null) extra.append(extra.length() > 0 ? " " : "").append(qa);
-        }
-        finish(jobId, projectId, result, kind, extra.length() == 0 ? null : extra.toString());
+        finish(jobId, projectId, result, kind, note);
     }
 
     private void finish(UUID jobId, UUID projectId, Path output, RenderKind kind, String note) {
