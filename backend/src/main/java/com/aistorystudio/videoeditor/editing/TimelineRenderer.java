@@ -75,7 +75,8 @@ public class TimelineRenderer {
             boolean smartReframing,
             String colorGrade,
             boolean stabilize,
-            String effects) {}
+            String effects,
+            double lookIntensity) {}
 
     /**
      * Fixed, built-in color grade presets, each a plain FFmpeg eq/colorbalance
@@ -242,8 +243,16 @@ public class TimelineRenderer {
         filters.add("fps=" + OUTPUT_FPS);
 
         String grade = colorGradeFilter(request.colorGrade());
-        if (grade != null) {
-            filters.add(grade);
+        double strength = Math.max(0, Math.min(1, request.lookIntensity()));
+        if (grade != null && strength > 0.01) {
+            if (strength >= 0.99) {
+                filters.add(grade);
+            } else {
+                // Look intensity (Cardboard: LUT strength): blend the graded picture over the original at the chosen opacity
+                // blend's FIRST input is the layer drawn at the given opacity: graded on top, so 0 = original, 1 = fully graded
+                filters.add("split[li_a][li_b];[li_b]" + grade + "[li_g];[li_g][li_a]blend=all_opacity="
+                        + String.format(java.util.Locale.ROOT, "%.2f", strength));
+            }
         }
         if (request.effects() != null && !request.effects().isBlank()) {
             java.util.Set<String> chosen = new java.util.HashSet<>(java.util.Arrays.asList(request.effects().split(",")));
@@ -449,7 +458,19 @@ public class TimelineRenderer {
             String vOut = "v" + i;
             String aOut = "a" + i;
 
-            if (transition > 0.05) {
+            if (transition > 0.05 && "audioonly".equals(kind)) {
+                // Audio fade: the picture simply cuts, the sound dips out of one shot and into the next with no overlap, so
+                // picture and sound stay exactly in step (an acrossfade would shorten the audio against the video)
+                double nextDur = probeDuration(files.get(i));
+                double d = Math.max(0.05, Math.min(transition, Math.min(offset, nextDur) * 0.5));
+                graph.append('[').append(videoLabel).append("][").append(i).append(":v]")
+                     .append("concat=n=2:v=1:a=0[").append(vOut).append("];");
+                graph.append('[').append(audioLabel).append("]afade=t=out:st=").append(fmt(Math.max(0, offset - d)))
+                     .append(":d=").append(fmt(d)).append("[af").append(i).append("];");
+                graph.append('[').append(i).append(":a]afade=t=in:st=0:d=").append(fmt(d)).append("[ai").append(i).append("];");
+                graph.append("[af").append(i).append("][ai").append(i).append("]concat=n=2:v=0:a=1[").append(aOut).append("];");
+                offset += nextDur;
+            } else if (transition > 0.05) {
                 graph.append('[').append(videoLabel).append("][").append(i).append(":v]")
                      .append("xfade=transition=").append(kind)
                      .append(":duration=").append(fmt(transition))
@@ -532,6 +553,35 @@ public class TimelineRenderer {
             }
             log.warn("Could not probe {}: {}", file.getFileName(), e.getMessage());
             return 0;
+        }
+    }
+
+    /** The FFmpeg binary this renderer uses (the finishing pass runs the same one). */
+    public String ffmpegBin() { return ffmpegBin; }
+
+    public record StreamInfo(boolean hasAudio, int width, int height) {}
+
+    /** Whether a file has an audio stream, and its picture size (the finishing pass needs both). */
+    public StreamInfo probeStreams(Path file) {
+        try {
+            Process p = new ProcessBuilder("ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height",
+                    "-of", "csv=p=0", file.toString()).redirectErrorStream(true).start();
+            boolean audio = false;
+            int w = 0, h = 0;
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    String[] c = line.trim().split(",");
+                    if (c.length >= 3 && c[0].equals("video") && w == 0) { w = Integer.parseInt(c[1]); h = Integer.parseInt(c[2]); }
+                    else if (c.length >= 1 && c[0].equals("audio")) audio = true;
+                }
+            }
+            p.waitFor();
+            return new StreamInfo(audio, w, h);
+        } catch (IOException | InterruptedException | NumberFormatException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            log.warn("Could not probe streams of {}: {}", file.getFileName(), e.getMessage());
+            return new StreamInfo(true, 0, 0);
         }
     }
 

@@ -28,7 +28,9 @@ public class ConceptExplainerController {
     public record CreateRequest(String topic, String instructions, String language, String duration,
                                 String difficulty, String motion, String animationMode, String model,
                                 String track, String subject, Boolean examFocus, String voice, String style,
-                                String teachingStyle, String destination, String format) {}
+                                String teachingStyle, String destination, String format,
+                                String audience, String outcome, String tone, String concept, Boolean reviewScript,
+                                String visualVariance, String motionIntensity, String density, Boolean useManim) {}
 
     @PostMapping("/jobs")
     public ResponseEntity<Map<String, UUID>> create(@RequestBody CreateRequest r) {
@@ -38,8 +40,64 @@ public class ConceptExplainerController {
         job.setFormat(r.format());                 // TUTORIAL (default, reference-video teaching) | CLASSIC
         job.setTeachingStyle(r.teachingStyle());   // ENGAGING_TECH_TUTOR (default) | STORYTELLING_TEACHER | PROFESSIONAL_INSTRUCTOR | SIMPLE_BEGINNER
         job.setDestination(r.destination());       // SOCIAL (default, subscribe closing) | CLASSROOM
+        // pre-production: the brief, the chosen concept, the creative dials and the "review the script first" gate
+        job.setAudience(r.audience());
+        job.setOutcome(r.outcome());
+        job.setTone(r.tone());
+        job.setConcept(r.concept());
+        job.setReviewScript(Boolean.TRUE.equals(r.reviewScript()));
+        job.setDials(r.visualVariance(), r.motionIntensity(), r.density());
+        job.setUseManim(r.useManim() == null || r.useManim());
         service.generateAsync(job.getId());
         return ResponseEntity.accepted().body(Map.of("jobId", job.getId()));
+    }
+
+    /** Whether animated maths / physics scenes are possible right now (the Manim service answers). */
+    @GetMapping("/manim/status")
+    public Map<String, Object> manimStatus() {
+        return Map.of("available", service.manimAvailable(), "templates", com.aistorystudio.manim.ManimClient.TEMPLATES);
+    }
+
+    // ---- pre-production
+
+    public record ConceptsRequest(String topic, String language, String duration, String difficulty, String audience,
+                                  String outcome, String tone, String track, String model) {}
+
+    /** Concepts first: three genuinely different ways to make this video. Nothing is stored or generated. */
+    @PostMapping("/concepts")
+    public ResponseEntity<?> concepts(@RequestBody ConceptsRequest r) {
+        try {
+            return ResponseEntity.ok(Map.of("concepts", service.proposeConcepts(r.topic(), r.language(), r.duration(), r.difficulty(),
+                    r.audience(), r.outcome(), r.tone(), r.track(), r.model())));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(Map.of("error", "Could not get concepts: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())));
+        }
+    }
+
+    /** The script review is done: draw, record and build the video. */
+    @PostMapping("/jobs/{id}/continue")
+    public ResponseEntity<?> continueAfterReview(@PathVariable UUID id) {
+        try {
+            service.continueAfterReview(id);
+            service.continueAsync(id);
+            return ResponseEntity.accepted().body(Map.of("status", "queued"));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Ask the model to rewrite only the flagged scenes (same sentence count, same facts). */
+    @PostMapping("/jobs/{id}/doctor/fix")
+    public ResponseEntity<?> fixScript(@PathVariable UUID id) {
+        try {
+            service.startScriptFix(id);
+            service.fixScriptAsync(id);
+            return ResponseEntity.accepted().body(Map.of("status", "queued"));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     /** "My lessons": everything still in memory, newest first. */
@@ -70,6 +128,35 @@ public class ConceptExplainerController {
         String k = kind == null ? "image" : kind.toLowerCase(java.util.Locale.ROOT);
         service.regenerateScene(id, scene, k);
         service.regenerateSceneAsync(id, scene, k);
+        return ResponseEntity.accepted().body(Map.of("status", "queued"));
+    }
+
+    // ---- kids picture-book flow: review every picture, then make the video
+
+    public record NarrationEdit(List<String> sentences) {}
+    public record PictureRedo(String description) {}
+    public record MakeVideo(boolean animated) {}
+
+    /** Change what a scene says (one sentence per entry) while the lesson waits at the storyboard. */
+    @PutMapping("/jobs/{id}/scenes/{scene}/narration")
+    public ResponseEntity<Map<String, String>> editNarration(@PathVariable UUID id, @PathVariable int scene, @RequestBody NarrationEdit body) throws Exception {
+        service.updateNarration(id, scene, body == null ? null : body.sentences());
+        return ResponseEntity.ok(Map.of("status", "saved"));
+    }
+
+    /** Draw a new picture for a scene, optionally from a new description; same characters (cast reference). */
+    @PostMapping("/jobs/{id}/scenes/{scene}/picture")
+    public ResponseEntity<Map<String, String>> redoPicture(@PathVariable UUID id, @PathVariable int scene, @RequestBody(required = false) PictureRedo body) throws Exception {
+        service.redoPicture(id, scene, body == null ? null : body.description());
+        service.redoPictureAsync(id, scene);
+        return ResponseEntity.accepted().body(Map.of("status", "queued"));
+    }
+
+    /** Turn the reviewed pictures into the video: animated = Wan animates every picture (cartoon), otherwise camera moves. */
+    @PostMapping("/jobs/{id}/video")
+    public ResponseEntity<Map<String, String>> makeVideo(@PathVariable UUID id, @RequestBody(required = false) MakeVideo body) {
+        service.startVideo(id, body != null && body.animated());
+        service.makeVideoAsync(id);
         return ResponseEntity.accepted().body(Map.of("status", "queued"));
     }
 
@@ -128,11 +215,22 @@ public class ConceptExplainerController {
                           String difficulty, String motion, String track, String subject, boolean examFocus, ConceptExplainerJob.Status status, String stage,
                           String errorMessage, double totalDurationSeconds, int wordCount, String videoUrl,
                           List<String> warnings, int estimatedMinutes, String narratorVoice, String scriptUrl, String teachingStyle, String destination,
-                          List<SceneView> scenes) {}
+                          List<SceneView> scenes, List<IssueView> scriptIssues, int scriptWords, int scriptSeconds) {}
+
+    public record IssueView(int scene, String severity, String code, String message, boolean fixable) {}
 
     public record SceneView(int sceneNumber, String template, String title, String narration, String code,
                             double durationSeconds, int steps, String imageUrl, String audioUrl, boolean canRedraw,
-                            String sectionType, String learningObjective, String visualDescription, String voiceEmotion, String voicePace, String voiceDelivery) {}
+                            String sectionType, String learningObjective, String visualDescription, String voiceEmotion, String voicePace, String voiceDelivery,
+                            List<String> sentences, String pictureDescription) {}
+
+    private static String pictureDescription(ConceptExplainerJob.Scene s) {
+        try {
+            for (var e : new com.fasterxml.jackson.databind.ObjectMapper().readTree(s.getPlanJson() == null ? "{}" : s.getPlanJson()).path("elements"))
+                if ("photo".equals(e.path("type").asText())) return e.path("text").asText(null);
+        } catch (Exception ignored) { }
+        return null;
+    }
 
     private JobView toView(ConceptExplainerJob job) {
         String base = "/api/concept-explainer/jobs/" + job.getId();
@@ -143,13 +241,17 @@ public class ConceptExplainerController {
                 s.getImagePath() == null ? null : base + "/scenes/" + s.getSceneNumber() + "/image?v=" + s.getImageVersion(),
                 s.getAudioPath() == null ? null : base + "/scenes/" + s.getSceneNumber() + "/audio?v=" + s.getAudioVersion(),
                 "analogy".equals(s.getTemplate()) || "analogy_code".equals(s.getTemplate()),
-                s.getSectionType(), s.getLearningObjective(), s.getVisualDescription(), s.getVoiceEmotion(), s.getVoicePace(), s.getVoiceDelivery()
+                s.getSectionType(), s.getLearningObjective(), s.getVisualDescription(), s.getVoiceEmotion(), s.getVoicePace(), s.getVoiceDelivery(),
+                List.copyOf(s.getSentences()), pictureDescription(s)
         )).toList();
         int estimate = job.isDeepDive() ? 15 : 6;
         return new JobView(job.getId(), job.getTopic(), job.getTitle(), job.getSummary(), job.getLanguage(), job.getDuration(),
                 job.getDifficulty(), job.getMotion(), job.getTrack(), job.getSubject(), job.isExamFocus(), job.getStatus(), job.getStage(), job.getErrorMessage(),
                 job.getTotalDurationSeconds(), job.getWordCount(),
                 job.getVideoPath() == null ? null : base + "/video?v=" + job.getVideoVersion(),
-                List.copyOf(job.getWarnings()), estimate, job.getVoice(), base + "/script", job.getTeachingStyle(), job.getDestination(), scenes);
+                List.copyOf(job.getWarnings()), estimate, job.getVoice(), base + "/script", job.getTeachingStyle(), job.getDestination(), scenes,
+                job.getScriptReport() == null ? List.of() : job.getScriptReport().issues().stream()
+                        .map(i -> new IssueView(i.scene(), i.severity().name(), i.code(), i.message(), i.fixable())).toList(),
+                job.getScriptReport() == null ? 0 : job.getScriptReport().words(), job.getScriptReport() == null ? 0 : job.getScriptReport().seconds());
     }
 }

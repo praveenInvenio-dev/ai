@@ -1,0 +1,21 @@
+{
+  "id": "cb_fly_down",
+  "name": "Fly (down)",
+  "category": "TRANSITION",
+  "group": "Motion",
+  "purpose": "The next shot flies in over the old one, moving down.",
+  "minSourceDuration": 1.0,
+  "intensity": "dynamic",
+  "parameters": {
+    "durationSeconds": {
+      "min": 0.2,
+      "max": 1.0,
+      "default": 0.5
+    }
+  },
+  "render": {
+    "kind": "XFADE",
+    "xfadeTransition": "coverdown",
+    "durationSeconds": "$durationSeconds"
+  }
+}

@@ -119,6 +119,17 @@ public class VideoEditorProjectService {
             }
             project.setEffects(keep.isEmpty() ? null : String.join(",", keep));
         }
+        if (r.lookIntensity() != null) project.setLookIntensity(Math.max(0, Math.min(1, r.lookIntensity())));
+        // overlays go through the sanitiser: only known types, colours and sound effects survive ("" clears them all)
+        if (r.overlays() != null) project.setOverlaysJson(com.aistorystudio.videoeditor.editing.TimelineFinisher.sanitize(r.overlays()));
+        if (r.exportFormat() != null) {
+            String f = r.exportFormat().trim().toLowerCase(java.util.Locale.ROOT);
+            project.setExportFormat(com.aistorystudio.videoeditor.editing.TimelineFinisher.EXPORT_FORMATS.contains(f) && !f.equals("mp4") ? f : null);
+        }
+        if (r.exportHeight() != null) project.setExportHeight(com.aistorystudio.videoeditor.editing.TimelineFinisher.EXPORT_HEIGHTS.contains(r.exportHeight()) ? r.exportHeight() : null);
+        if (r.voiceoverReplace() != null) project.setVoiceoverReplace(r.voiceoverReplace());
+        if (r.loudness() != null) project.setLoudness(com.aistorystudio.qa.Loudness.of(r.loudness()) == null ? null : r.loudness().trim().toLowerCase(java.util.Locale.ROOT));
+        if (r.exportFps() != null) project.setExportFps(com.aistorystudio.videoeditor.editing.TimelineFinisher.EXPORT_FPS.contains(r.exportFps()) ? r.exportFps() : null);
     }
 
     public record CreateProjectRequest(
@@ -138,7 +149,14 @@ public class VideoEditorProjectService {
             String look,
             String titleText,
             Boolean stabilize,
-            String effects) {}
+            String effects,
+            Double lookIntensity,
+            String overlays,
+            String exportFormat,
+            Integer exportHeight,
+            Integer exportFps,
+            String loudness,
+            Boolean voiceoverReplace) {}
 
     @Transactional
     public VideoEditorProject create(CreateProjectRequest request) {
@@ -387,6 +405,13 @@ public class VideoEditorProjectService {
             remaining.get(i).setSortOrder(i);
         }
         clips.saveAll(remaining);
+    }
+
+    @Transactional
+    public void setVoiceoverReplace(UUID projectId, boolean replace) {
+        VideoEditorProject p = get(projectId);
+        p.setVoiceoverReplace(replace);
+        projects.save(p);
     }
 
     /**
@@ -704,6 +729,32 @@ public class VideoEditorProjectService {
     // ---- audio and captions ------------------------------------------------
 
     @Transactional
+    /** Stores generated audio (e.g. a text-to-speech voiceover) as the project's track of that kind, replacing any earlier one. */
+    public AudioTrack addAudioBytes(UUID projectId, byte[] bytes, String extension, String displayName, AudioTrackKind kind) {
+        get(projectId);
+        if (bytes == null || bytes.length == 0) throw new IllegalArgumentException("The generated audio is empty.");
+        String ext = extension == null ? "wav" : extension.toLowerCase(java.util.Locale.ROOT).replace(".", "");
+        if (!properties.allowedAudioExtensions().contains(ext)) ext = "wav";
+        audioTracks.findFirstByProjectIdAndKind(projectId, kind).ifPresent(existing -> {
+            storage.deleteQuietly(storage.resolveWithin(storage.audioDir(projectId), existing.getStoredFilename()));
+            audioTracks.delete(existing);
+        });
+        AudioTrack track = new AudioTrack();
+        track.setProjectId(projectId);
+        track.setKind(kind);
+        track.setDisplayName(sanitiseDisplayName(displayName));
+        track.setStoredFilename("placeholder");
+        track = audioTracks.save(track);
+        track.setStoredFilename(storage.storedFilenameFor(track.getId(), ext));
+        Path target = storage.resolveWithin(storage.audioDir(projectId), track.getStoredFilename());
+        try (var in = new java.io.ByteArrayInputStream(bytes)) {
+            storage.write(target, in);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not save the generated audio", e);
+        }
+        return audioTracks.save(track);
+    }
+
     public AudioTrack addAudio(UUID projectId, MultipartFile file, AudioTrackKind kind) {
         get(projectId);
         if (file.isEmpty()) {

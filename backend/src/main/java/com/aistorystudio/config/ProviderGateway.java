@@ -479,10 +479,69 @@ public class ProviderGateway {
             return new TextToSpeechProvider.TtsResult(r.audioBytes(), r.durationSeconds(), r.format(),
                     "The selected Voice Lab voice no longer exists (" + id + ") - re-select a voice. This line used " + piperFor(null) + ".");
         }
-        return synthesizeWithVoice(profile.getProvider(), profile.getVoiceName(), request.text(), request.language(),
-                request.speed(), request.pitch(), request.emotion(), request.emotionIntensity(), request.delivery(),
-                request.emphasis() == null ? java.util.List.of() : request.emphasis(), request.breath(),
-                request.paralinguisticEvent(), request.actingDirection(), profile.getReferenceTranscript());
+        String lang = request.language() == null ? "" : request.language().trim().toLowerCase(java.util.Locale.ROOT);
+        boolean english = lang.isEmpty() || lang.startsWith("english") || lang.equals("en") || lang.startsWith("en-") || lang.contains("indian english");
+        boolean indianScript = request.text() != null && request.text().chars().anyMatch(ch -> ch >= 0x0900 && ch <= 0x0DFF);
+        String why = "";
+        if (!english && indianScript && profile.getReferenceTranscript() != null && !profile.getReferenceTranscript().isBlank()) {
+            // Your own voice in Hindi / Kannada / Tamil ...: IndicF5 clones the Voice Lab recording + its transcript.
+            // (Chatterbox only knows Hindi of these, and on Indian text it tends to run on into long silences.)
+            try {
+                return indicF5Clone(request.text(), profile.getReferenceAudioKey(), profile.getReferenceTranscript());
+            } catch (Exception e) {
+                why = "IndicF5 could not use your recording (" + firstLine(e.getMessage()) + ")";
+                log.warn("{} - trying the next engine", why);
+            }
+        } else if (!english && indianScript) {
+            why = "your Voice Lab voice has no transcript, so IndicF5 cannot clone it (add the exact words you recorded in Voice Lab)";
+        }
+        boolean chatterboxKnows = english || lang.startsWith("hindi") || lang.startsWith("hinglish") || lang.equals("hi");
+        if (chatterboxKnows) {
+            try {
+                TextToSpeechProvider.TtsResult r = synthesizeWithVoice(profile.getProvider(), profile.getVoiceName(), request.text(), request.language(),
+                        request.speed(), request.pitch(), request.emotion(), request.emotionIntensity(), request.delivery(),
+                        request.emphasis() == null ? java.util.List.of() : request.emphasis(), request.breath(),
+                        request.paralinguisticEvent(), request.actingDirection(), profile.getReferenceTranscript());
+                return why.isEmpty() ? r : new TextToSpeechProvider.TtsResult(r.audioBytes(), r.durationSeconds(), r.format(),
+                        why + " - spoke with Chatterbox's multilingual model instead (less natural for Indian languages).");
+            } catch (RuntimeException e) {
+                why = (why.isEmpty() ? "" : why + "; ") + "Chatterbox failed (" + firstLine(e.getMessage()) + ")";
+            }
+        } else if (why.isEmpty()) {
+            why = "Chatterbox cannot speak " + request.language();
+        }
+        // last resort: a native voice of the same gender as the recording's name / settings
+        TextToSpeechProvider.TtsRequest nativeReq = withVoice(request, null);
+        TextToSpeechProvider.TtsResult r = synthesizeForStoryLanguage(nativeReq);
+        return new TextToSpeechProvider.TtsResult(r.audioBytes(), r.durationSeconds(), r.format(),
+                "Your Voice Lab voice could not speak this line: " + why + ". A native " + request.language() + " voice was used.");
+    }
+
+    @org.springframework.beans.factory.annotation.Value("${studio.gpu.indicf5-url:http://tts-indic:5003}")
+    private String indicF5Url;
+    @org.springframework.beans.factory.annotation.Value("${studio.voiceProfile.audioDir:/voice-profiles}")
+    private String voiceProfileDir;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private GpuMemoryManager gpuMemory;
+
+    /** IndicF5 with the user's own recording as the reference (sent with the request, nothing is copied into the sidecar). */
+    private TextToSpeechProvider.TtsResult indicF5Clone(String text, String referenceAudioKey, String transcript) throws Exception {
+        java.nio.file.Path dir = java.nio.file.Path.of(voiceProfileDir).normalize();
+        java.nio.file.Path wav = dir.resolve(referenceAudioKey + ".wav").normalize();
+        if (!wav.startsWith(dir) || !java.nio.file.Files.isRegularFile(wav)) throw new IllegalStateException("reference recording not found");
+        if (gpuMemory != null) gpuMemory.prepare(GpuMemoryManager.Engine.INDICF5);
+        String body = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(java.util.Map.of(
+                "text", text, "reference_text", transcript.trim(),
+                "reference_wav_b64", java.util.Base64.getEncoder().encodeToString(java.nio.file.Files.readAllBytes(wav))));
+        var client = java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(5)).build();
+        var resp = client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(indicF5Url.replaceAll("/+$", "") + "/api/tts"))
+                        .timeout(java.time.Duration.ofMinutes(5)).header("Content-Type", "application/json")
+                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)).build(),
+                java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+        if (resp.statusCode() != 200) throw new IllegalStateException("IndicF5 " + resp.statusCode() + ": " + new String(resp.body(), java.nio.charset.StandardCharsets.UTF_8));
+        byte[] audio = resp.body();
+        double seconds = Math.max(0.1, (audio.length - 44) / (24000.0 * 2));   // 24 kHz mono PCM16 from the sidecar
+        return new TextToSpeechProvider.TtsResult(audio, seconds, "wav", null);
     }
 
     /** Speak through the local tts service; if that fails, a local Piper voice of the SAME gender (never silently female). */

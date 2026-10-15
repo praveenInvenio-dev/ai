@@ -41,6 +41,9 @@ studio:
     mode: ${GPU_MODE:exclusive}
     indicf5-url: ${INDICF5_BASE_URL:http://tts-indic:5003}
     indicspeak-url: ${INDICSPEAK_BASE_URL:http://tts-indicspeak:5006}
+  # Manim sidecar (animated maths / physics scenes); only reachable when the `manim` compose profile is running
+  manim:
+    url: ${MANIM_BASE_URL:http://manim:5008}
   demoMode: ${DEMO_MODE:false}
   # Spec section 34: when true, no external network call is allowed from
   # this app. Real enforcement, not just a label - see ProviderGateway

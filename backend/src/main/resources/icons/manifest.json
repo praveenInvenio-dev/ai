@@ -1,0 +1,8267 @@
+{
+ "emoji": {
+  "abacus": {
+   "group": "objects",
+   "tags": [
+    "abacus"
+   ]
+  },
+  "airplane": {
+   "group": "vehicles",
+   "tags": [
+    "airplane"
+   ]
+  },
+  "airport_tower": {
+   "group": "places",
+   "tags": [
+    "airport tower"
+   ]
+  },
+  "alarm_clock": {
+   "group": "objects",
+   "tags": [
+    "alarm clock"
+   ]
+  },
+  "alien": {
+   "group": "objects",
+   "tags": [
+    "alien"
+   ]
+  },
+  "ambulance": {
+   "group": "vehicles",
+   "tags": [
+    "ambulance"
+   ]
+  },
+  "ant": {
+   "group": "animals",
+   "tags": [
+    "ant"
+   ]
+  },
+  "apple": {
+   "group": "food",
+   "tags": [
+    "apple"
+   ]
+  },
+  "atom": {
+   "group": "objects",
+   "tags": [
+    "atom"
+   ]
+  },
+  "auto_rickshaw": {
+   "group": "vehicles",
+   "tags": [
+    "auto rickshaw"
+   ]
+  },
+  "avocado": {
+   "group": "food",
+   "tags": [
+    "avocado"
+   ]
+  },
+  "backpack": {
+   "group": "objects",
+   "tags": [
+    "backpack"
+   ]
+  },
+  "balloon": {
+   "group": "objects",
+   "tags": [
+    "balloon"
+   ]
+  },
+  "banana": {
+   "group": "food",
+   "tags": [
+    "banana"
+   ]
+  },
+  "bandage": {
+   "group": "objects",
+   "tags": [
+    "bandage"
+   ]
+  },
+  "bank": {
+   "group": "objects",
+   "tags": [
+    "bank"
+   ]
+  },
+  "bar_chart": {
+   "group": "objects",
+   "tags": [
+    "bar chart"
+   ]
+  },
+  "basketball": {
+   "group": "objects",
+   "tags": [
+    "basketball"
+   ]
+  },
+  "bat": {
+   "group": "animals",
+   "tags": [
+    "bat"
+   ]
+  },
+  "battery": {
+   "group": "objects",
+   "tags": [
+    "battery"
+   ]
+  },
+  "beach": {
+   "group": "places",
+   "tags": [
+    "beach"
+   ]
+  },
+  "bear": {
+   "group": "animals",
+   "tags": [
+    "bear"
+   ]
+  },
+  "bee": {
+   "group": "animals",
+   "tags": [
+    "bee"
+   ]
+  },
+  "bell": {
+   "group": "objects",
+   "tags": [
+    "bell"
+   ]
+  },
+  "bicycle": {
+   "group": "vehicles",
+   "tags": [
+    "bicycle"
+   ]
+  },
+  "blossom": {
+   "group": "nature",
+   "tags": [
+    "blossom"
+   ]
+  },
+  "blue_circle": {
+   "group": "shapes",
+   "tags": [
+    "blue circle"
+   ]
+  },
+  "blue_heart": {
+   "group": "shapes",
+   "tags": [
+    "blue heart"
+   ]
+  },
+  "blue_square": {
+   "group": "shapes",
+   "tags": [
+    "blue square"
+   ]
+  },
+  "bomb": {
+   "group": "objects",
+   "tags": [
+    "bomb"
+   ]
+  },
+  "bone": {
+   "group": "objects",
+   "tags": [
+    "bone"
+   ]
+  },
+  "book": {
+   "group": "objects",
+   "tags": [
+    "book"
+   ]
+  },
+  "books": {
+   "group": "objects",
+   "tags": [
+    "books"
+   ]
+  },
+  "brain": {
+   "group": "objects",
+   "tags": [
+    "brain"
+   ]
+  },
+  "bread": {
+   "group": "food",
+   "tags": [
+    "bread"
+   ]
+  },
+  "bridge": {
+   "group": "places",
+   "tags": [
+    "bridge"
+   ]
+  },
+  "broccoli": {
+   "group": "food",
+   "tags": [
+    "broccoli"
+   ]
+  },
+  "bullet_train": {
+   "group": "vehicles",
+   "tags": [
+    "bullet train"
+   ]
+  },
+  "burger": {
+   "group": "food",
+   "tags": [
+    "burger"
+   ]
+  },
+  "bus": {
+   "group": "vehicles",
+   "tags": [
+    "bus"
+   ]
+  },
+  "butterfly": {
+   "group": "animals",
+   "tags": [
+    "butterfly"
+   ]
+  },
+  "cactus": {
+   "group": "nature",
+   "tags": [
+    "cactus"
+   ]
+  },
+  "cake": {
+   "group": "food",
+   "tags": [
+    "cake"
+   ]
+  },
+  "calculator": {
+   "group": "objects",
+   "tags": [
+    "calculator"
+   ]
+  },
+  "calendar": {
+   "group": "objects",
+   "tags": [
+    "calendar"
+   ]
+  },
+  "camel": {
+   "group": "animals",
+   "tags": [
+    "camel"
+   ]
+  },
+  "camera": {
+   "group": "objects",
+   "tags": [
+    "camera"
+   ]
+  },
+  "camping": {
+   "group": "places",
+   "tags": [
+    "camping"
+   ]
+  },
+  "candle": {
+   "group": "objects",
+   "tags": [
+    "candle"
+   ]
+  },
+  "candy": {
+   "group": "food",
+   "tags": [
+    "candy"
+   ]
+  },
+  "car": {
+   "group": "vehicles",
+   "tags": [
+    "car"
+   ]
+  },
+  "carrot": {
+   "group": "food",
+   "tags": [
+    "carrot"
+   ]
+  },
+  "castle": {
+   "group": "places",
+   "tags": [
+    "castle"
+   ]
+  },
+  "cat": {
+   "group": "animals",
+   "tags": [
+    "cat"
+   ]
+  },
+  "chart_up": {
+   "group": "objects",
+   "tags": [
+    "chart up"
+   ]
+  },
+  "check": {
+   "group": "shapes",
+   "tags": [
+    "check"
+   ]
+  },
+  "cheese": {
+   "group": "food",
+   "tags": [
+    "cheese"
+   ]
+  },
+  "cherries": {
+   "group": "food",
+   "tags": [
+    "cherries"
+   ]
+  },
+  "chess": {
+   "group": "objects",
+   "tags": [
+    "chess"
+   ]
+  },
+  "chick": {
+   "group": "animals",
+   "tags": [
+    "chick"
+   ]
+  },
+  "chicken": {
+   "group": "animals",
+   "tags": [
+    "chicken"
+   ]
+  },
+  "chocolate": {
+   "group": "food",
+   "tags": [
+    "chocolate"
+   ]
+  },
+  "church": {
+   "group": "places",
+   "tags": [
+    "church"
+   ]
+  },
+  "city": {
+   "group": "places",
+   "tags": [
+    "city"
+   ]
+  },
+  "clipboard": {
+   "group": "objects",
+   "tags": [
+    "clipboard"
+   ]
+  },
+  "cloud": {
+   "group": "nature",
+   "tags": [
+    "cloud"
+   ]
+  },
+  "coconut": {
+   "group": "food",
+   "tags": [
+    "coconut"
+   ]
+  },
+  "coffee": {
+   "group": "food",
+   "tags": [
+    "coffee"
+   ]
+  },
+  "coin": {
+   "group": "objects",
+   "tags": [
+    "coin"
+   ]
+  },
+  "comet": {
+   "group": "nature",
+   "tags": [
+    "comet"
+   ]
+  },
+  "compass": {
+   "group": "objects",
+   "tags": [
+    "compass"
+   ]
+  },
+  "construction": {
+   "group": "places",
+   "tags": [
+    "construction"
+   ]
+  },
+  "cookie": {
+   "group": "food",
+   "tags": [
+    "cookie"
+   ]
+  },
+  "corn": {
+   "group": "food",
+   "tags": [
+    "corn"
+   ]
+  },
+  "cow": {
+   "group": "animals",
+   "tags": [
+    "cow"
+   ]
+  },
+  "crab": {
+   "group": "animals",
+   "tags": [
+    "crab"
+   ]
+  },
+  "credit_card": {
+   "group": "objects",
+   "tags": [
+    "credit card"
+   ]
+  },
+  "crescent_moon": {
+   "group": "nature",
+   "tags": [
+    "crescent moon"
+   ]
+  },
+  "cricket": {
+   "group": "objects",
+   "tags": [
+    "cricket"
+   ]
+  },
+  "crocodile": {
+   "group": "animals",
+   "tags": [
+    "crocodile"
+   ]
+  },
+  "cross": {
+   "group": "shapes",
+   "tags": [
+    "cross"
+   ]
+  },
+  "crown": {
+   "group": "objects",
+   "tags": [
+    "crown"
+   ]
+  },
+  "curry": {
+   "group": "food",
+   "tags": [
+    "curry"
+   ]
+  },
+  "deer": {
+   "group": "animals",
+   "tags": [
+    "deer"
+   ]
+  },
+  "department_store": {
+   "group": "places",
+   "tags": [
+    "department store"
+   ]
+  },
+  "desert": {
+   "group": "places",
+   "tags": [
+    "desert"
+   ]
+  },
+  "diamond": {
+   "group": "shapes",
+   "tags": [
+    "diamond"
+   ]
+  },
+  "dice": {
+   "group": "objects",
+   "tags": [
+    "dice"
+   ]
+  },
+  "dinosaur": {
+   "group": "animals",
+   "tags": [
+    "dinosaur"
+   ]
+  },
+  "dna": {
+   "group": "objects",
+   "tags": [
+    "dna"
+   ]
+  },
+  "dog": {
+   "group": "animals",
+   "tags": [
+    "dog"
+   ]
+  },
+  "dolphin": {
+   "group": "animals",
+   "tags": [
+    "dolphin"
+   ]
+  },
+  "donut": {
+   "group": "food",
+   "tags": [
+    "donut"
+   ]
+  },
+  "dove": {
+   "group": "animals",
+   "tags": [
+    "dove"
+   ]
+  },
+  "droplet": {
+   "group": "nature",
+   "tags": [
+    "droplet"
+   ]
+  },
+  "drum": {
+   "group": "objects",
+   "tags": [
+    "drum"
+   ]
+  },
+  "duck": {
+   "group": "animals",
+   "tags": [
+    "duck"
+   ]
+  },
+  "eagle": {
+   "group": "animals",
+   "tags": [
+    "eagle"
+   ]
+  },
+  "ear": {
+   "group": "objects",
+   "tags": [
+    "ear"
+   ]
+  },
+  "earth": {
+   "group": "nature",
+   "tags": [
+    "earth"
+   ]
+  },
+  "earth_americas": {
+   "group": "nature",
+   "tags": [
+    "earth americas"
+   ]
+  },
+  "earth_europe": {
+   "group": "nature",
+   "tags": [
+    "earth europe"
+   ]
+  },
+  "egg": {
+   "group": "food",
+   "tags": [
+    "egg"
+   ]
+  },
+  "eggplant": {
+   "group": "food",
+   "tags": [
+    "eggplant"
+   ]
+  },
+  "eight": {
+   "group": "shapes",
+   "tags": [
+    "eight"
+   ]
+  },
+  "elephant": {
+   "group": "animals",
+   "tags": [
+    "elephant"
+   ]
+  },
+  "elephant_calf": {
+   "group": "animals",
+   "tags": [
+    "elephant calf"
+   ]
+  },
+  "envelope": {
+   "group": "objects",
+   "tags": [
+    "envelope"
+   ]
+  },
+  "exclamation": {
+   "group": "shapes",
+   "tags": [
+    "exclamation"
+   ]
+  },
+  "eye": {
+   "group": "objects",
+   "tags": [
+    "eye"
+   ]
+  },
+  "factory": {
+   "group": "places",
+   "tags": [
+    "factory"
+   ]
+  },
+  "fallen_leaf": {
+   "group": "nature",
+   "tags": [
+    "fallen leaf"
+   ]
+  },
+  "farm": {
+   "group": "places",
+   "tags": [
+    "farm"
+   ]
+  },
+  "film": {
+   "group": "objects",
+   "tags": [
+    "film"
+   ]
+  },
+  "fire": {
+   "group": "nature",
+   "tags": [
+    "fire"
+   ]
+  },
+  "fire_truck": {
+   "group": "vehicles",
+   "tags": [
+    "fire truck"
+   ]
+  },
+  "fish": {
+   "group": "animals",
+   "tags": [
+    "fish"
+   ]
+  },
+  "five": {
+   "group": "shapes",
+   "tags": [
+    "five"
+   ]
+  },
+  "flag": {
+   "group": "objects",
+   "tags": [
+    "flag"
+   ]
+  },
+  "flamingo": {
+   "group": "animals",
+   "tags": [
+    "flamingo"
+   ]
+  },
+  "footprints": {
+   "group": "objects",
+   "tags": [
+    "footprints"
+   ]
+  },
+  "four": {
+   "group": "shapes",
+   "tags": [
+    "four"
+   ]
+  },
+  "four_leaf_clover": {
+   "group": "nature",
+   "tags": [
+    "four leaf clover"
+   ]
+  },
+  "fox": {
+   "group": "animals",
+   "tags": [
+    "fox"
+   ]
+  },
+  "frog": {
+   "group": "animals",
+   "tags": [
+    "frog"
+   ]
+  },
+  "garlic": {
+   "group": "food",
+   "tags": [
+    "garlic"
+   ]
+  },
+  "gear": {
+   "group": "objects",
+   "tags": [
+    "gear"
+   ]
+  },
+  "gift": {
+   "group": "objects",
+   "tags": [
+    "gift"
+   ]
+  },
+  "giraffe": {
+   "group": "animals",
+   "tags": [
+    "giraffe"
+   ]
+  },
+  "globe_meridians": {
+   "group": "nature",
+   "tags": [
+    "globe meridians"
+   ]
+  },
+  "glowing_star": {
+   "group": "nature",
+   "tags": [
+    "glowing star"
+   ]
+  },
+  "goat": {
+   "group": "animals",
+   "tags": [
+    "goat"
+   ]
+  },
+  "gold_medal": {
+   "group": "objects",
+   "tags": [
+    "gold medal"
+   ]
+  },
+  "grapes": {
+   "group": "food",
+   "tags": [
+    "grapes"
+   ]
+  },
+  "green_apple": {
+   "group": "food",
+   "tags": [
+    "green apple"
+   ]
+  },
+  "green_circle": {
+   "group": "shapes",
+   "tags": [
+    "green circle"
+   ]
+  },
+  "green_heart": {
+   "group": "shapes",
+   "tags": [
+    "green heart"
+   ]
+  },
+  "green_square": {
+   "group": "shapes",
+   "tags": [
+    "green square"
+   ]
+  },
+  "guitar": {
+   "group": "objects",
+   "tags": [
+    "guitar"
+   ]
+  },
+  "hammer": {
+   "group": "objects",
+   "tags": [
+    "hammer"
+   ]
+  },
+  "headphone": {
+   "group": "objects",
+   "tags": [
+    "headphone"
+   ]
+  },
+  "heart_anatomical": {
+   "group": "objects",
+   "tags": [
+    "heart anatomical"
+   ]
+  },
+  "hedgehog": {
+   "group": "animals",
+   "tags": [
+    "hedgehog"
+   ]
+  },
+  "helicopter": {
+   "group": "vehicles",
+   "tags": [
+    "helicopter"
+   ]
+  },
+  "herb": {
+   "group": "nature",
+   "tags": [
+    "herb"
+   ]
+  },
+  "hindu_temple": {
+   "group": "places",
+   "tags": [
+    "hindu temple"
+   ]
+  },
+  "hippo": {
+   "group": "animals",
+   "tags": [
+    "hippo"
+   ]
+  },
+  "honey": {
+   "group": "food",
+   "tags": [
+    "honey"
+   ]
+  },
+  "horse": {
+   "group": "animals",
+   "tags": [
+    "horse"
+   ]
+  },
+  "hospital": {
+   "group": "objects",
+   "tags": [
+    "hospital"
+   ]
+  },
+  "hotel": {
+   "group": "places",
+   "tags": [
+    "hotel"
+   ]
+  },
+  "hourglass": {
+   "group": "objects",
+   "tags": [
+    "hourglass"
+   ]
+  },
+  "house": {
+   "group": "objects",
+   "tags": [
+    "house"
+   ]
+  },
+  "hundred": {
+   "group": "shapes",
+   "tags": [
+    "hundred"
+   ]
+  },
+  "ice_cream": {
+   "group": "food",
+   "tags": [
+    "ice cream"
+   ]
+  },
+  "island": {
+   "group": "places",
+   "tags": [
+    "island"
+   ]
+  },
+  "kangaroo": {
+   "group": "animals",
+   "tags": [
+    "kangaroo"
+   ]
+  },
+  "key": {
+   "group": "objects",
+   "tags": [
+    "key"
+   ]
+  },
+  "koala": {
+   "group": "animals",
+   "tags": [
+    "koala"
+   ]
+  },
+  "ladybug": {
+   "group": "animals",
+   "tags": [
+    "ladybug"
+   ]
+  },
+  "laptop": {
+   "group": "objects",
+   "tags": [
+    "laptop"
+   ]
+  },
+  "leaf": {
+   "group": "nature",
+   "tags": [
+    "leaf"
+   ]
+  },
+  "lemon": {
+   "group": "food",
+   "tags": [
+    "lemon"
+   ]
+  },
+  "light_bulb": {
+   "group": "objects",
+   "tags": [
+    "light bulb"
+   ]
+  },
+  "lightning": {
+   "group": "nature",
+   "tags": [
+    "lightning"
+   ]
+  },
+  "lion": {
+   "group": "animals",
+   "tags": [
+    "lion"
+   ]
+  },
+  "lobster": {
+   "group": "animals",
+   "tags": [
+    "lobster"
+   ]
+  },
+  "lock": {
+   "group": "objects",
+   "tags": [
+    "lock"
+   ]
+  },
+  "lollipop": {
+   "group": "food",
+   "tags": [
+    "lollipop"
+   ]
+  },
+  "lungs": {
+   "group": "objects",
+   "tags": [
+    "lungs"
+   ]
+  },
+  "magnet": {
+   "group": "objects",
+   "tags": [
+    "magnet"
+   ]
+  },
+  "magnifier": {
+   "group": "objects",
+   "tags": [
+    "magnifier"
+   ]
+  },
+  "mango": {
+   "group": "food",
+   "tags": [
+    "mango"
+   ]
+  },
+  "map": {
+   "group": "objects",
+   "tags": [
+    "map"
+   ]
+  },
+  "metro": {
+   "group": "vehicles",
+   "tags": [
+    "metro"
+   ]
+  },
+  "microphone": {
+   "group": "objects",
+   "tags": [
+    "microphone"
+   ]
+  },
+  "microscope": {
+   "group": "objects",
+   "tags": [
+    "microscope"
+   ]
+  },
+  "milk": {
+   "group": "food",
+   "tags": [
+    "milk"
+   ]
+  },
+  "money_bag": {
+   "group": "objects",
+   "tags": [
+    "money bag"
+   ]
+  },
+  "monkey": {
+   "group": "animals",
+   "tags": [
+    "monkey"
+   ]
+  },
+  "moon": {
+   "group": "nature",
+   "tags": [
+    "moon"
+   ]
+  },
+  "mosque": {
+   "group": "places",
+   "tags": [
+    "mosque"
+   ]
+  },
+  "motorcycle": {
+   "group": "vehicles",
+   "tags": [
+    "motorcycle"
+   ]
+  },
+  "mount_fuji": {
+   "group": "places",
+   "tags": [
+    "mount fuji"
+   ]
+  },
+  "mountain": {
+   "group": "nature",
+   "tags": [
+    "mountain"
+   ]
+  },
+  "mouse": {
+   "group": "animals",
+   "tags": [
+    "mouse"
+   ]
+  },
+  "mushroom": {
+   "group": "food",
+   "tags": [
+    "mushroom"
+   ]
+  },
+  "mushroom_red": {
+   "group": "nature",
+   "tags": [
+    "mushroom red"
+   ]
+  },
+  "music_note": {
+   "group": "objects",
+   "tags": [
+    "music note"
+   ]
+  },
+  "national_park": {
+   "group": "places",
+   "tags": [
+    "national park"
+   ]
+  },
+  "newspaper": {
+   "group": "objects",
+   "tags": [
+    "newspaper"
+   ]
+  },
+  "night_city": {
+   "group": "places",
+   "tags": [
+    "night city"
+   ]
+  },
+  "nine": {
+   "group": "shapes",
+   "tags": [
+    "nine"
+   ]
+  },
+  "octopus": {
+   "group": "animals",
+   "tags": [
+    "octopus"
+   ]
+  },
+  "office": {
+   "group": "places",
+   "tags": [
+    "office"
+   ]
+  },
+  "one": {
+   "group": "shapes",
+   "tags": [
+    "one"
+   ]
+  },
+  "onion": {
+   "group": "food",
+   "tags": [
+    "onion"
+   ]
+  },
+  "open_book": {
+   "group": "objects",
+   "tags": [
+    "open book"
+   ]
+  },
+  "orange": {
+   "group": "food",
+   "tags": [
+    "orange"
+   ]
+  },
+  "orange_circle": {
+   "group": "shapes",
+   "tags": [
+    "orange circle"
+   ]
+  },
+  "orange_diamond": {
+   "group": "shapes",
+   "tags": [
+    "orange diamond"
+   ]
+  },
+  "orange_heart": {
+   "group": "shapes",
+   "tags": [
+    "orange heart"
+   ]
+  },
+  "orange_square": {
+   "group": "shapes",
+   "tags": [
+    "orange square"
+   ]
+  },
+  "owl": {
+   "group": "animals",
+   "tags": [
+    "owl"
+   ]
+  },
+  "package": {
+   "group": "objects",
+   "tags": [
+    "package"
+   ]
+  },
+  "paintbrush": {
+   "group": "objects",
+   "tags": [
+    "paintbrush"
+   ]
+  },
+  "palette": {
+   "group": "objects",
+   "tags": [
+    "palette"
+   ]
+  },
+  "palm_tree": {
+   "group": "nature",
+   "tags": [
+    "palm tree"
+   ]
+  },
+  "panda": {
+   "group": "animals",
+   "tags": [
+    "panda"
+   ]
+  },
+  "paperclip": {
+   "group": "objects",
+   "tags": [
+    "paperclip"
+   ]
+  },
+  "parachute": {
+   "group": "vehicles",
+   "tags": [
+    "parachute"
+   ]
+  },
+  "parrot": {
+   "group": "animals",
+   "tags": [
+    "parrot"
+   ]
+  },
+  "party": {
+   "group": "objects",
+   "tags": [
+    "party"
+   ]
+  },
+  "peach": {
+   "group": "food",
+   "tags": [
+    "peach"
+   ]
+  },
+  "peacock": {
+   "group": "animals",
+   "tags": [
+    "peacock"
+   ]
+  },
+  "pear": {
+   "group": "food",
+   "tags": [
+    "pear"
+   ]
+  },
+  "pencil": {
+   "group": "objects",
+   "tags": [
+    "pencil"
+   ]
+  },
+  "penguin": {
+   "group": "animals",
+   "tags": [
+    "penguin"
+   ]
+  },
+  "pepper": {
+   "group": "food",
+   "tags": [
+    "pepper"
+   ]
+  },
+  "petri_dish": {
+   "group": "objects",
+   "tags": [
+    "petri dish"
+   ]
+  },
+  "phone": {
+   "group": "objects",
+   "tags": [
+    "phone"
+   ]
+  },
+  "pig": {
+   "group": "animals",
+   "tags": [
+    "pig"
+   ]
+  },
+  "pill": {
+   "group": "objects",
+   "tags": [
+    "pill"
+   ]
+  },
+  "pine_tree": {
+   "group": "nature",
+   "tags": [
+    "pine tree"
+   ]
+  },
+  "pineapple": {
+   "group": "food",
+   "tags": [
+    "pineapple"
+   ]
+  },
+  "pizza": {
+   "group": "food",
+   "tags": [
+    "pizza"
+   ]
+  },
+  "planet": {
+   "group": "nature",
+   "tags": [
+    "planet"
+   ]
+  },
+  "plug": {
+   "group": "objects",
+   "tags": [
+    "plug"
+   ]
+  },
+  "police_car": {
+   "group": "vehicles",
+   "tags": [
+    "police car"
+   ]
+  },
+  "popcorn": {
+   "group": "food",
+   "tags": [
+    "popcorn"
+   ]
+  },
+  "post_office": {
+   "group": "places",
+   "tags": [
+    "post office"
+   ]
+  },
+  "potato": {
+   "group": "food",
+   "tags": [
+    "potato"
+   ]
+  },
+  "purple_circle": {
+   "group": "shapes",
+   "tags": [
+    "purple circle"
+   ]
+  },
+  "purple_heart": {
+   "group": "shapes",
+   "tags": [
+    "purple heart"
+   ]
+  },
+  "purple_square": {
+   "group": "shapes",
+   "tags": [
+    "purple square"
+   ]
+  },
+  "puzzle": {
+   "group": "objects",
+   "tags": [
+    "puzzle"
+   ]
+  },
+  "question": {
+   "group": "shapes",
+   "tags": [
+    "question"
+   ]
+  },
+  "rabbit": {
+   "group": "animals",
+   "tags": [
+    "rabbit"
+   ]
+  },
+  "radio": {
+   "group": "objects",
+   "tags": [
+    "radio"
+   ]
+  },
+  "rainbow": {
+   "group": "nature",
+   "tags": [
+    "rainbow"
+   ]
+  },
+  "red_circle": {
+   "group": "shapes",
+   "tags": [
+    "red circle"
+   ]
+  },
+  "red_heart": {
+   "group": "shapes",
+   "tags": [
+    "red heart"
+   ]
+  },
+  "red_square": {
+   "group": "shapes",
+   "tags": [
+    "red square"
+   ]
+  },
+  "red_triangle": {
+   "group": "shapes",
+   "tags": [
+    "red triangle"
+   ]
+  },
+  "rhino": {
+   "group": "animals",
+   "tags": [
+    "rhino"
+   ]
+  },
+  "rice": {
+   "group": "food",
+   "tags": [
+    "rice"
+   ]
+  },
+  "robot": {
+   "group": "objects",
+   "tags": [
+    "robot"
+   ]
+  },
+  "rocket": {
+   "group": "vehicles",
+   "tags": [
+    "rocket"
+   ]
+  },
+  "rose": {
+   "group": "nature",
+   "tags": [
+    "rose"
+   ]
+  },
+  "ruler": {
+   "group": "objects",
+   "tags": [
+    "ruler"
+   ]
+  },
+  "sailboat": {
+   "group": "vehicles",
+   "tags": [
+    "sailboat"
+   ]
+  },
+  "salad": {
+   "group": "food",
+   "tags": [
+    "salad"
+   ]
+  },
+  "samosa": {
+   "group": "food",
+   "tags": [
+    "samosa"
+   ]
+  },
+  "sandwich": {
+   "group": "food",
+   "tags": [
+    "sandwich"
+   ]
+  },
+  "satellite": {
+   "group": "vehicles",
+   "tags": [
+    "satellite"
+   ]
+  },
+  "satellite_dish": {
+   "group": "objects",
+   "tags": [
+    "satellite dish"
+   ]
+  },
+  "sauropod": {
+   "group": "animals",
+   "tags": [
+    "sauropod"
+   ]
+  },
+  "school": {
+   "group": "objects",
+   "tags": [
+    "school"
+   ]
+  },
+  "school_building": {
+   "group": "places",
+   "tags": [
+    "school building"
+   ]
+  },
+  "scissors": {
+   "group": "objects",
+   "tags": [
+    "scissors"
+   ]
+  },
+  "scooter": {
+   "group": "vehicles",
+   "tags": [
+    "scooter"
+   ]
+  },
+  "seedling": {
+   "group": "nature",
+   "tags": [
+    "seedling"
+   ]
+  },
+  "seven": {
+   "group": "shapes",
+   "tags": [
+    "seven"
+   ]
+  },
+  "shark": {
+   "group": "animals",
+   "tags": [
+    "shark"
+   ]
+  },
+  "sheep": {
+   "group": "animals",
+   "tags": [
+    "sheep"
+   ]
+  },
+  "shield": {
+   "group": "objects",
+   "tags": [
+    "shield"
+   ]
+  },
+  "ship": {
+   "group": "vehicles",
+   "tags": [
+    "ship"
+   ]
+  },
+  "six": {
+   "group": "shapes",
+   "tags": [
+    "six"
+   ]
+  },
+  "skateboard": {
+   "group": "vehicles",
+   "tags": [
+    "skateboard"
+   ]
+  },
+  "snail": {
+   "group": "animals",
+   "tags": [
+    "snail"
+   ]
+  },
+  "snake": {
+   "group": "animals",
+   "tags": [
+    "snake"
+   ]
+  },
+  "snowflake": {
+   "group": "nature",
+   "tags": [
+    "snowflake"
+   ]
+  },
+  "snowman": {
+   "group": "nature",
+   "tags": [
+    "snowman"
+   ]
+  },
+  "soccer_ball": {
+   "group": "objects",
+   "tags": [
+    "soccer ball"
+   ]
+  },
+  "sparkles": {
+   "group": "nature",
+   "tags": [
+    "sparkles"
+   ]
+  },
+  "speedboat": {
+   "group": "vehicles",
+   "tags": [
+    "speedboat"
+   ]
+  },
+  "spider": {
+   "group": "animals",
+   "tags": [
+    "spider"
+   ]
+  },
+  "squirrel": {
+   "group": "animals",
+   "tags": [
+    "squirrel"
+   ]
+  },
+  "stadium": {
+   "group": "places",
+   "tags": [
+    "stadium"
+   ]
+  },
+  "star": {
+   "group": "nature",
+   "tags": [
+    "star"
+   ]
+  },
+  "statue_of_liberty": {
+   "group": "places",
+   "tags": [
+    "statue of liberty"
+   ]
+  },
+  "stethoscope": {
+   "group": "objects",
+   "tags": [
+    "stethoscope"
+   ]
+  },
+  "strawberry": {
+   "group": "food",
+   "tags": [
+    "strawberry"
+   ]
+  },
+  "sun": {
+   "group": "nature",
+   "tags": [
+    "sun"
+   ]
+  },
+  "sunflower": {
+   "group": "nature",
+   "tags": [
+    "sunflower"
+   ]
+  },
+  "sunrise": {
+   "group": "places",
+   "tags": [
+    "sunrise"
+   ]
+  },
+  "swan": {
+   "group": "animals",
+   "tags": [
+    "swan"
+   ]
+  },
+  "syringe": {
+   "group": "objects",
+   "tags": [
+    "syringe"
+   ]
+  },
+  "taxi": {
+   "group": "vehicles",
+   "tags": [
+    "taxi"
+   ]
+  },
+  "tea": {
+   "group": "food",
+   "tags": [
+    "tea"
+   ]
+  },
+  "telescope": {
+   "group": "objects",
+   "tags": [
+    "telescope"
+   ]
+  },
+  "television": {
+   "group": "objects",
+   "tags": [
+    "television"
+   ]
+  },
+  "ten": {
+   "group": "shapes",
+   "tags": [
+    "ten"
+   ]
+  },
+  "tent": {
+   "group": "places",
+   "tags": [
+    "tent"
+   ]
+  },
+  "test_tube": {
+   "group": "objects",
+   "tags": [
+    "test tube"
+   ]
+  },
+  "thermometer_hot": {
+   "group": "nature",
+   "tags": [
+    "thermometer hot"
+   ]
+  },
+  "three": {
+   "group": "shapes",
+   "tags": [
+    "three"
+   ]
+  },
+  "tiger": {
+   "group": "animals",
+   "tags": [
+    "tiger"
+   ]
+  },
+  "tokyo_tower": {
+   "group": "places",
+   "tags": [
+    "tokyo tower"
+   ]
+  },
+  "tomato": {
+   "group": "food",
+   "tags": [
+    "tomato"
+   ]
+  },
+  "toolbox": {
+   "group": "objects",
+   "tags": [
+    "toolbox"
+   ]
+  },
+  "tooth": {
+   "group": "objects",
+   "tags": [
+    "tooth"
+   ]
+  },
+  "tornado": {
+   "group": "nature",
+   "tags": [
+    "tornado"
+   ]
+  },
+  "tractor": {
+   "group": "vehicles",
+   "tags": [
+    "tractor"
+   ]
+  },
+  "train": {
+   "group": "vehicles",
+   "tags": [
+    "train"
+   ]
+  },
+  "tree": {
+   "group": "nature",
+   "tags": [
+    "tree"
+   ]
+  },
+  "triangle_ruler": {
+   "group": "objects",
+   "tags": [
+    "triangle ruler"
+   ]
+  },
+  "trophy": {
+   "group": "objects",
+   "tags": [
+    "trophy"
+   ]
+  },
+  "tropical_fish": {
+   "group": "animals",
+   "tags": [
+    "tropical fish"
+   ]
+  },
+  "truck": {
+   "group": "vehicles",
+   "tags": [
+    "truck"
+   ]
+  },
+  "trumpet": {
+   "group": "objects",
+   "tags": [
+    "trumpet"
+   ]
+  },
+  "tulip": {
+   "group": "nature",
+   "tags": [
+    "tulip"
+   ]
+  },
+  "turtle": {
+   "group": "animals",
+   "tags": [
+    "turtle"
+   ]
+  },
+  "two": {
+   "group": "shapes",
+   "tags": [
+    "two"
+   ]
+  },
+  "ufo": {
+   "group": "vehicles",
+   "tags": [
+    "ufo"
+   ]
+  },
+  "umbrella": {
+   "group": "nature",
+   "tags": [
+    "umbrella"
+   ]
+  },
+  "unicorn": {
+   "group": "animals",
+   "tags": [
+    "unicorn"
+   ]
+  },
+  "video_camera": {
+   "group": "objects",
+   "tags": [
+    "video camera"
+   ]
+  },
+  "volcano": {
+   "group": "nature",
+   "tags": [
+    "volcano"
+   ]
+  },
+  "water_bottle": {
+   "group": "food",
+   "tags": [
+    "water bottle"
+   ]
+  },
+  "watermelon": {
+   "group": "food",
+   "tags": [
+    "watermelon"
+   ]
+  },
+  "wave": {
+   "group": "nature",
+   "tags": [
+    "wave"
+   ]
+  },
+  "whale": {
+   "group": "animals",
+   "tags": [
+    "whale"
+   ]
+  },
+  "wolf": {
+   "group": "animals",
+   "tags": [
+    "wolf"
+   ]
+  },
+  "wrench": {
+   "group": "objects",
+   "tags": [
+    "wrench"
+   ]
+  },
+  "yellow_circle": {
+   "group": "shapes",
+   "tags": [
+    "yellow circle"
+   ]
+  },
+  "yellow_heart": {
+   "group": "shapes",
+   "tags": [
+    "yellow heart"
+   ]
+  },
+  "yellow_square": {
+   "group": "shapes",
+   "tags": [
+    "yellow square"
+   ]
+  },
+  "zebra": {
+   "group": "animals",
+   "tags": [
+    "zebra"
+   ]
+  }
+ },
+ "line": {
+  "abacus": {
+   "group": "maths",
+   "tags": [
+    "counting",
+    "calculation",
+    "math",
+    "mathematics",
+    "calculator",
+    "count",
+    "beads",
+    "arithmetic"
+   ]
+  },
+  "abc": {
+   "group": "education",
+   "tags": [
+    "letters",
+    "alphabet",
+    "text",
+    "characters",
+    "latin",
+    "spelling",
+    "typography",
+    "font"
+   ]
+  },
+  "adjustments": {
+   "group": "tech",
+   "tags": [
+    "settings",
+    "sliders",
+    "equalizer",
+    "controls",
+    "filter",
+    "options",
+    "tune",
+    "preferences"
+   ]
+  },
+  "alert_triangle": {
+   "group": "business",
+   "tags": [
+    "warning",
+    "caution",
+    "danger",
+    "error",
+    "hazard",
+    "exclamation",
+    "attention",
+    "risk"
+   ]
+  },
+  "alphabet_latin": {
+   "group": "education",
+   "tags": [
+    "roman",
+    "english",
+    "language",
+    "script",
+    "letters",
+    "writing",
+    "text",
+    "alphabet"
+   ]
+  },
+  "ambulance": {
+   "group": "science",
+   "tags": [
+    "emergency",
+    "hospital",
+    "medical",
+    "paramedic",
+    "rescue",
+    "vehicle",
+    "911",
+    "health"
+   ]
+  },
+  "anchor": {
+   "group": "transport",
+   "tags": [
+    "ship",
+    "boat",
+    "marine",
+    "nautical",
+    "sea",
+    "harbor",
+    "port",
+    "sailor"
+   ]
+  },
+  "angle": {
+   "group": "maths",
+   "tags": [
+    "geometry",
+    "degrees",
+    "protractor",
+    "corner",
+    "math",
+    "measure",
+    "triangle",
+    "angle"
+   ]
+  },
+  "antenna_bars_5": {
+   "group": "tech",
+   "tags": [
+    "signal-strength",
+    "signal",
+    "cellular",
+    "reception",
+    "mobile",
+    "network",
+    "wireless",
+    "connection"
+   ]
+  },
+  "api": {
+   "group": "tech",
+   "tags": [
+    "interface",
+    "rest",
+    "endpoint",
+    "developer",
+    "integration",
+    "programming",
+    "code",
+    "webhook"
+   ]
+  },
+  "api_app": {
+   "group": "tech",
+   "tags": [
+    "application",
+    "interface",
+    "developer",
+    "platform",
+    "integration",
+    "programming",
+    "sdk",
+    "api"
+   ]
+  },
+  "app_window": {
+   "group": "tech",
+   "tags": [
+    "browser",
+    "application",
+    "interface",
+    "webpage",
+    "website",
+    "desktop",
+    "program",
+    "software"
+   ]
+  },
+  "apple": {
+   "group": "education",
+   "tags": [
+    "fruit",
+    "food",
+    "healthy",
+    "fresh",
+    "diet",
+    "vegetarian",
+    "nutrition",
+    "snack"
+   ]
+  },
+  "archive": {
+   "group": "business",
+   "tags": [
+    "storage",
+    "box",
+    "archived",
+    "save",
+    "backup",
+    "files",
+    "records",
+    "storage-box"
+   ]
+  },
+  "arrow_back_up": {
+   "group": "nav",
+   "tags": [
+    "undo",
+    "return",
+    "revert",
+    "previous",
+    "reply",
+    "history",
+    "pointer",
+    "navigation"
+   ]
+  },
+  "arrow_big_right": {
+   "group": "nav",
+   "tags": [
+    "large",
+    "bold",
+    "thick",
+    "direction",
+    "east",
+    "next",
+    "forward",
+    "pointer"
+   ]
+  },
+  "arrow_curve_right": {
+   "group": "nav",
+   "tags": [
+    "curved",
+    "turn",
+    "bend",
+    "redo",
+    "direction",
+    "east",
+    "forward",
+    "pointer"
+   ]
+  },
+  "arrow_down": {
+   "group": "nav",
+   "tags": [
+    "direction",
+    "south",
+    "downward",
+    "bottom",
+    "download",
+    "descend",
+    "sort",
+    "pointer"
+   ]
+  },
+  "arrow_fork": {
+   "group": "nav",
+   "tags": [
+    "split",
+    "branch",
+    "diverge",
+    "path",
+    "route",
+    "junction",
+    "pointer",
+    "navigation"
+   ]
+  },
+  "arrow_forward_up": {
+   "group": "nav",
+   "tags": [
+    "redo",
+    "share",
+    "next",
+    "repeat",
+    "send",
+    "pointer",
+    "navigation",
+    "direction"
+   ]
+  },
+  "arrow_left": {
+   "group": "nav",
+   "tags": [
+    "direction",
+    "west",
+    "previous",
+    "back",
+    "go-back",
+    "return",
+    "pointer",
+    "navigation"
+   ]
+  },
+  "arrow_merge": {
+   "group": "nav",
+   "tags": [
+    "join",
+    "combine",
+    "converge",
+    "git",
+    "pull-request",
+    "branch",
+    "pointer",
+    "navigation"
+   ]
+  },
+  "arrow_right": {
+   "group": "nav",
+   "tags": [
+    "direction",
+    "east",
+    "next",
+    "forward",
+    "continue",
+    "proceed",
+    "go",
+    "pointer"
+   ]
+  },
+  "arrow_rotary_right": {
+   "group": "nav",
+   "tags": [
+    "roundabout",
+    "traffic-circle",
+    "road",
+    "directions",
+    "navigation",
+    "gps",
+    "pointer",
+    "direction"
+   ]
+  },
+  "arrow_up": {
+   "group": "nav",
+   "tags": [
+    "direction",
+    "north",
+    "upward",
+    "top",
+    "upload",
+    "ascend",
+    "sort",
+    "pointer"
+   ]
+  },
+  "arrows_diagonal": {
+   "group": "maths",
+   "tags": [
+    "expand",
+    "fullscreen",
+    "maximize",
+    "resize",
+    "enlarge",
+    "pointer",
+    "navigation",
+    "direction"
+   ]
+  },
+  "arrows_left_right": {
+   "group": "nav",
+   "tags": [
+    "left-right",
+    "horizontal",
+    "swap",
+    "exchange",
+    "bidirectional",
+    "pointer",
+    "navigation",
+    "direction"
+   ]
+  },
+  "arrows_shuffle": {
+   "group": "tech",
+   "tags": [
+    "random",
+    "mix",
+    "playlist",
+    "music",
+    "crossing",
+    "pointer",
+    "navigation",
+    "direction"
+   ]
+  },
+  "arrows_up_down": {
+   "group": "nav",
+   "tags": [
+    "up-down",
+    "vertical",
+    "sort",
+    "swap",
+    "height",
+    "resize",
+    "pointer",
+    "navigation"
+   ]
+  },
+  "atom": {
+   "group": "science",
+   "tags": [
+    "science",
+    "physics",
+    "chemistry",
+    "nuclear",
+    "molecule",
+    "electron",
+    "react",
+    "laboratory"
+   ]
+  },
+  "atom_2": {
+   "group": "science",
+   "tags": [
+    "science",
+    "physics",
+    "chemistry",
+    "nuclear",
+    "molecule",
+    "electron",
+    "react",
+    "laboratory"
+   ]
+  },
+  "atom_off": {
+   "group": "science",
+   "tags": [
+    "science",
+    "physics",
+    "chemistry",
+    "nuclear",
+    "molecule",
+    "electron",
+    "react",
+    "laboratory"
+   ]
+  },
+  "award": {
+   "group": "business",
+   "tags": [
+    "medal",
+    "prize",
+    "achievement",
+    "reward",
+    "winner",
+    "ribbon",
+    "badge",
+    "certificate"
+   ]
+  },
+  "axis_x": {
+   "group": "maths",
+   "tags": [
+    "x-axis",
+    "horizontal",
+    "chart",
+    "graph",
+    "coordinate",
+    "abscissa",
+    "math",
+    "axis"
+   ]
+  },
+  "axis_y": {
+   "group": "maths",
+   "tags": [
+    "y-axis",
+    "vertical",
+    "chart",
+    "graph",
+    "coordinate",
+    "ordinate",
+    "math",
+    "axis"
+   ]
+  },
+  "backpack": {
+   "group": "education",
+   "tags": [
+    "bag",
+    "rucksack",
+    "school",
+    "travel",
+    "hiking",
+    "luggage",
+    "schoolbag",
+    "knapsack"
+   ]
+  },
+  "ball_basketball": {
+   "group": "education",
+   "tags": [
+    "nba",
+    "hoop",
+    "sport",
+    "game",
+    "sports",
+    "team-sport",
+    "play",
+    "match"
+   ]
+  },
+  "ball_football": {
+   "group": "education",
+   "tags": [
+    "soccer",
+    "fifa",
+    "sport",
+    "game",
+    "sports",
+    "team-sport",
+    "play",
+    "match"
+   ]
+  },
+  "ball_tennis": {
+   "group": "education",
+   "tags": [
+    "padel",
+    "sport",
+    "game",
+    "racket",
+    "sports",
+    "team-sport",
+    "play",
+    "match"
+   ]
+  },
+  "ball_volleyball": {
+   "group": "education",
+   "tags": [
+    "beach-volleyball",
+    "sport",
+    "game",
+    "sports",
+    "team-sport",
+    "play",
+    "match",
+    "athletics"
+   ]
+  },
+  "balloon": {
+   "group": "education",
+   "tags": [
+    "party",
+    "birthday",
+    "celebration",
+    "festival",
+    "helium",
+    "decoration",
+    "balloons",
+    "party-decoration"
+   ]
+  },
+  "bandage": {
+   "group": "science",
+   "tags": [
+    "band-aid",
+    "plaster",
+    "bandaid",
+    "wound",
+    "injury",
+    "first-aid",
+    "medical",
+    "bandage"
+   ]
+  },
+  "barcode": {
+   "group": "tech",
+   "tags": [
+    "scan",
+    "scanner",
+    "product",
+    "upc",
+    "ean",
+    "code",
+    "price",
+    "shop"
+   ]
+  },
+  "battery": {
+   "group": "science",
+   "tags": [
+    "power",
+    "energy",
+    "charge",
+    "level",
+    "phone",
+    "mobile",
+    "empty",
+    "battery"
+   ]
+  },
+  "battery_4": {
+   "group": "science",
+   "tags": [
+    "power",
+    "energy",
+    "charge",
+    "level",
+    "phone",
+    "mobile",
+    "full",
+    "charged"
+   ]
+  },
+  "battery_charging": {
+   "group": "tech",
+   "tags": [
+    "power",
+    "energy",
+    "charge",
+    "level",
+    "phone",
+    "mobile",
+    "plug-in",
+    "recharge"
+   ]
+  },
+  "bell": {
+   "group": "tech",
+   "tags": [
+    "notification",
+    "alert",
+    "reminder",
+    "notify",
+    "alarm",
+    "notifications",
+    "ring",
+    "inbox"
+   ]
+  },
+  "bell_ringing": {
+   "group": "education",
+   "tags": [
+    "notification",
+    "alert",
+    "reminder",
+    "notify",
+    "alarm",
+    "ring",
+    "active",
+    "new-notification"
+   ]
+  },
+  "bike": {
+   "group": "education",
+   "tags": [
+    "bicycle",
+    "cycling",
+    "cycle",
+    "ride",
+    "transport",
+    "vehicle",
+    "bike-lane",
+    "mountain-bike"
+   ]
+  },
+  "binary": {
+   "group": "tech",
+   "tags": [
+    "code",
+    "zero",
+    "one",
+    "computer",
+    "data",
+    "bits",
+    "programming",
+    "binary"
+   ]
+  },
+  "bluetooth": {
+   "group": "tech",
+   "tags": [
+    "wireless",
+    "connection",
+    "pairing",
+    "headphones",
+    "devices",
+    "bt",
+    "wireless-connection",
+    "bluetooth-on"
+   ]
+  },
+  "bone": {
+   "group": "science",
+   "tags": [
+    "skeleton",
+    "dog",
+    "medical",
+    "anatomy",
+    "fracture",
+    "dog-bone",
+    "pet",
+    "orthopedic"
+   ]
+  },
+  "book": {
+   "group": "education",
+   "tags": [
+    "read",
+    "reading",
+    "library",
+    "education",
+    "study",
+    "literature",
+    "novel",
+    "ebook"
+   ]
+  },
+  "book_2": {
+   "group": "education",
+   "tags": [
+    "read",
+    "reading",
+    "library",
+    "education",
+    "study",
+    "literature",
+    "novel",
+    "ebook"
+   ]
+  },
+  "bookmark": {
+   "group": "business",
+   "tags": [
+    "save",
+    "saved",
+    "favorite",
+    "read-later",
+    "tag",
+    "marker",
+    "bookmarks",
+    "ribbon"
+   ]
+  },
+  "bookmarks": {
+   "group": "education",
+   "tags": [
+    "save",
+    "saved",
+    "favorite",
+    "read-later",
+    "tag",
+    "marker",
+    "collection",
+    "multiple"
+   ]
+  },
+  "books": {
+   "group": "education",
+   "tags": [
+    "library",
+    "reading",
+    "education",
+    "study",
+    "literature",
+    "bookshelf",
+    "book-stack",
+    "reading-list"
+   ]
+  },
+  "bottle": {
+   "group": "education",
+   "tags": [
+    "water",
+    "drink",
+    "plastic",
+    "beverage",
+    "flask",
+    "water-bottle",
+    "plastic-bottle",
+    "bottle"
+   ]
+  },
+  "box": {
+   "group": "business",
+   "tags": [
+    "package",
+    "parcel",
+    "delivery",
+    "shipping",
+    "3d",
+    "cube",
+    "product",
+    "box"
+   ]
+  },
+  "braces": {
+   "group": "tech",
+   "tags": [
+    "curly-braces",
+    "curly-brackets",
+    "code",
+    "json",
+    "object",
+    "programming",
+    "syntax",
+    "braces"
+   ]
+  },
+  "brackets": {
+   "group": "tech",
+   "tags": [
+    "square-brackets",
+    "code",
+    "array",
+    "programming",
+    "syntax",
+    "punctuation",
+    "list",
+    "index"
+   ]
+  },
+  "brain": {
+   "group": "tech",
+   "tags": [
+    "mind",
+    "thinking",
+    "intelligence",
+    "idea",
+    "neuroscience",
+    "psychology",
+    "mental-health",
+    "organ"
+   ]
+  },
+  "brand_android": {
+   "group": "tech",
+   "tags": [
+    "android",
+    "google",
+    "os",
+    "operating-system",
+    "mobile",
+    "smartphone",
+    "robot",
+    "app"
+   ]
+  },
+  "brand_angular": {
+   "group": "tech",
+   "tags": [
+    "angular",
+    "angularjs",
+    "google",
+    "javascript",
+    "typescript",
+    "framework",
+    "frontend",
+    "web"
+   ]
+  },
+  "brand_apple": {
+   "group": "tech",
+   "tags": [
+    "apple",
+    "mac",
+    "macos",
+    "ios",
+    "iphone",
+    "ipad",
+    "company",
+    "tech"
+   ]
+  },
+  "brand_aws": {
+   "group": "tech",
+   "tags": [
+    "aws",
+    "amazon-web-services",
+    "amazon",
+    "cloud",
+    "hosting",
+    "server",
+    "infrastructure",
+    "computing"
+   ]
+  },
+  "brand_azure": {
+   "group": "tech",
+   "tags": [
+    "azure",
+    "microsoft",
+    "cloud",
+    "hosting",
+    "computing",
+    "server",
+    "infrastructure",
+    "platform"
+   ]
+  },
+  "brand_css3": {
+   "group": "tech",
+   "tags": [
+    "css3",
+    "css",
+    "stylesheet",
+    "styles",
+    "web",
+    "frontend",
+    "html",
+    "logo"
+   ]
+  },
+  "brand_docker": {
+   "group": "tech",
+   "tags": [
+    "docker",
+    "container",
+    "containers",
+    "devops",
+    "virtualization",
+    "whale",
+    "deployment",
+    "logo"
+   ]
+  },
+  "brand_git": {
+   "group": "tech",
+   "tags": [
+    "git",
+    "version-control",
+    "vcs",
+    "repository",
+    "source-control",
+    "commit",
+    "branch",
+    "logo"
+   ]
+  },
+  "brand_github": {
+   "group": "tech",
+   "tags": [
+    "github",
+    "git",
+    "repository",
+    "code",
+    "hosting",
+    "version-control",
+    "octocat",
+    "microsoft"
+   ]
+  },
+  "brand_google": {
+   "group": "tech",
+   "tags": [
+    "google",
+    "search",
+    "alphabet",
+    "search-engine",
+    "web",
+    "internet",
+    "logo",
+    "brand"
+   ]
+  },
+  "brand_html5": {
+   "group": "tech",
+   "tags": [
+    "html5",
+    "html",
+    "markup",
+    "web",
+    "frontend",
+    "language",
+    "logo",
+    "brand"
+   ]
+  },
+  "brand_instagram": {
+   "group": "tech",
+   "tags": [
+    "instagram",
+    "ig",
+    "meta",
+    "social",
+    "social-media",
+    "photos",
+    "stories",
+    "reels"
+   ]
+  },
+  "brand_javascript": {
+   "group": "tech",
+   "tags": [
+    "javascript",
+    "js",
+    "ecmascript",
+    "programming",
+    "language",
+    "code",
+    "web",
+    "logo"
+   ]
+  },
+  "brand_kotlin": {
+   "group": "tech",
+   "tags": [
+    "kotlin",
+    "jetbrains",
+    "programming",
+    "language",
+    "android",
+    "jvm",
+    "code",
+    "logo"
+   ]
+  },
+  "brand_linkedin": {
+   "group": "tech",
+   "tags": [
+    "linkedin",
+    "social",
+    "professional",
+    "network",
+    "jobs",
+    "career",
+    "business",
+    "microsoft"
+   ]
+  },
+  "brand_mongodb": {
+   "group": "tech",
+   "tags": [
+    "mongodb",
+    "mongo",
+    "database",
+    "nosql",
+    "document-store",
+    "leaf",
+    "logo",
+    "brand"
+   ]
+  },
+  "brand_mysql": {
+   "group": "tech",
+   "tags": [
+    "mysql",
+    "database",
+    "sql",
+    "oracle",
+    "relational",
+    "dolphin",
+    "open-source",
+    "logo"
+   ]
+  },
+  "brand_nodejs": {
+   "group": "tech",
+   "tags": [
+    "nodejs",
+    "node",
+    "javascript",
+    "runtime",
+    "server",
+    "backend",
+    "npm",
+    "logo"
+   ]
+  },
+  "brand_open_source": {
+   "group": "education",
+   "tags": [
+    "open-source",
+    "oss",
+    "osi",
+    "free-software",
+    "license",
+    "code",
+    "community",
+    "logo"
+   ]
+  },
+  "brand_php": {
+   "group": "tech",
+   "tags": [
+    "php",
+    "programming",
+    "language",
+    "backend",
+    "server",
+    "web",
+    "code",
+    "logo"
+   ]
+  },
+  "brand_python": {
+   "group": "tech",
+   "tags": [
+    "python",
+    "programming",
+    "language",
+    "code",
+    "scripting",
+    "snake",
+    "logo",
+    "brand"
+   ]
+  },
+  "brand_react": {
+   "group": "tech",
+   "tags": [
+    "react",
+    "reactjs",
+    "meta",
+    "javascript",
+    "library",
+    "frontend",
+    "ui",
+    "jsx"
+   ]
+  },
+  "brand_swift": {
+   "group": "tech",
+   "tags": [
+    "swift",
+    "apple",
+    "programming",
+    "language",
+    "ios",
+    "macos",
+    "code",
+    "logo"
+   ]
+  },
+  "brand_telegram": {
+   "group": "tech",
+   "tags": [
+    "telegram",
+    "messenger",
+    "messaging",
+    "chat",
+    "message",
+    "paper-plane",
+    "logo",
+    "brand"
+   ]
+  },
+  "brand_typescript": {
+   "group": "tech",
+   "tags": [
+    "typescript",
+    "ts",
+    "microsoft",
+    "javascript",
+    "programming",
+    "language",
+    "logo",
+    "brand"
+   ]
+  },
+  "brand_vue": {
+   "group": "tech",
+   "tags": [
+    "vue",
+    "vuejs",
+    "javascript",
+    "framework",
+    "frontend",
+    "ui",
+    "web",
+    "logo"
+   ]
+  },
+  "brand_whatsapp": {
+   "group": "tech",
+   "tags": [
+    "whatsapp",
+    "meta",
+    "messenger",
+    "messaging",
+    "chat",
+    "phone",
+    "message",
+    "logo"
+   ]
+  },
+  "brand_windows": {
+   "group": "tech",
+   "tags": [
+    "windows",
+    "microsoft",
+    "os",
+    "operating-system",
+    "pc",
+    "desktop",
+    "logo",
+    "brand"
+   ]
+  },
+  "brand_youtube": {
+   "group": "tech",
+   "tags": [
+    "youtube",
+    "google",
+    "video",
+    "streaming",
+    "channel",
+    "player",
+    "play",
+    "youtuber"
+   ]
+  },
+  "bread": {
+   "group": "education",
+   "tags": [
+    "bread",
+    "loaf",
+    "toast",
+    "bakery",
+    "food",
+    "breakfast",
+    "sandwich",
+    "baguette"
+   ]
+  },
+  "briefcase": {
+   "group": "business",
+   "tags": [
+    "briefcase",
+    "business",
+    "work",
+    "job",
+    "portfolio",
+    "bag",
+    "office",
+    "suitcase"
+   ]
+  },
+  "brush": {
+   "group": "education",
+   "tags": [
+    "brush",
+    "paintbrush",
+    "paint",
+    "art",
+    "draw",
+    "painting",
+    "theme",
+    "style"
+   ]
+  },
+  "bug": {
+   "group": "tech",
+   "tags": [
+    "bug",
+    "debug",
+    "error",
+    "issue",
+    "insect",
+    "beetle",
+    "problem",
+    "fix"
+   ]
+  },
+  "building": {
+   "group": "business",
+   "tags": [
+    "building",
+    "office",
+    "city",
+    "architecture",
+    "skyscraper",
+    "real-estate",
+    "company",
+    "apartment"
+   ]
+  },
+  "building_bank": {
+   "group": "business",
+   "tags": [
+    "bank",
+    "finance",
+    "money",
+    "institution",
+    "government",
+    "courthouse",
+    "museum",
+    "columns"
+   ]
+  },
+  "building_factory": {
+   "group": "business",
+   "tags": [
+    "factory",
+    "industry",
+    "industrial",
+    "manufacturing",
+    "plant",
+    "production",
+    "warehouse",
+    "building"
+   ]
+  },
+  "building_hospital": {
+   "group": "business",
+   "tags": [
+    "hospital",
+    "clinic",
+    "medical",
+    "health",
+    "healthcare",
+    "emergency",
+    "doctor",
+    "building"
+   ]
+  },
+  "building_skyscraper": {
+   "group": "business",
+   "tags": [
+    "skyscraper",
+    "tower",
+    "high-rise",
+    "city",
+    "office",
+    "downtown",
+    "building",
+    "architecture"
+   ]
+  },
+  "building_store": {
+   "group": "business",
+   "tags": [
+    "store",
+    "shop",
+    "retail",
+    "market",
+    "storefront",
+    "supermarket",
+    "commerce",
+    "building"
+   ]
+  },
+  "building_warehouse": {
+   "group": "business",
+   "tags": [
+    "warehouse",
+    "storage",
+    "inventory",
+    "logistics",
+    "depot",
+    "stock",
+    "building",
+    "distribution"
+   ]
+  },
+  "bulb": {
+   "group": "tech",
+   "tags": [
+    "bulb",
+    "lightbulb",
+    "light",
+    "idea",
+    "lamp",
+    "tip",
+    "hint",
+    "creativity"
+   ]
+  },
+  "bus": {
+   "group": "transport",
+   "tags": [
+    "bus",
+    "public-transport",
+    "transit",
+    "transportation",
+    "vehicle",
+    "travel",
+    "coach",
+    "school-bus"
+   ]
+  },
+  "butterfly": {
+   "group": "education",
+   "tags": [
+    "butterfly",
+    "insect",
+    "nature",
+    "moth",
+    "wings",
+    "spring",
+    "animal",
+    "bug"
+   ]
+  },
+  "cake": {
+   "group": "education",
+   "tags": [
+    "cake",
+    "birthday",
+    "party",
+    "celebration",
+    "dessert",
+    "sweet",
+    "bakery",
+    "anniversary"
+   ]
+  },
+  "calculator": {
+   "group": "maths",
+   "tags": [
+    "calculator",
+    "math",
+    "calculate",
+    "calculation",
+    "accounting",
+    "arithmetic",
+    "numbers",
+    "finance"
+   ]
+  },
+  "calendar": {
+   "group": "business",
+   "tags": [
+    "calendar",
+    "date",
+    "schedule",
+    "event",
+    "day",
+    "month",
+    "planner",
+    "agenda"
+   ]
+  },
+  "calendar_event": {
+   "group": "business",
+   "tags": [
+    "calendar",
+    "date",
+    "schedule",
+    "event",
+    "day",
+    "planner",
+    "agenda",
+    "today"
+   ]
+  },
+  "calendar_stats": {
+   "group": "business",
+   "tags": [
+    "calendar",
+    "date",
+    "schedule",
+    "event",
+    "day",
+    "planner",
+    "agenda",
+    "stats"
+   ]
+  },
+  "camera": {
+   "group": "tech",
+   "tags": [
+    "camera",
+    "photo",
+    "photography",
+    "picture",
+    "video",
+    "lens",
+    "image",
+    "snapshot"
+   ]
+  },
+  "campfire": {
+   "group": "education",
+   "tags": [
+    "campfire",
+    "bonfire",
+    "fire",
+    "camping",
+    "camp",
+    "flame",
+    "outdoor",
+    "wood"
+   ]
+  },
+  "candle": {
+   "group": "education",
+   "tags": [
+    "candle",
+    "candlelight",
+    "flame",
+    "light",
+    "wax",
+    "decoration",
+    "birthday",
+    "christmas"
+   ]
+  },
+  "car": {
+   "group": "transport",
+   "tags": [
+    "car",
+    "vehicle",
+    "automobile",
+    "auto",
+    "drive",
+    "transport",
+    "travel",
+    "sedan"
+   ]
+  },
+  "carrot": {
+   "group": "education",
+   "tags": [
+    "carrot",
+    "vegetable",
+    "veggie",
+    "food",
+    "healthy",
+    "vegan",
+    "rabbit",
+    "orange"
+   ]
+  },
+  "cash": {
+   "group": "business",
+   "tags": [
+    "cash",
+    "money",
+    "payment",
+    "currency",
+    "finance",
+    "dollar",
+    "banknote",
+    "pay"
+   ]
+  },
+  "cash_banknote": {
+   "group": "business",
+   "tags": [
+    "banknote",
+    "cash",
+    "money",
+    "bill",
+    "payment",
+    "currency",
+    "finance",
+    "pay"
+   ]
+  },
+  "cat": {
+   "group": "education",
+   "tags": [
+    "cat",
+    "kitten",
+    "kitty",
+    "pet",
+    "animal",
+    "feline",
+    "meow",
+    "kitty-cat"
+   ]
+  },
+  "certificate": {
+   "group": "tech",
+   "tags": [
+    "certificate",
+    "diploma",
+    "award",
+    "document",
+    "license",
+    "qualification",
+    "achievement",
+    "credential"
+   ]
+  },
+  "chalkboard": {
+   "group": "education",
+   "tags": [
+    "chalkboard",
+    "blackboard",
+    "board",
+    "classroom",
+    "school",
+    "education",
+    "teaching",
+    "presentation"
+   ]
+  },
+  "charging_pile": {
+   "group": "transport",
+   "tags": [
+    "charging-station",
+    "ev-charger",
+    "electric-car",
+    "charger",
+    "ev",
+    "charging",
+    "plug",
+    "electricity"
+   ]
+  },
+  "chart_area": {
+   "group": "maths",
+   "tags": [
+    "chart",
+    "graph",
+    "statistics",
+    "analytics",
+    "data",
+    "report",
+    "diagram",
+    "area-chart"
+   ]
+  },
+  "chart_bar": {
+   "group": "maths",
+   "tags": [
+    "chart",
+    "graph",
+    "statistics",
+    "analytics",
+    "data",
+    "report",
+    "diagram",
+    "bar-chart"
+   ]
+  },
+  "chart_candle": {
+   "group": "business",
+   "tags": [
+    "chart",
+    "graph",
+    "statistics",
+    "analytics",
+    "data",
+    "report",
+    "diagram",
+    "candlestick"
+   ]
+  },
+  "chart_dots": {
+   "group": "maths",
+   "tags": [
+    "chart",
+    "graph",
+    "statistics",
+    "analytics",
+    "data",
+    "report",
+    "diagram",
+    "dots"
+   ]
+  },
+  "chart_histogram": {
+   "group": "maths",
+   "tags": [
+    "chart",
+    "graph",
+    "statistics",
+    "analytics",
+    "data",
+    "report",
+    "diagram",
+    "histogram"
+   ]
+  },
+  "chart_line": {
+   "group": "maths",
+   "tags": [
+    "chart",
+    "graph",
+    "statistics",
+    "analytics",
+    "data",
+    "report",
+    "diagram",
+    "line-chart"
+   ]
+  },
+  "chart_pie": {
+   "group": "maths",
+   "tags": [
+    "chart",
+    "graph",
+    "statistics",
+    "analytics",
+    "data",
+    "report",
+    "diagram",
+    "pie-chart"
+   ]
+  },
+  "check": {
+   "group": "business",
+   "tags": [
+    "check",
+    "checkmark",
+    "tick",
+    "done",
+    "yes",
+    "ok",
+    "confirm",
+    "success"
+   ]
+  },
+  "checklist": {
+   "group": "business",
+   "tags": [
+    "checklist",
+    "todo-list",
+    "tasks",
+    "list",
+    "clipboard",
+    "check",
+    "done",
+    "to-do"
+   ]
+  },
+  "cheese": {
+   "group": "education",
+   "tags": [
+    "cheese",
+    "food",
+    "dairy",
+    "cheddar",
+    "slice",
+    "snack",
+    "mouse",
+    "swiss-cheese"
+   ]
+  },
+  "chess": {
+   "group": "education",
+   "tags": [
+    "chess-pawn",
+    "pawn",
+    "board-game",
+    "game",
+    "strategy",
+    "piece",
+    "chessboard",
+    "checkmate"
+   ]
+  },
+  "chevron_right": {
+   "group": "nav",
+   "tags": [
+    "chevron",
+    "arrow",
+    "right",
+    "next",
+    "forward",
+    "more",
+    "caret-right",
+    "arrow-right"
+   ]
+  },
+  "chevrons_right": {
+   "group": "nav",
+   "tags": [
+    "chevrons",
+    "double-chevron",
+    "right",
+    "last",
+    "fast-forward",
+    "skip",
+    "double-arrow",
+    "angles-right"
+   ]
+  },
+  "circle": {
+   "group": "maths",
+   "tags": [
+    "round",
+    "dot",
+    "shape",
+    "geometry",
+    "ellipse",
+    "ring",
+    "radio",
+    "record"
+   ]
+  },
+  "circle_check": {
+   "group": "nav",
+   "tags": [
+    "check",
+    "done",
+    "success",
+    "confirmed",
+    "approved",
+    "tick",
+    "ok",
+    "verified"
+   ]
+  },
+  "circle_dot": {
+   "group": "nav",
+   "tags": [
+    "radio",
+    "radio-button",
+    "selected",
+    "record",
+    "target",
+    "bullseye",
+    "dot",
+    "point"
+   ]
+  },
+  "circle_x": {
+   "group": "nav",
+   "tags": [
+    "x",
+    "close",
+    "cancel",
+    "remove",
+    "delete",
+    "error",
+    "clear",
+    "dismiss"
+   ]
+  },
+  "clipboard_check": {
+   "group": "business",
+   "tags": [
+    "check",
+    "done",
+    "completed",
+    "approved",
+    "tick",
+    "todo",
+    "task-done",
+    "checklist"
+   ]
+  },
+  "clock": {
+   "group": "business",
+   "tags": [
+    "time",
+    "watch",
+    "hour",
+    "schedule",
+    "timer",
+    "clock-face",
+    "history",
+    "pending"
+   ]
+  },
+  "clock_hour_3": {
+   "group": "maths",
+   "tags": [
+    "3",
+    "3-oclock",
+    "hour",
+    "clock",
+    "time",
+    "watch",
+    "schedule",
+    "timer"
+   ]
+  },
+  "cloud": {
+   "group": "tech",
+   "tags": [
+    "weather",
+    "cloudy",
+    "cloud-storage",
+    "online",
+    "server",
+    "sync",
+    "internet",
+    "overcast"
+   ]
+  },
+  "cloud_computing": {
+   "group": "tech",
+   "tags": [
+    "cloud-computing",
+    "server",
+    "network",
+    "hosting",
+    "data-center",
+    "saas",
+    "online",
+    "infrastructure"
+   ]
+  },
+  "cloud_download": {
+   "group": "tech",
+   "tags": [
+    "download",
+    "cloud-download",
+    "save",
+    "sync",
+    "backup",
+    "cloud",
+    "storage",
+    "online"
+   ]
+  },
+  "cloud_lock": {
+   "group": "tech",
+   "tags": [
+    "lock",
+    "secure",
+    "security",
+    "private",
+    "encrypted",
+    "protected",
+    "cloud",
+    "storage"
+   ]
+  },
+  "cloud_rain": {
+   "group": "science",
+   "tags": [
+    "rain",
+    "rainy",
+    "showers",
+    "drizzle",
+    "weather",
+    "forecast",
+    "precipitation",
+    "cloud"
+   ]
+  },
+  "cloud_storm": {
+   "group": "science",
+   "tags": [
+    "storm",
+    "thunderstorm",
+    "lightning",
+    "thunder",
+    "weather",
+    "forecast",
+    "rain",
+    "cloud"
+   ]
+  },
+  "cloud_upload": {
+   "group": "tech",
+   "tags": [
+    "upload",
+    "cloud-upload",
+    "sync",
+    "backup",
+    "publish",
+    "cloud",
+    "storage",
+    "online"
+   ]
+  },
+  "code": {
+   "group": "tech",
+   "tags": [
+    "brackets",
+    "angle-brackets",
+    "html",
+    "source",
+    "programming",
+    "developer",
+    "coding",
+    "embed"
+   ]
+  },
+  "code_circle": {
+   "group": "tech",
+   "tags": [
+    "code",
+    "brackets",
+    "programming",
+    "developer",
+    "coding",
+    "circle",
+    "html",
+    "badge"
+   ]
+  },
+  "coffee": {
+   "group": "education",
+   "tags": [
+    "coffee",
+    "cup",
+    "mug",
+    "cafe",
+    "espresso",
+    "latte",
+    "hot-drink",
+    "tea"
+   ]
+  },
+  "coin": {
+   "group": "business",
+   "tags": [
+    "coin",
+    "dollar",
+    "money",
+    "cash",
+    "currency",
+    "payment",
+    "finance",
+    "price"
+   ]
+  },
+  "coin_rupee": {
+   "group": "business",
+   "tags": [
+    "rupee",
+    "inr",
+    "india",
+    "indian",
+    "coin",
+    "money",
+    "cash",
+    "currency"
+   ]
+  },
+  "coins": {
+   "group": "business",
+   "tags": [
+    "coins",
+    "money",
+    "cash",
+    "currency",
+    "savings",
+    "payment",
+    "finance",
+    "stack"
+   ]
+  },
+  "compass": {
+   "group": "maths",
+   "tags": [
+    "compass",
+    "navigation",
+    "direction",
+    "explore",
+    "discover",
+    "north",
+    "travel",
+    "orientation"
+   ]
+  },
+  "confetti": {
+   "group": "education",
+   "tags": [
+    "confetti",
+    "party",
+    "celebration",
+    "celebrate",
+    "party-popper",
+    "tada",
+    "congratulations",
+    "birthday"
+   ]
+  },
+  "cpu": {
+   "group": "tech",
+   "tags": [
+    "cpu",
+    "processor",
+    "chip",
+    "microchip",
+    "hardware",
+    "computer",
+    "semiconductor",
+    "core"
+   ]
+  },
+  "cpu_2": {
+   "group": "tech",
+   "tags": [
+    "cpu",
+    "processor",
+    "chip",
+    "microchip",
+    "hardware",
+    "computer",
+    "semiconductor",
+    "core"
+   ]
+  },
+  "credit_card": {
+   "group": "business",
+   "tags": [
+    "credit-card",
+    "card",
+    "payment",
+    "pay",
+    "debit-card",
+    "bank-card",
+    "checkout",
+    "purchase"
+   ]
+  },
+  "cube": {
+   "group": "tech",
+   "tags": [
+    "cube",
+    "3d",
+    "box",
+    "shape",
+    "geometry",
+    "block",
+    "package",
+    "object"
+   ]
+  },
+  "cube_3d_sphere": {
+   "group": "maths",
+   "tags": [
+    "3d",
+    "3d-printing",
+    "sphere",
+    "cube",
+    "model",
+    "object",
+    "vector",
+    "rendering"
+   ]
+  },
+  "cube_send": {
+   "group": "tech",
+   "tags": [
+    "cube",
+    "box",
+    "package",
+    "send",
+    "ship",
+    "shipping",
+    "delivery",
+    "deploy"
+   ]
+  },
+  "cup": {
+   "group": "education",
+   "tags": [
+    "cup",
+    "mug",
+    "drink",
+    "tea",
+    "coffee",
+    "beverage",
+    "glass",
+    "water"
+   ]
+  },
+  "currency_bitcoin": {
+   "group": "business",
+   "tags": [
+    "bitcoin",
+    "btc",
+    "satoshi",
+    "mining",
+    "crypto",
+    "cryptocurrency",
+    "blockchain",
+    "coin"
+   ]
+  },
+  "currency_dollar": {
+   "group": "business",
+   "tags": [
+    "dollar",
+    "usd",
+    "us-dollar",
+    "american",
+    "bucks",
+    "money",
+    "currency",
+    "price"
+   ]
+  },
+  "currency_euro": {
+   "group": "business",
+   "tags": [
+    "euro",
+    "eur",
+    "europe",
+    "eu",
+    "currency",
+    "money",
+    "symbol",
+    "cash"
+   ]
+  },
+  "currency_rupee": {
+   "group": "business",
+   "tags": [
+    "rupee",
+    "inr",
+    "india",
+    "indian",
+    "currency",
+    "money",
+    "symbol",
+    "cash"
+   ]
+  },
+  "database": {
+   "group": "tech",
+   "tags": [
+    "database",
+    "db",
+    "data",
+    "storage",
+    "sql",
+    "server",
+    "records",
+    "table"
+   ]
+  },
+  "database_export": {
+   "group": "tech",
+   "tags": [
+    "export",
+    "backup",
+    "dump",
+    "download",
+    "database",
+    "db",
+    "data",
+    "storage"
+   ]
+  },
+  "database_import": {
+   "group": "tech",
+   "tags": [
+    "import",
+    "restore",
+    "upload",
+    "load",
+    "database",
+    "db",
+    "data",
+    "storage"
+   ]
+  },
+  "device_desktop": {
+   "group": "tech",
+   "tags": [
+    "desktop",
+    "monitor",
+    "computer",
+    "screen",
+    "pc",
+    "display",
+    "workstation",
+    "device"
+   ]
+  },
+  "device_gamepad_2": {
+   "group": "tech",
+   "tags": [
+    "gamepad",
+    "controller",
+    "game-controller",
+    "gaming",
+    "joystick",
+    "joypad",
+    "console",
+    "play"
+   ]
+  },
+  "device_laptop": {
+   "group": "tech",
+   "tags": [
+    "laptop",
+    "notebook",
+    "macbook",
+    "computer",
+    "pc",
+    "portable",
+    "workstation",
+    "screen"
+   ]
+  },
+  "device_mobile": {
+   "group": "tech",
+   "tags": [
+    "phone",
+    "smartphone",
+    "iphone",
+    "android",
+    "cellphone",
+    "cell-phone",
+    "mobile-phone",
+    "handset"
+   ]
+  },
+  "device_tablet": {
+   "group": "tech",
+   "tags": [
+    "tablet",
+    "ipad",
+    "android",
+    "touchscreen",
+    "e-reader",
+    "kindle",
+    "portable",
+    "mobile"
+   ]
+  },
+  "device_tv": {
+   "group": "tech",
+   "tags": [
+    "tv",
+    "television",
+    "smart-tv",
+    "screen",
+    "display",
+    "monitor",
+    "video",
+    "movie"
+   ]
+  },
+  "device_watch": {
+   "group": "tech",
+   "tags": [
+    "smartwatch",
+    "watch",
+    "wristwatch",
+    "apple-watch",
+    "wearable",
+    "fitness-tracker",
+    "time",
+    "clock"
+   ]
+  },
+  "diamond": {
+   "group": "maths",
+   "tags": [
+    "diamond",
+    "gem",
+    "jewel",
+    "jewelry",
+    "jewellery",
+    "premium",
+    "luxury",
+    "crystal"
+   ]
+  },
+  "dice": {
+   "group": "education",
+   "tags": [
+    "dice",
+    "die",
+    "game",
+    "board-game",
+    "random",
+    "roll",
+    "gambling",
+    "chance"
+   ]
+  },
+  "dice_1": {
+   "group": "maths",
+   "tags": [
+    "dice",
+    "die",
+    "one",
+    "number-1",
+    "game",
+    "board-game",
+    "random",
+    "roll"
+   ]
+  },
+  "dice_2": {
+   "group": "maths",
+   "tags": [
+    "dice",
+    "die",
+    "two",
+    "number-2",
+    "game",
+    "board-game",
+    "random",
+    "roll"
+   ]
+  },
+  "dice_3": {
+   "group": "maths",
+   "tags": [
+    "dice",
+    "die",
+    "three",
+    "number-3",
+    "game",
+    "board-game",
+    "random",
+    "roll"
+   ]
+  },
+  "dice_4": {
+   "group": "maths",
+   "tags": [
+    "dice",
+    "die",
+    "four",
+    "number-4",
+    "game",
+    "board-game",
+    "random",
+    "roll"
+   ]
+  },
+  "dice_5": {
+   "group": "maths",
+   "tags": [
+    "dice",
+    "die",
+    "five",
+    "number-5",
+    "game",
+    "board-game",
+    "random",
+    "roll"
+   ]
+  },
+  "dice_6": {
+   "group": "maths",
+   "tags": [
+    "dice",
+    "die",
+    "six",
+    "number-6",
+    "game",
+    "board-game",
+    "random",
+    "roll"
+   ]
+  },
+  "discount": {
+   "group": "business",
+   "tags": [
+    "discount",
+    "sale",
+    "percent",
+    "percentage",
+    "promo",
+    "coupon",
+    "deal",
+    "offer"
+   ]
+  },
+  "divide": {
+   "group": "maths",
+   "tags": [
+    "divide",
+    "division",
+    "divided-by",
+    "obelus",
+    "math",
+    "mathematics",
+    "operator",
+    "calculator"
+   ]
+  },
+  "dna": {
+   "group": "science",
+   "tags": [
+    "dna",
+    "genetics",
+    "gene",
+    "genome",
+    "biology",
+    "helix",
+    "double-helix",
+    "science"
+   ]
+  },
+  "dna_2": {
+   "group": "science",
+   "tags": [
+    "dna",
+    "genetics",
+    "gene",
+    "genome",
+    "biology",
+    "helix",
+    "double-helix",
+    "science"
+   ]
+  },
+  "dog": {
+   "group": "education",
+   "tags": [
+    "dog",
+    "puppy",
+    "pet",
+    "animal",
+    "canine",
+    "doggy",
+    "veterinary",
+    "paw"
+   ]
+  },
+  "dots": {
+   "group": "nav",
+   "tags": [
+    "dots",
+    "more",
+    "ellipsis",
+    "meatballs",
+    "menu",
+    "options",
+    "overflow",
+    "three-dots"
+   ]
+  },
+  "droplet": {
+   "group": "science",
+   "tags": [
+    "droplet",
+    "drop",
+    "water",
+    "liquid",
+    "rain",
+    "blood",
+    "ink",
+    "color"
+   ]
+  },
+  "ear": {
+   "group": "science",
+   "tags": [
+    "ear",
+    "hearing",
+    "listen",
+    "audio",
+    "sound",
+    "hear",
+    "deaf",
+    "accessibility"
+   ]
+  },
+  "edit": {
+   "group": "education",
+   "tags": [
+    "edit",
+    "pencil",
+    "write",
+    "modify",
+    "change",
+    "update",
+    "rename",
+    "compose"
+   ]
+  },
+  "egg": {
+   "group": "education",
+   "tags": [
+    "egg",
+    "food",
+    "breakfast",
+    "easter",
+    "chicken",
+    "protein",
+    "cooking",
+    "oval"
+   ]
+  },
+  "engine": {
+   "group": "transport",
+   "tags": [
+    "engine",
+    "motor",
+    "car",
+    "automotive",
+    "check-engine",
+    "vehicle",
+    "mechanic",
+    "repair"
+   ]
+  },
+  "equal": {
+   "group": "maths",
+   "tags": [
+    "equal",
+    "equals",
+    "equal-sign",
+    "same",
+    "math",
+    "operator",
+    "calculator",
+    "result"
+   ]
+  },
+  "equal_not": {
+   "group": "maths",
+   "tags": [
+    "not-equal",
+    "unequal",
+    "inequality",
+    "different",
+    "operator",
+    "math",
+    "comparison",
+    "equation"
+   ]
+  },
+  "eraser": {
+   "group": "education",
+   "tags": [
+    "eraser",
+    "erase",
+    "rubber",
+    "delete",
+    "clear",
+    "remove",
+    "clean",
+    "wipe"
+   ]
+  },
+  "eye": {
+   "group": "science",
+   "tags": [
+    "eye",
+    "view",
+    "visibility",
+    "show",
+    "see",
+    "preview",
+    "visible",
+    "watch"
+   ]
+  },
+  "eye_off": {
+   "group": "nav",
+   "tags": [
+    "hide",
+    "hidden",
+    "invisible",
+    "visibility-off",
+    "eye-slash",
+    "unseen",
+    "password-hide",
+    "private"
+   ]
+  },
+  "feather": {
+   "group": "education",
+   "tags": [
+    "feather",
+    "quill",
+    "light",
+    "lightweight",
+    "bird",
+    "write",
+    "plume",
+    "writing"
+   ]
+  },
+  "file_code": {
+   "group": "tech",
+   "tags": [
+    "code",
+    "source-code",
+    "programming",
+    "script",
+    "developer",
+    "html",
+    "document",
+    "file"
+   ]
+  },
+  "file_text": {
+   "group": "tech",
+   "tags": [
+    "text",
+    "document",
+    "txt",
+    "doc",
+    "article",
+    "page",
+    "notes",
+    "file"
+   ]
+  },
+  "file_zip": {
+   "group": "tech",
+   "tags": [
+    "zip",
+    "archive",
+    "compressed",
+    "compression",
+    "rar",
+    "7z",
+    "package",
+    "bundle"
+   ]
+  },
+  "filter": {
+   "group": "tech",
+   "tags": [
+    "filter",
+    "funnel",
+    "filtering",
+    "sort",
+    "refine",
+    "narrow",
+    "search-options",
+    "query"
+   ]
+  },
+  "fingerprint": {
+   "group": "tech",
+   "tags": [
+    "fingerprint",
+    "biometric",
+    "touch-id",
+    "authentication",
+    "identity",
+    "security",
+    "unlock",
+    "scan"
+   ]
+  },
+  "first_aid_kit": {
+   "group": "science",
+   "tags": [
+    "first-aid",
+    "first-aid-kit",
+    "medkit",
+    "medical-kit",
+    "emergency",
+    "health",
+    "red-cross",
+    "hospital"
+   ]
+  },
+  "fish": {
+   "group": "science",
+   "tags": [
+    "fish",
+    "seafood",
+    "sea",
+    "ocean",
+    "aquarium",
+    "fishing",
+    "food",
+    "animal"
+   ]
+  },
+  "fish_bone": {
+   "group": "education",
+   "tags": [
+    "fish-bone",
+    "skeleton",
+    "bones",
+    "leftovers",
+    "cat-food",
+    "fish",
+    "seafood",
+    "dead"
+   ]
+  },
+  "flag": {
+   "group": "business",
+   "tags": [
+    "flag",
+    "report",
+    "banner",
+    "milestone",
+    "mark",
+    "country",
+    "goal",
+    "nation"
+   ]
+  },
+  "flag_2": {
+   "group": "education",
+   "tags": [
+    "flag",
+    "report",
+    "banner",
+    "milestone",
+    "mark",
+    "country",
+    "goal",
+    "finish"
+   ]
+  },
+  "flag_3": {
+   "group": "business",
+   "tags": [
+    "flag",
+    "pennant",
+    "banner",
+    "report",
+    "milestone",
+    "mark",
+    "goal",
+    "triangle"
+   ]
+  },
+  "flame": {
+   "group": "science",
+   "tags": [
+    "flame",
+    "fire",
+    "hot",
+    "burn",
+    "trending",
+    "popular",
+    "heat",
+    "lit"
+   ]
+  },
+  "flare": {
+   "group": "science",
+   "tags": [
+    "flare",
+    "lens-flare",
+    "sun",
+    "sunlight",
+    "shine",
+    "bright",
+    "glare",
+    "light"
+   ]
+  },
+  "flask": {
+   "group": "science",
+   "tags": [
+    "flask",
+    "lab",
+    "laboratory",
+    "chemistry",
+    "science",
+    "experiment",
+    "beta",
+    "test"
+   ]
+  },
+  "flask_2": {
+   "group": "science",
+   "tags": [
+    "flask",
+    "lab",
+    "laboratory",
+    "chemistry",
+    "science",
+    "experiment",
+    "beta",
+    "test"
+   ]
+  },
+  "flower": {
+   "group": "science",
+   "tags": [
+    "flower",
+    "blossom",
+    "bloom",
+    "plant",
+    "garden",
+    "rose",
+    "spring",
+    "nature"
+   ]
+  },
+  "focus_2": {
+   "group": "nav",
+   "tags": [
+    "focus",
+    "target",
+    "bullseye",
+    "aim",
+    "center",
+    "camera",
+    "crosshair",
+    "precision"
+   ]
+  },
+  "folder": {
+   "group": "tech",
+   "tags": [
+    "folder",
+    "directory",
+    "dir",
+    "files",
+    "archive",
+    "project",
+    "category",
+    "organize"
+   ]
+  },
+  "folders": {
+   "group": "tech",
+   "tags": [
+    "folders",
+    "directories",
+    "multiple-folders",
+    "files",
+    "copy",
+    "duplicate",
+    "collection",
+    "archive"
+   ]
+  },
+  "gas_station": {
+   "group": "transport",
+   "tags": [
+    "gas-station",
+    "petrol-station",
+    "fuel",
+    "gas",
+    "petrol",
+    "refuel",
+    "pump",
+    "diesel"
+   ]
+  },
+  "gift": {
+   "group": "business",
+   "tags": [
+    "gift",
+    "present",
+    "gift-box",
+    "birthday",
+    "surprise",
+    "reward",
+    "bonus",
+    "christmas"
+   ]
+  },
+  "git_branch": {
+   "group": "tech",
+   "tags": [
+    "git",
+    "branch",
+    "version-control",
+    "vcs",
+    "source-control",
+    "repository",
+    "github",
+    "gitlab"
+   ]
+  },
+  "git_commit": {
+   "group": "tech",
+   "tags": [
+    "git",
+    "commit",
+    "version-control",
+    "vcs",
+    "history",
+    "changes",
+    "github",
+    "gitlab"
+   ]
+  },
+  "git_merge": {
+   "group": "tech",
+   "tags": [
+    "git",
+    "merge",
+    "branch",
+    "combine",
+    "version-control",
+    "vcs",
+    "github",
+    "gitlab"
+   ]
+  },
+  "git_pull_request": {
+   "group": "tech",
+   "tags": [
+    "git",
+    "pull-request",
+    "pr",
+    "merge-request",
+    "mr",
+    "code-review",
+    "version-control",
+    "github"
+   ]
+  },
+  "globe": {
+   "group": "education",
+   "tags": [
+    "globe",
+    "world",
+    "earth",
+    "planet",
+    "international",
+    "global",
+    "language",
+    "geography"
+   ]
+  },
+  "hammer": {
+   "group": "tech",
+   "tags": [
+    "hammer",
+    "tool",
+    "repair",
+    "build",
+    "construction",
+    "fix",
+    "diy",
+    "hardware"
+   ]
+  },
+  "hash": {
+   "group": "maths",
+   "tags": [
+    "hashtag",
+    "hash",
+    "pound",
+    "number-sign",
+    "octothorpe",
+    "tag",
+    "channel",
+    "symbol"
+   ]
+  },
+  "headphones": {
+   "group": "tech",
+   "tags": [
+    "headphones",
+    "headset",
+    "earphones",
+    "audio",
+    "music",
+    "sound",
+    "listen",
+    "podcast"
+   ]
+  },
+  "heart": {
+   "group": "science",
+   "tags": [
+    "heart",
+    "love",
+    "like",
+    "favorite",
+    "favourite",
+    "wishlist",
+    "valentine",
+    "emotion"
+   ]
+  },
+  "heart_rate_monitor": {
+   "group": "science",
+   "tags": [
+    "heart-rate",
+    "ekg",
+    "ecg",
+    "monitor",
+    "pulse",
+    "cardiogram",
+    "medical",
+    "health"
+   ]
+  },
+  "heartbeat": {
+   "group": "science",
+   "tags": [
+    "heartbeat",
+    "pulse",
+    "heart-rate",
+    "ekg",
+    "ecg",
+    "cardio",
+    "medical",
+    "health"
+   ]
+  },
+  "helicopter": {
+   "group": "transport",
+   "tags": [
+    "helicopter",
+    "chopper",
+    "aircraft",
+    "rotorcraft",
+    "fly",
+    "aviation",
+    "transport",
+    "travel"
+   ]
+  },
+  "help_circle": {
+   "group": "business",
+   "tags": [
+    "help",
+    "question",
+    "support",
+    "faq",
+    "question-mark",
+    "circle",
+    "info",
+    "assistance"
+   ]
+  },
+  "hexagon": {
+   "group": "maths",
+   "tags": [
+    "hexagon",
+    "shape",
+    "polygon",
+    "six-sided",
+    "geometry",
+    "honeycomb",
+    "figure"
+   ]
+  },
+  "hierarchy_2": {
+   "group": "tech",
+   "tags": [
+    "hierarchy",
+    "org-chart",
+    "organization",
+    "tree",
+    "structure",
+    "diagram",
+    "network",
+    "parent-child"
+   ]
+  },
+  "highlight": {
+   "group": "education",
+   "tags": [
+    "highlight",
+    "highlighter",
+    "marker",
+    "pen",
+    "text-editor",
+    "emphasize",
+    "mark",
+    "annotate"
+   ]
+  },
+  "home": {
+   "group": "nav",
+   "tags": [
+    "home",
+    "house",
+    "homepage",
+    "main",
+    "start",
+    "dashboard",
+    "building",
+    "residence"
+   ]
+  },
+  "horse": {
+   "group": "education",
+   "tags": [
+    "horse",
+    "equine",
+    "equestrian",
+    "riding",
+    "pony",
+    "stallion",
+    "animal",
+    "farm"
+   ]
+  },
+  "hourglass": {
+   "group": "business",
+   "tags": [
+    "hourglass",
+    "sand-timer",
+    "timer",
+    "time",
+    "wait",
+    "loading",
+    "countdown",
+    "deadline"
+   ]
+  },
+  "ice_cream_2": {
+   "group": "education",
+   "tags": [
+    "ice-cream",
+    "gelato",
+    "dessert",
+    "cone",
+    "frozen",
+    "sweet",
+    "scoop",
+    "summer"
+   ]
+  },
+  "id_badge_2": {
+   "group": "business",
+   "tags": [
+    "id-badge",
+    "badge",
+    "employee",
+    "identity",
+    "identification",
+    "pass",
+    "lanyard",
+    "name-tag"
+   ]
+  },
+  "infinity": {
+   "group": "maths",
+   "tags": [
+    "infinity",
+    "endless",
+    "forever",
+    "unlimited",
+    "loop",
+    "eternity",
+    "math",
+    "symbol"
+   ]
+  },
+  "info_circle": {
+   "group": "business",
+   "tags": [
+    "info",
+    "information",
+    "about",
+    "details",
+    "help",
+    "tip",
+    "i",
+    "circle"
+   ]
+  },
+  "json": {
+   "group": "tech",
+   "tags": [
+    "json",
+    "file",
+    "format",
+    "data",
+    "api",
+    "config",
+    "javascript",
+    "object"
+   ]
+  },
+  "key": {
+   "group": "tech",
+   "tags": [
+    "key",
+    "password",
+    "login",
+    "access",
+    "authentication",
+    "unlock",
+    "security",
+    "credential"
+   ]
+  },
+  "keyboard": {
+   "group": "tech",
+   "tags": [
+    "keyboard",
+    "typing",
+    "input",
+    "keys",
+    "computer",
+    "hardware",
+    "device",
+    "type"
+   ]
+  },
+  "ladder": {
+   "group": "business",
+   "tags": [
+    "ladder",
+    "climb",
+    "stairs",
+    "steps",
+    "equipment",
+    "construction",
+    "career"
+   ]
+  },
+  "lamp": {
+   "group": "science",
+   "tags": [
+    "lamp",
+    "light",
+    "desk-lamp",
+    "lighting",
+    "bulb",
+    "room",
+    "furniture",
+    "decoration"
+   ]
+  },
+  "language": {
+   "group": "education",
+   "tags": [
+    "language",
+    "translate",
+    "translation",
+    "localization",
+    "i18n",
+    "multilingual",
+    "locale",
+    "internationalization"
+   ]
+  },
+  "layout_dashboard": {
+   "group": "tech",
+   "tags": [
+    "dashboard",
+    "layout",
+    "grid",
+    "admin",
+    "panel",
+    "overview",
+    "widgets",
+    "ui"
+   ]
+  },
+  "layout_grid": {
+   "group": "tech",
+   "tags": [
+    "grid",
+    "layout",
+    "apps",
+    "tiles",
+    "gallery",
+    "thumbnails",
+    "grid-view",
+    "ui"
+   ]
+  },
+  "leaf": {
+   "group": "science",
+   "tags": [
+    "leaf",
+    "nature",
+    "plant",
+    "eco",
+    "green",
+    "ecology",
+    "environment",
+    "organic"
+   ]
+  },
+  "leaf_2": {
+   "group": "education",
+   "tags": [
+    "leaf",
+    "nature",
+    "plant",
+    "eco",
+    "green",
+    "ecology",
+    "environment",
+    "organic"
+   ]
+  },
+  "lemon": {
+   "group": "education",
+   "tags": [
+    "lemon",
+    "lime",
+    "citrus",
+    "fruit",
+    "food",
+    "vitamin",
+    "sour",
+    "slice"
+   ]
+  },
+  "library": {
+   "group": "education",
+   "tags": [
+    "library",
+    "books",
+    "bookshelf",
+    "shelf",
+    "archive",
+    "collection",
+    "reading",
+    "knowledge"
+   ]
+  },
+  "link": {
+   "group": "tech",
+   "tags": [
+    "link",
+    "url",
+    "hyperlink",
+    "chain",
+    "anchor",
+    "connection",
+    "href",
+    "attach"
+   ]
+  },
+  "list_check": {
+   "group": "business",
+   "tags": [
+    "checklist",
+    "todo",
+    "to-do",
+    "tasks",
+    "list",
+    "check",
+    "done",
+    "completed"
+   ]
+  },
+  "list_details": {
+   "group": "tech",
+   "tags": [
+    "list",
+    "details",
+    "list-view",
+    "items",
+    "rows",
+    "thumbnails",
+    "menu"
+   ]
+  },
+  "lock": {
+   "group": "tech",
+   "tags": [
+    "lock",
+    "padlock",
+    "locked",
+    "security",
+    "secure",
+    "password",
+    "private",
+    "protected"
+   ]
+  },
+  "lock_open": {
+   "group": "tech",
+   "tags": [
+    "unlock",
+    "unlocked",
+    "open",
+    "lock",
+    "padlock",
+    "security",
+    "access"
+   ]
+  },
+  "login": {
+   "group": "nav",
+   "tags": [
+    "login",
+    "log-in",
+    "sign-in",
+    "signin",
+    "enter",
+    "arrow-right-to-bracket",
+    "account",
+    "authentication"
+   ]
+  },
+  "logout": {
+   "group": "nav",
+   "tags": [
+    "logout",
+    "log-out",
+    "sign-out",
+    "signout",
+    "exit",
+    "leave",
+    "arrow-right-from-bracket",
+    "account"
+   ]
+  },
+  "lungs": {
+   "group": "science",
+   "tags": [
+    "lungs",
+    "breathe",
+    "breathing",
+    "respiratory",
+    "anatomy",
+    "organ",
+    "medical",
+    "health"
+   ]
+  },
+  "magnet": {
+   "group": "science",
+   "tags": [
+    "magnet",
+    "magnetic",
+    "attract",
+    "attraction",
+    "physics",
+    "pull",
+    "snap"
+   ]
+  },
+  "mail": {
+   "group": "tech",
+   "tags": [
+    "mail",
+    "email",
+    "envelope",
+    "message",
+    "inbox",
+    "letter",
+    "e-mail",
+    "contact"
+   ]
+  },
+  "mail_opened": {
+   "group": "business",
+   "tags": [
+    "mail",
+    "email",
+    "envelope",
+    "opened",
+    "read",
+    "open-mail",
+    "message",
+    "e-mail"
+   ]
+  },
+  "map": {
+   "group": "business",
+   "tags": [
+    "map",
+    "navigation",
+    "location",
+    "travel",
+    "geography",
+    "directions",
+    "atlas"
+   ]
+  },
+  "map_2": {
+   "group": "education",
+   "tags": [
+    "map",
+    "navigation",
+    "location",
+    "pin",
+    "marker",
+    "travel",
+    "geography",
+    "directions"
+   ]
+  },
+  "map_pin": {
+   "group": "business",
+   "tags": [
+    "pin",
+    "marker",
+    "location",
+    "place",
+    "gps",
+    "map",
+    "point",
+    "poi"
+   ]
+  },
+  "math": {
+   "group": "maths",
+   "tags": [
+    "calculator",
+    "mathematics",
+    "plus",
+    "minus",
+    "multiply",
+    "divide",
+    "arithmetic",
+    "operations"
+   ]
+  },
+  "math_function": {
+   "group": "maths",
+   "tags": [
+    "function",
+    "fx",
+    "formula",
+    "equation",
+    "spreadsheet",
+    "excel",
+    "mathematics",
+    "expression"
+   ]
+  },
+  "math_greater": {
+   "group": "maths",
+   "tags": [
+    "greater-than",
+    "gt",
+    "comparison",
+    "inequality",
+    "operator",
+    "chevron",
+    "mathematics",
+    "symbol"
+   ]
+  },
+  "math_integral": {
+   "group": "maths",
+   "tags": [
+    "integral",
+    "calculus",
+    "antiderivative",
+    "mathematics",
+    "formula",
+    "symbol",
+    "integration",
+    "area-under-curve"
+   ]
+  },
+  "math_integrals": {
+   "group": "maths",
+   "tags": [
+    "double-integral",
+    "integrals",
+    "calculus",
+    "mathematics",
+    "formula",
+    "symbol",
+    "integration",
+    "multiple-integral"
+   ]
+  },
+  "math_lower": {
+   "group": "maths",
+   "tags": [
+    "less-than",
+    "lt",
+    "comparison",
+    "inequality",
+    "operator",
+    "chevron",
+    "mathematics",
+    "symbol"
+   ]
+  },
+  "math_pi": {
+   "group": "maths",
+   "tags": [
+    "pi",
+    "constant",
+    "circle",
+    "greek",
+    "mathematics",
+    "symbol",
+    "number",
+    "math"
+   ]
+  },
+  "math_symbols": {
+   "group": "maths",
+   "tags": [
+    "calculator",
+    "math",
+    "plus",
+    "minus",
+    "multiply",
+    "equals",
+    "arithmetic",
+    "operators"
+   ]
+  },
+  "math_x_plus_x": {
+   "group": "maths",
+   "tags": [
+    "addition",
+    "plus",
+    "add",
+    "sum",
+    "variable",
+    "formula",
+    "algebra",
+    "mathematics"
+   ]
+  },
+  "maximize": {
+   "group": "nav",
+   "tags": [
+    "fullscreen",
+    "expand",
+    "enlarge",
+    "resize",
+    "full-screen",
+    "corners",
+    "zoom-in",
+    "window"
+   ]
+  },
+  "meat": {
+   "group": "education",
+   "tags": [
+    "beef",
+    "steak",
+    "ham",
+    "meat-on-bone",
+    "protein",
+    "dinner",
+    "food",
+    "bbq"
+   ]
+  },
+  "medal": {
+   "group": "business",
+   "tags": [
+    "award",
+    "prize",
+    "badge",
+    "achievement",
+    "winner",
+    "honor",
+    "ribbon",
+    "reward"
+   ]
+  },
+  "medal_2": {
+   "group": "business",
+   "tags": [
+    "award",
+    "prize",
+    "badge",
+    "achievement",
+    "winner",
+    "honor",
+    "gold",
+    "first-place"
+   ]
+  },
+  "memory": {
+   "group": "tech",
+   "tags": [
+    "ram",
+    "chip",
+    "memory-card",
+    "hardware",
+    "processor",
+    "computer",
+    "sd-card",
+    "storage"
+   ]
+  },
+  "menu_2": {
+   "group": "nav",
+   "tags": [
+    "hamburger",
+    "hamburger-menu",
+    "burger",
+    "bars",
+    "navigation",
+    "nav",
+    "lines",
+    "sidebar"
+   ]
+  },
+  "message": {
+   "group": "tech",
+   "tags": [
+    "chat",
+    "comment",
+    "speech-bubble",
+    "conversation",
+    "sms",
+    "text-message",
+    "reply",
+    "communication"
+   ]
+  },
+  "messages": {
+   "group": "tech",
+   "tags": [
+    "chat",
+    "conversation",
+    "comments",
+    "discussion",
+    "dialogue",
+    "thread",
+    "speech-bubbles",
+    "forum"
+   ]
+  },
+  "microphone": {
+   "group": "education",
+   "tags": [
+    "mic",
+    "record",
+    "voice",
+    "audio",
+    "sound",
+    "speak",
+    "podcast",
+    "recording"
+   ]
+  },
+  "microphone_2": {
+   "group": "tech",
+   "tags": [
+    "mic",
+    "karaoke",
+    "sing",
+    "voice",
+    "audio",
+    "sound",
+    "podcast",
+    "recording"
+   ]
+  },
+  "microscope": {
+   "group": "science",
+   "tags": [
+    "science",
+    "laboratory",
+    "lab",
+    "biology",
+    "research",
+    "experiment",
+    "magnify",
+    "microbiology"
+   ]
+  },
+  "microscope_off": {
+   "group": "science",
+   "tags": [
+    "science",
+    "laboratory",
+    "lab",
+    "biology",
+    "research",
+    "disabled",
+    "slash"
+   ]
+  },
+  "milk": {
+   "group": "education",
+   "tags": [
+    "dairy",
+    "drink",
+    "bottle",
+    "carton",
+    "breakfast",
+    "beverage",
+    "cow",
+    "food"
+   ]
+  },
+  "minimize": {
+   "group": "nav",
+   "tags": [
+    "shrink",
+    "collapse",
+    "exit-fullscreen",
+    "reduce",
+    "smaller",
+    "corners",
+    "window",
+    "compress"
+   ]
+  },
+  "minus": {
+   "group": "maths",
+   "tags": [
+    "subtract",
+    "remove",
+    "less",
+    "negative",
+    "dash",
+    "hyphen",
+    "minimize",
+    "collapse"
+   ]
+  },
+  "mood_cry": {
+   "group": "science",
+   "tags": [
+    "crying",
+    "tears",
+    "sad",
+    "upset",
+    "sob",
+    "emoji",
+    "smiley",
+    "face"
+   ]
+  },
+  "mood_happy": {
+   "group": "science",
+   "tags": [
+    "happy",
+    "smile",
+    "joy",
+    "glad",
+    "cheerful",
+    "grin",
+    "emoji",
+    "smiley"
+   ]
+  },
+  "mood_kid": {
+   "group": "science",
+   "tags": [
+    "kid",
+    "child",
+    "baby",
+    "children",
+    "young",
+    "emoji",
+    "smiley",
+    "face"
+   ]
+  },
+  "mood_sad": {
+   "group": "science",
+   "tags": [
+    "sad",
+    "unhappy",
+    "frown",
+    "upset",
+    "down",
+    "emoji",
+    "smiley",
+    "face"
+   ]
+  },
+  "mood_smile": {
+   "group": "science",
+   "tags": [
+    "smile",
+    "happy",
+    "smiling",
+    "glad",
+    "positive",
+    "emoji",
+    "smiley",
+    "face"
+   ]
+  },
+  "moon": {
+   "group": "science",
+   "tags": [
+    "night",
+    "dark-mode",
+    "dark",
+    "theme",
+    "crescent",
+    "sleep",
+    "lunar",
+    "evening"
+   ]
+  },
+  "motorbike": {
+   "group": "transport",
+   "tags": [
+    "motorcycle",
+    "bike",
+    "scooter",
+    "ride",
+    "vehicle",
+    "transport",
+    "biker",
+    "motorbike"
+   ]
+  },
+  "mountain": {
+   "group": "science",
+   "tags": [
+    "mountains",
+    "peak",
+    "hill",
+    "landscape",
+    "hiking",
+    "climbing",
+    "nature",
+    "outdoor"
+   ]
+  },
+  "mouse": {
+   "group": "tech",
+   "tags": [
+    "computer-mouse",
+    "pointer",
+    "click",
+    "cursor",
+    "peripheral",
+    "device",
+    "scroll",
+    "mouse"
+   ]
+  },
+  "music": {
+   "group": "education",
+   "tags": [
+    "song",
+    "audio",
+    "sound",
+    "note",
+    "melody",
+    "track",
+    "mp3",
+    "playlist"
+   ]
+  },
+  "network": {
+   "group": "tech",
+   "tags": [
+    "internet",
+    "connection",
+    "globe",
+    "web",
+    "world-wide",
+    "lan",
+    "wifi",
+    "online"
+   ]
+  },
+  "notebook": {
+   "group": "education",
+   "tags": [
+    "notepad",
+    "journal",
+    "diary",
+    "book",
+    "notes",
+    "writing",
+    "study",
+    "planner"
+   ]
+  },
+  "number_0": {
+   "group": "maths",
+   "tags": [
+    "zero",
+    "number",
+    "digit",
+    "numeral",
+    "count",
+    "null",
+    "nil",
+    "numeric"
+   ]
+  },
+  "number_1": {
+   "group": "maths",
+   "tags": [
+    "one",
+    "number",
+    "digit",
+    "numeral",
+    "count",
+    "first",
+    "numeric",
+    "character"
+   ]
+  },
+  "number_2": {
+   "group": "maths",
+   "tags": [
+    "two",
+    "number",
+    "digit",
+    "numeral",
+    "count",
+    "second",
+    "numeric",
+    "character"
+   ]
+  },
+  "number_3": {
+   "group": "maths",
+   "tags": [
+    "three",
+    "number",
+    "digit",
+    "numeral",
+    "count",
+    "third",
+    "numeric",
+    "character"
+   ]
+  },
+  "number_4": {
+   "group": "maths",
+   "tags": [
+    "four",
+    "number",
+    "digit",
+    "numeral",
+    "count",
+    "fourth",
+    "numeric",
+    "character"
+   ]
+  },
+  "number_5": {
+   "group": "maths",
+   "tags": [
+    "five",
+    "number",
+    "digit",
+    "numeral",
+    "count",
+    "fifth",
+    "numeric",
+    "character"
+   ]
+  },
+  "number_6": {
+   "group": "maths",
+   "tags": [
+    "six",
+    "number",
+    "digit",
+    "numeral",
+    "count",
+    "sixth",
+    "numeric",
+    "character"
+   ]
+  },
+  "number_7": {
+   "group": "maths",
+   "tags": [
+    "seven",
+    "number",
+    "digit",
+    "numeral",
+    "count",
+    "seventh",
+    "numeric",
+    "character"
+   ]
+  },
+  "number_8": {
+   "group": "maths",
+   "tags": [
+    "eight",
+    "number",
+    "digit",
+    "numeral",
+    "count",
+    "eighth",
+    "numeric",
+    "character"
+   ]
+  },
+  "number_9": {
+   "group": "maths",
+   "tags": [
+    "nine",
+    "number",
+    "digit",
+    "numeral",
+    "count",
+    "ninth",
+    "numeric",
+    "character"
+   ]
+  },
+  "numbers": {
+   "group": "maths",
+   "tags": [
+    "number",
+    "digits",
+    "numeric",
+    "numerals",
+    "count",
+    "counting",
+    "math",
+    "statistics"
+   ]
+  },
+  "octagon": {
+   "group": "maths",
+   "tags": [
+    "shape",
+    "polygon",
+    "stop-sign",
+    "eight-sided",
+    "geometry",
+    "figure",
+    "octagonal",
+    "8-sides"
+   ]
+  },
+  "orbit": {
+   "group": "science",
+   "tags": [
+    "satellite",
+    "planet",
+    "space",
+    "astronomy",
+    "orbital",
+    "rotation",
+    "cosmos",
+    "orbit"
+   ]
+  },
+  "package": {
+   "group": "business",
+   "tags": [
+    "box",
+    "parcel",
+    "delivery",
+    "shipping",
+    "product",
+    "cube",
+    "container",
+    "3d"
+   ]
+  },
+  "packages": {
+   "group": "tech",
+   "tags": [
+    "boxes",
+    "parcels",
+    "delivery",
+    "shipping",
+    "products",
+    "stack",
+    "inventory",
+    "warehouse"
+   ]
+  },
+  "palette": {
+   "group": "education",
+   "tags": [
+    "color",
+    "colour",
+    "palette-colors",
+    "paint",
+    "art",
+    "painter",
+    "theme",
+    "swatch"
+   ]
+  },
+  "paperclip": {
+   "group": "education",
+   "tags": [
+    "attachment",
+    "attach",
+    "clip",
+    "file",
+    "link",
+    "paper-clip",
+    "document",
+    "paperclip"
+   ]
+  },
+  "parking": {
+   "group": "transport",
+   "tags": [
+    "parking-lot",
+    "car",
+    "park",
+    "sign",
+    "p",
+    "vehicle",
+    "garage",
+    "parking"
+   ]
+  },
+  "paw": {
+   "group": "education",
+   "tags": [
+    "pet",
+    "animal",
+    "dog",
+    "cat",
+    "footprint",
+    "paw-print",
+    "vet",
+    "paw"
+   ]
+  },
+  "pencil": {
+   "group": "education",
+   "tags": [
+    "edit",
+    "write",
+    "draw",
+    "modify",
+    "pen",
+    "compose",
+    "update",
+    "change"
+   ]
+  },
+  "pencil_minus": {
+   "group": "education",
+   "tags": [
+    "edit",
+    "write",
+    "draw",
+    "modify",
+    "pen",
+    "compose",
+    "remove",
+    "delete"
+   ]
+  },
+  "pentagon": {
+   "group": "maths",
+   "tags": [
+    "shape",
+    "polygon",
+    "five-sided",
+    "geometry",
+    "figure",
+    "pentagonal",
+    "5-sides",
+    "polygon-shape"
+   ]
+  },
+  "percentage": {
+   "group": "maths",
+   "tags": [
+    "percent",
+    "percentage-sign",
+    "discount",
+    "rate",
+    "ratio",
+    "proportion",
+    "statistics",
+    "math"
+   ]
+  },
+  "phone": {
+   "group": "business",
+   "tags": [
+    "call",
+    "telephone",
+    "contact",
+    "dial",
+    "mobile",
+    "handset",
+    "ring",
+    "support"
+   ]
+  },
+  "phone_call": {
+   "group": "business",
+   "tags": [
+    "calling",
+    "call",
+    "ringing",
+    "telephone",
+    "contact",
+    "dial",
+    "handset",
+    "sound"
+   ]
+  },
+  "photo": {
+   "group": "education",
+   "tags": [
+    "image",
+    "picture",
+    "gallery",
+    "img",
+    "photography",
+    "media",
+    "thumbnail",
+    "landscape"
+   ]
+  },
+  "pig_money": {
+   "group": "business",
+   "tags": [
+    "piggy-bank",
+    "savings",
+    "save",
+    "money",
+    "bank",
+    "deposit",
+    "finance",
+    "budget"
+   ]
+  },
+  "pill": {
+   "group": "science",
+   "tags": [
+    "medicine",
+    "capsule",
+    "drug",
+    "pharmacy",
+    "medication",
+    "tablet",
+    "vitamin",
+    "health"
+   ]
+  },
+  "pin": {
+   "group": "nav",
+   "tags": [
+    "pushpin",
+    "thumbtack",
+    "tack",
+    "pinned",
+    "attach",
+    "sticky",
+    "keep",
+    "bookmark"
+   ]
+  },
+  "pizza": {
+   "group": "education",
+   "tags": [
+    "pizza-slice",
+    "slice",
+    "food",
+    "fast-food",
+    "italian",
+    "cheese",
+    "pepperoni",
+    "restaurant"
+   ]
+  },
+  "plane": {
+   "group": "transport",
+   "tags": [
+    "airplane",
+    "aeroplane",
+    "flight",
+    "aircraft",
+    "travel",
+    "airport",
+    "trip",
+    "fly"
+   ]
+  },
+  "planet": {
+   "group": "science",
+   "tags": [
+    "saturn",
+    "space",
+    "astronomy",
+    "orbit",
+    "universe",
+    "galaxy",
+    "cosmos",
+    "rings"
+   ]
+  },
+  "plant": {
+   "group": "science",
+   "tags": [
+    "potted-plant",
+    "houseplant",
+    "pot",
+    "leaf",
+    "green",
+    "nature",
+    "garden",
+    "growth"
+   ]
+  },
+  "plant_2": {
+   "group": "science",
+   "tags": [
+    "tree",
+    "bonsai",
+    "potted-plant",
+    "houseplant",
+    "pot",
+    "leaf",
+    "green",
+    "nature"
+   ]
+  },
+  "player_pause": {
+   "group": "nav",
+   "tags": [
+    "pause",
+    "media",
+    "audio",
+    "video",
+    "music",
+    "hold",
+    "controls",
+    "button"
+   ]
+  },
+  "player_play": {
+   "group": "nav",
+   "tags": [
+    "play",
+    "start",
+    "run",
+    "media",
+    "video",
+    "audio",
+    "music",
+    "resume"
+   ]
+  },
+  "player_skip_forward": {
+   "group": "nav",
+   "tags": [
+    "skip-forward",
+    "next",
+    "skip",
+    "forward",
+    "end",
+    "media",
+    "music",
+    "video"
+   ]
+  },
+  "player_stop": {
+   "group": "nav",
+   "tags": [
+    "stop",
+    "square",
+    "halt",
+    "end",
+    "media",
+    "music",
+    "video",
+    "audio"
+   ]
+  },
+  "plug": {
+   "group": "science",
+   "tags": [
+    "power-plug",
+    "electricity",
+    "power",
+    "socket",
+    "outlet",
+    "charger",
+    "connect",
+    "connection"
+   ]
+  },
+  "plug_connected": {
+   "group": "tech",
+   "tags": [
+    "connected",
+    "plugged-in",
+    "plugin",
+    "connection",
+    "integration",
+    "link",
+    "power",
+    "socket"
+   ]
+  },
+  "plus": {
+   "group": "maths",
+   "tags": [
+    "add",
+    "new",
+    "create",
+    "insert",
+    "more",
+    "plus-sign",
+    "increase",
+    "positive"
+   ]
+  },
+  "presentation": {
+   "group": "business",
+   "tags": [
+    "presentation-board",
+    "slides",
+    "slideshow",
+    "powerpoint",
+    "keynote",
+    "whiteboard",
+    "screen",
+    "meeting"
+   ]
+  },
+  "presentation_analytics": {
+   "group": "business",
+   "tags": [
+    "presentation",
+    "chart",
+    "analytics",
+    "statistics",
+    "report",
+    "slides",
+    "dashboard",
+    "meeting"
+   ]
+  },
+  "printer": {
+   "group": "tech",
+   "tags": [
+    "print",
+    "printing",
+    "paper",
+    "office",
+    "fax",
+    "device",
+    "document",
+    "hardcopy"
+   ]
+  },
+  "propeller": {
+   "group": "transport",
+   "tags": [
+    "fan",
+    "blade",
+    "rotor",
+    "airplane",
+    "boat",
+    "ship",
+    "spin",
+    "aviation"
+   ]
+  },
+  "puzzle": {
+   "group": "education",
+   "tags": [
+    "jigsaw",
+    "extension",
+    "plugin",
+    "add-on",
+    "addon",
+    "piece",
+    "solution",
+    "game"
+   ]
+  },
+  "qrcode": {
+   "group": "tech",
+   "tags": [
+    "qr-code",
+    "qr",
+    "barcode",
+    "scan",
+    "scanner",
+    "code",
+    "link",
+    "payment"
+   ]
+  },
+  "radioactive": {
+   "group": "science",
+   "tags": [
+    "radiation",
+    "nuclear",
+    "hazard",
+    "danger",
+    "warning",
+    "toxic",
+    "atomic",
+    "reactor"
+   ]
+  },
+  "rainbow": {
+   "group": "science",
+   "tags": [
+    "colorful",
+    "colors",
+    "colour",
+    "weather",
+    "rain",
+    "nature",
+    "pride",
+    "lgbt"
+   ]
+  },
+  "receipt": {
+   "group": "business",
+   "tags": [
+    "bill",
+    "invoice",
+    "payment",
+    "purchase",
+    "transaction",
+    "money",
+    "shopping",
+    "paper"
+   ]
+  },
+  "receipt_tax": {
+   "group": "business",
+   "tags": [
+    "tax",
+    "vat",
+    "percentage",
+    "receipt",
+    "bill",
+    "invoice",
+    "payment",
+    "finance"
+   ]
+  },
+  "recycle": {
+   "group": "science",
+   "tags": [
+    "recycling",
+    "reuse",
+    "eco",
+    "environment",
+    "green",
+    "sustainability",
+    "waste",
+    "trash"
+   ]
+  },
+  "refresh": {
+   "group": "tech",
+   "tags": [
+    "reload",
+    "sync",
+    "update",
+    "reset",
+    "arrows",
+    "loader",
+    "spinner",
+    "restart"
+   ]
+  },
+  "repeat": {
+   "group": "tech",
+   "tags": [
+    "loop",
+    "repeat-all",
+    "replay",
+    "cycle",
+    "redo",
+    "again",
+    "music",
+    "playlist"
+   ]
+  },
+  "report_analytics": {
+   "group": "business",
+   "tags": [
+    "analytics",
+    "statistics",
+    "chart",
+    "graph",
+    "report",
+    "dashboard",
+    "results",
+    "business"
+   ]
+  },
+  "report_money": {
+   "group": "business",
+   "tags": [
+    "financial-report",
+    "finance",
+    "money",
+    "sales",
+    "revenue",
+    "report",
+    "business",
+    "results"
+   ]
+  },
+  "ripple": {
+   "group": "science",
+   "tags": [
+    "wave",
+    "water",
+    "waves",
+    "ocean",
+    "sea",
+    "ripples",
+    "ripple"
+   ]
+  },
+  "road": {
+   "group": "transport",
+   "tags": [
+    "street",
+    "highway",
+    "route",
+    "lane",
+    "travel",
+    "traffic",
+    "way",
+    "road"
+   ]
+  },
+  "robot": {
+   "group": "tech",
+   "tags": [
+    "bot",
+    "ai",
+    "android",
+    "automation",
+    "machine",
+    "assistant",
+    "chatbot",
+    "droid"
+   ]
+  },
+  "rocket": {
+   "group": "tech",
+   "tags": [
+    "launch",
+    "startup",
+    "space",
+    "spaceship",
+    "deploy",
+    "boost",
+    "fast",
+    "release"
+   ]
+  },
+  "rotate": {
+   "group": "tech",
+   "tags": [
+    "rotate",
+    "rotation",
+    "refresh",
+    "reload",
+    "spin",
+    "redo",
+    "counterclockwise",
+    "arrow"
+   ]
+  },
+  "route": {
+   "group": "business",
+   "tags": [
+    "path",
+    "directions",
+    "journey",
+    "navigation",
+    "map",
+    "trip",
+    "way",
+    "gps"
+   ]
+  },
+  "router": {
+   "group": "tech",
+   "tags": [
+    "wifi",
+    "wireless",
+    "modem",
+    "internet",
+    "network",
+    "access-point",
+    "lan",
+    "router"
+   ]
+  },
+  "ruler": {
+   "group": "science",
+   "tags": [
+    "measure",
+    "measurement",
+    "dimensions",
+    "size",
+    "length",
+    "width",
+    "scale",
+    "ruler"
+   ]
+  },
+  "ruler_2": {
+   "group": "maths",
+   "tags": [
+    "measure",
+    "measurement",
+    "dimensions",
+    "size",
+    "length",
+    "width",
+    "scale",
+    "ruler"
+   ]
+  },
+  "ruler_3": {
+   "group": "education",
+   "tags": [
+    "measure",
+    "measurement",
+    "dimensions",
+    "size",
+    "length",
+    "width",
+    "scale",
+    "ruler"
+   ]
+  },
+  "ruler_measure": {
+   "group": "science",
+   "tags": [
+    "measure",
+    "measurement",
+    "dimensions",
+    "distance",
+    "size",
+    "length",
+    "width",
+    "ruler"
+   ]
+  },
+  "run": {
+   "group": "education",
+   "tags": [
+    "running",
+    "runner",
+    "jog",
+    "sprint",
+    "exercise",
+    "fitness",
+    "sport",
+    "walk"
+   ]
+  },
+  "sailboat": {
+   "group": "transport",
+   "tags": [
+    "boat",
+    "sail",
+    "sailing",
+    "yacht",
+    "ship",
+    "sea",
+    "ocean",
+    "sailboat"
+   ]
+  },
+  "salad": {
+   "group": "education",
+   "tags": [
+    "food",
+    "vegetables",
+    "healthy",
+    "vegan",
+    "vegetarian",
+    "bowl",
+    "meal",
+    "diet"
+   ]
+  },
+  "satellite": {
+   "group": "science",
+   "tags": [
+    "space",
+    "orbit",
+    "communication",
+    "satellite-dish",
+    "gps",
+    "signal",
+    "satellite"
+   ]
+  },
+  "scale": {
+   "group": "science",
+   "tags": [
+    "balance",
+    "scales",
+    "justice",
+    "law",
+    "weigh",
+    "libra",
+    "legal",
+    "equality"
+   ]
+  },
+  "scale_outline": {
+   "group": "business",
+   "tags": [
+    "weight",
+    "weighing-scale",
+    "bathroom-scale",
+    "weigh",
+    "diet",
+    "fitness",
+    "measurement",
+    "scale"
+   ]
+  },
+  "school": {
+   "group": "education",
+   "tags": [
+    "graduation",
+    "education",
+    "student",
+    "mortarboard",
+    "university",
+    "college",
+    "academic",
+    "hat"
+   ]
+  },
+  "school_bell": {
+   "group": "education",
+   "tags": [
+    "bell",
+    "school",
+    "education",
+    "alarm",
+    "ring",
+    "lesson",
+    "break"
+   ]
+  },
+  "scissors": {
+   "group": "education",
+   "tags": [
+    "cut",
+    "clipboard",
+    "cutting",
+    "crop",
+    "trim",
+    "tool",
+    "scissors"
+   ]
+  },
+  "scooter": {
+   "group": "transport",
+   "tags": [
+    "vespa",
+    "moped",
+    "motorbike",
+    "vehicle",
+    "transport",
+    "ride",
+    "scooter"
+   ]
+  },
+  "search": {
+   "group": "tech",
+   "tags": [
+    "find",
+    "magnifier",
+    "magnifying-glass",
+    "lookup",
+    "zoom",
+    "explore",
+    "query",
+    "browse"
+   ]
+  },
+  "send": {
+   "group": "tech",
+   "tags": [
+    "paper-plane",
+    "submit",
+    "message",
+    "email",
+    "mail",
+    "post",
+    "send"
+   ]
+  },
+  "server": {
+   "group": "tech",
+   "tags": [
+    "database",
+    "hosting",
+    "datacenter",
+    "backend",
+    "storage",
+    "rack",
+    "cloud",
+    "server"
+   ]
+  },
+  "server_2": {
+   "group": "tech",
+   "tags": [
+    "database",
+    "hosting",
+    "datacenter",
+    "backend",
+    "storage",
+    "rack",
+    "cloud",
+    "server"
+   ]
+  },
+  "settings": {
+   "group": "tech",
+   "tags": [
+    "cog",
+    "gear",
+    "preferences",
+    "configuration",
+    "options",
+    "config",
+    "setup",
+    "control"
+   ]
+  },
+  "settings_2": {
+   "group": "nav",
+   "tags": [
+    "cog",
+    "gear",
+    "preferences",
+    "configuration",
+    "options",
+    "config",
+    "setup",
+    "control"
+   ]
+  },
+  "shape": {
+   "group": "maths",
+   "tags": [
+    "vector",
+    "nodes",
+    "path",
+    "bezier",
+    "pen-tool",
+    "edit-shape",
+    "anchor-points",
+    "design"
+   ]
+  },
+  "shape_2": {
+   "group": "maths",
+   "tags": [
+    "vector",
+    "nodes",
+    "path",
+    "bezier",
+    "pen-tool",
+    "edit-shape",
+    "anchor-points",
+    "design"
+   ]
+  },
+  "shape_3": {
+   "group": "maths",
+   "tags": [
+    "vector",
+    "nodes",
+    "path",
+    "bezier",
+    "pen-tool",
+    "edit-shape",
+    "anchor-points",
+    "design"
+   ]
+  },
+  "share": {
+   "group": "tech",
+   "tags": [
+    "share-nodes",
+    "network",
+    "connect",
+    "social",
+    "send",
+    "link",
+    "distribute",
+    "share"
+   ]
+  },
+  "shield_check": {
+   "group": "tech",
+   "tags": [
+    "security",
+    "protection",
+    "protect",
+    "verified",
+    "secured",
+    "safe",
+    "approved",
+    "check"
+   ]
+  },
+  "shield_lock": {
+   "group": "tech",
+   "tags": [
+    "security",
+    "protection",
+    "protect",
+    "lock",
+    "locked",
+    "private",
+    "encrypted",
+    "password"
+   ]
+  },
+  "ship": {
+   "group": "transport",
+   "tags": [
+    "boat",
+    "cruise",
+    "ship",
+    "ferry",
+    "vessel",
+    "sea",
+    "ocean",
+    "shipping"
+   ]
+  },
+  "shopping_bag": {
+   "group": "business",
+   "tags": [
+    "bag",
+    "shop",
+    "store",
+    "purchase",
+    "buy",
+    "ecommerce",
+    "retail",
+    "checkout"
+   ]
+  },
+  "shopping_cart": {
+   "group": "business",
+   "tags": [
+    "cart",
+    "basket",
+    "trolley",
+    "shop",
+    "store",
+    "checkout",
+    "ecommerce",
+    "buy"
+   ]
+  },
+  "skateboarding": {
+   "group": "education",
+   "tags": [
+    "skater",
+    "skateboard",
+    "skate",
+    "trick",
+    "sport",
+    "extreme",
+    "street"
+   ]
+  },
+  "snowflake": {
+   "group": "science",
+   "tags": [
+    "snow",
+    "winter",
+    "cold",
+    "frost",
+    "freeze",
+    "ice",
+    "christmas",
+    "snowflake"
+   ]
+  },
+  "solar_panel": {
+   "group": "science",
+   "tags": [
+    "solar-power",
+    "solar",
+    "energy",
+    "renewable",
+    "panel",
+    "photovoltaic",
+    "sun",
+    "green"
+   ]
+  },
+  "soup": {
+   "group": "education",
+   "tags": [
+    "bowl",
+    "soup",
+    "food",
+    "meal",
+    "hot",
+    "ramen"
+   ]
+  },
+  "sparkles": {
+   "group": "tech",
+   "tags": [
+    "stars",
+    "shine",
+    "glitter",
+    "magic",
+    "ai",
+    "new",
+    "clean",
+    "sparkles"
+   ]
+  },
+  "speakerphone": {
+   "group": "business",
+   "tags": [
+    "megaphone",
+    "bullhorn",
+    "loudspeaker",
+    "announcement",
+    "marketing",
+    "promotion",
+    "broadcast",
+    "speakerphone"
+   ]
+  },
+  "square": {
+   "group": "maths",
+   "tags": [
+    "box",
+    "rectangle",
+    "shape",
+    "geometry",
+    "stop",
+    "checkbox",
+    "square"
+   ]
+  },
+  "square_check": {
+   "group": "nav",
+   "tags": [
+    "checkbox",
+    "checked",
+    "check",
+    "done",
+    "task",
+    "selected",
+    "tick",
+    "square"
+   ]
+  },
+  "square_root_2": {
+   "group": "maths",
+   "tags": [
+    "sqrt",
+    "radical",
+    "math",
+    "mathematics",
+    "formula",
+    "equation",
+    "calculate",
+    "calculator"
+   ]
+  },
+  "stack_2": {
+   "group": "tech",
+   "tags": [
+    "layers",
+    "stack",
+    "pile",
+    "layout",
+    "elements",
+    "components",
+    "levels",
+    "z-order"
+   ]
+  },
+  "stack_3": {
+   "group": "tech",
+   "tags": [
+    "layers",
+    "stack",
+    "pile",
+    "layout",
+    "elements",
+    "components",
+    "levels",
+    "z-order"
+   ]
+  },
+  "stairs_up": {
+   "group": "education",
+   "tags": [
+    "staircase",
+    "stairway",
+    "steps",
+    "upstairs",
+    "ascend",
+    "floor",
+    "building",
+    "stair"
+   ]
+  },
+  "star": {
+   "group": "maths",
+   "tags": [
+    "favorite",
+    "rating",
+    "rate",
+    "review",
+    "bookmark",
+    "like",
+    "featured",
+    "favourite"
+   ]
+  },
+  "steering_wheel": {
+   "group": "transport",
+   "tags": [
+    "car",
+    "drive",
+    "driving",
+    "vehicle",
+    "steer",
+    "wheel",
+    "automotive",
+    "racing"
+   ]
+  },
+  "stethoscope": {
+   "group": "science",
+   "tags": [
+    "doctor",
+    "medical",
+    "physician",
+    "health",
+    "checkup",
+    "examination",
+    "hospital",
+    "healthcare"
+   ]
+  },
+  "sum": {
+   "group": "maths",
+   "tags": [
+    "sigma",
+    "total",
+    "summation",
+    "add",
+    "math",
+    "formula",
+    "aggregate",
+    "sigma-symbol"
+   ]
+  },
+  "sun": {
+   "group": "science",
+   "tags": [
+    "light-mode",
+    "light",
+    "theme",
+    "day",
+    "brightness",
+    "weather",
+    "sunny",
+    "bright"
+   ]
+  },
+  "sunrise": {
+   "group": "science",
+   "tags": [
+    "sun",
+    "morning",
+    "dawn",
+    "day",
+    "horizon",
+    "weather",
+    "sunny",
+    "daylight"
+   ]
+  },
+  "sunset": {
+   "group": "science",
+   "tags": [
+    "sun",
+    "evening",
+    "dusk",
+    "night",
+    "horizon",
+    "weather",
+    "sunny",
+    "daylight"
+   ]
+  },
+  "swimming": {
+   "group": "education",
+   "tags": [
+    "swim",
+    "swimmer",
+    "pool",
+    "water",
+    "sport",
+    "summer",
+    "athlete",
+    "olympics"
+   ]
+  },
+  "table_column": {
+   "group": "tech",
+   "tags": [
+    "column",
+    "spreadsheet",
+    "grid",
+    "data",
+    "table",
+    "excel",
+    "cells",
+    "sheet"
+   ]
+  },
+  "tag": {
+   "group": "business",
+   "tags": [
+    "label",
+    "price-tag",
+    "price",
+    "sale",
+    "discount",
+    "shopping",
+    "category",
+    "tagging"
+   ]
+  },
+  "tags": {
+   "group": "business",
+   "tags": [
+    "labels",
+    "price-tags",
+    "categories",
+    "tagging",
+    "sale",
+    "discount",
+    "shopping",
+    "price"
+   ]
+  },
+  "target": {
+   "group": "tech",
+   "tags": [
+    "bullseye",
+    "aim",
+    "goal",
+    "focus",
+    "objective",
+    "crosshair",
+    "target",
+    "goals"
+   ]
+  },
+  "target_arrow": {
+   "group": "business",
+   "tags": [
+    "bullseye",
+    "aim",
+    "goal",
+    "objective",
+    "archery",
+    "hit",
+    "success",
+    "dart"
+   ]
+  },
+  "telescope": {
+   "group": "science",
+   "tags": [
+    "astronomy",
+    "space",
+    "stars",
+    "observe",
+    "observatory",
+    "explore",
+    "discover",
+    "telescopic"
+   ]
+  },
+  "temperature": {
+   "group": "science",
+   "tags": [
+    "temperature",
+    "thermometer",
+    "weather",
+    "celsius",
+    "fahrenheit",
+    "degrees",
+    "heat",
+    "cold"
+   ]
+  },
+  "tent": {
+   "group": "education",
+   "tags": [
+    "camping",
+    "camp",
+    "outdoor",
+    "hiking",
+    "travel",
+    "vacation",
+    "adventure",
+    "campsite"
+   ]
+  },
+  "terminal": {
+   "group": "tech",
+   "tags": [
+    "console",
+    "command-line",
+    "cli",
+    "shell",
+    "prompt",
+    "bash",
+    "cmd",
+    "command"
+   ]
+  },
+  "terminal_2": {
+   "group": "tech",
+   "tags": [
+    "console",
+    "command-line",
+    "cli",
+    "shell",
+    "prompt",
+    "bash",
+    "cmd",
+    "command"
+   ]
+  },
+  "test_pipe": {
+   "group": "science",
+   "tags": [
+    "test-tube",
+    "lab",
+    "laboratory",
+    "chemistry",
+    "science",
+    "experiment",
+    "sample",
+    "vial"
+   ]
+  },
+  "thermometer": {
+   "group": "science",
+   "tags": [
+    "temperature",
+    "fever",
+    "medical",
+    "health",
+    "celsius",
+    "fahrenheit",
+    "weather",
+    "thermostat"
+   ]
+  },
+  "thumb_down": {
+   "group": "business",
+   "tags": [
+    "dislike",
+    "thumbs-down",
+    "downvote",
+    "bad",
+    "negative",
+    "feedback",
+    "reaction",
+    "thumbs"
+   ]
+  },
+  "thumb_up": {
+   "group": "business",
+   "tags": [
+    "like",
+    "thumbs-up",
+    "upvote",
+    "good",
+    "positive",
+    "approve",
+    "feedback",
+    "reaction"
+   ]
+  },
+  "timeline_event": {
+   "group": "business",
+   "tags": [
+    "timeline",
+    "event",
+    "milestone",
+    "history",
+    "roadmap",
+    "schedule",
+    "events",
+    "chronology"
+   ]
+  },
+  "tool": {
+   "group": "tech",
+   "tags": [
+    "wrench",
+    "spanner",
+    "tool",
+    "repair",
+    "fix",
+    "settings",
+    "maintenance",
+    "tools"
+   ]
+  },
+  "topology_star_3": {
+   "group": "tech",
+   "tags": [
+    "topology",
+    "network",
+    "star",
+    "hub",
+    "nodes",
+    "connection",
+    "diagram",
+    "infrastructure"
+   ]
+  },
+  "traffic_lights": {
+   "group": "transport",
+   "tags": [
+    "traffic-light",
+    "stoplight",
+    "signal",
+    "semaphore",
+    "road",
+    "red",
+    "yellow",
+    "green"
+   ]
+  },
+  "train": {
+   "group": "transport",
+   "tags": [
+    "train",
+    "railway",
+    "rail",
+    "locomotive",
+    "metro",
+    "transport",
+    "travel",
+    "railroad"
+   ]
+  },
+  "tree": {
+   "group": "science",
+   "tags": [
+    "tree",
+    "nature",
+    "forest",
+    "park",
+    "plant",
+    "wood",
+    "woods",
+    "oak"
+   ]
+  },
+  "trees": {
+   "group": "education",
+   "tags": [
+    "trees",
+    "forest",
+    "woods",
+    "nature",
+    "park",
+    "plants",
+    "tree",
+    "forestry"
+   ]
+  },
+  "trending_down": {
+   "group": "business",
+   "tags": [
+    "trend",
+    "down",
+    "decline",
+    "decrease",
+    "drop",
+    "chart",
+    "loss",
+    "falling"
+   ]
+  },
+  "trending_up": {
+   "group": "business",
+   "tags": [
+    "trend",
+    "up",
+    "growth",
+    "increase",
+    "rise",
+    "chart",
+    "profit",
+    "rising"
+   ]
+  },
+  "triangle": {
+   "group": "maths",
+   "tags": [
+    "triangle",
+    "shape",
+    "geometry",
+    "delta",
+    "warning",
+    "polygon",
+    "triangular"
+   ]
+  },
+  "triangle_square_circle": {
+   "group": "maths",
+   "tags": [
+    "shapes",
+    "geometry",
+    "triangle",
+    "square",
+    "circle",
+    "elements",
+    "primitives",
+    "delta"
+   ]
+  },
+  "trophy": {
+   "group": "business",
+   "tags": [
+    "trophy",
+    "award",
+    "winner",
+    "prize",
+    "cup",
+    "achievement",
+    "champion",
+    "success"
+   ]
+  },
+  "truck": {
+   "group": "transport",
+   "tags": [
+    "truck",
+    "lorry",
+    "van",
+    "delivery",
+    "shipping",
+    "transport",
+    "vehicle",
+    "freight"
+   ]
+  },
+  "truck_delivery": {
+   "group": "business",
+   "tags": [
+    "delivery",
+    "shipping",
+    "truck",
+    "lorry",
+    "shipment",
+    "order",
+    "courier",
+    "dispatch"
+   ]
+  },
+  "truck_return": {
+   "group": "business",
+   "tags": [
+    "return",
+    "returns",
+    "refund",
+    "truck",
+    "shipping",
+    "delivery",
+    "reverse",
+    "freight"
+   ]
+  },
+  "usb": {
+   "group": "tech",
+   "tags": [
+    "usb",
+    "plug",
+    "connector",
+    "cable",
+    "port",
+    "device",
+    "flash-drive",
+    "usb-port"
+   ]
+  },
+  "user": {
+   "group": "business",
+   "tags": [
+    "person",
+    "account",
+    "profile",
+    "avatar",
+    "member",
+    "people",
+    "human",
+    "login"
+   ]
+  },
+  "user_check": {
+   "group": "business",
+   "tags": [
+    "person",
+    "account",
+    "profile",
+    "avatar",
+    "member",
+    "verified",
+    "approved",
+    "confirmed"
+   ]
+  },
+  "user_plus": {
+   "group": "business",
+   "tags": [
+    "person",
+    "account",
+    "profile",
+    "avatar",
+    "member",
+    "add",
+    "new",
+    "invite"
+   ]
+  },
+  "user_star": {
+   "group": "business",
+   "tags": [
+    "person",
+    "account",
+    "profile",
+    "avatar",
+    "member",
+    "favorite",
+    "featured",
+    "vip"
+   ]
+  },
+  "users": {
+   "group": "business",
+   "tags": [
+    "people",
+    "group",
+    "team",
+    "persons",
+    "accounts",
+    "members",
+    "community",
+    "user"
+   ]
+  },
+  "users_group": {
+   "group": "business",
+   "tags": [
+    "people",
+    "group",
+    "team",
+    "persons",
+    "community",
+    "organization",
+    "members",
+    "crowd"
+   ]
+  },
+  "vaccine": {
+   "group": "science",
+   "tags": [
+    "vaccine",
+    "syringe",
+    "injection",
+    "needle",
+    "shot",
+    "vaccination",
+    "medical",
+    "medicine"
+   ]
+  },
+  "vaccine_bottle": {
+   "group": "science",
+   "tags": [
+    "vaccine",
+    "vial",
+    "bottle",
+    "medicine",
+    "drug",
+    "pharmacy",
+    "medical",
+    "vaccination"
+   ]
+  },
+  "variable": {
+   "group": "maths",
+   "tags": [
+    "variable",
+    "function",
+    "math",
+    "formula",
+    "code",
+    "programming",
+    "x",
+    "var"
+   ]
+  },
+  "vector": {
+   "group": "maths",
+   "tags": [
+    "vector",
+    "graphics",
+    "design",
+    "path",
+    "anchor",
+    "points",
+    "pen-tool",
+    "illustration"
+   ]
+  },
+  "vector_bezier_2": {
+   "group": "maths",
+   "tags": [
+    "bezier",
+    "curve",
+    "vector",
+    "path",
+    "pen-tool",
+    "anchor",
+    "handles",
+    "design"
+   ]
+  },
+  "versions": {
+   "group": "tech",
+   "tags": [
+    "versions",
+    "version-history",
+    "revisions",
+    "copies",
+    "variants",
+    "history",
+    "backup",
+    "releases"
+   ]
+  },
+  "video": {
+   "group": "tech",
+   "tags": [
+    "video",
+    "camera",
+    "camcorder",
+    "recording",
+    "movie",
+    "film",
+    "record",
+    "vlog"
+   ]
+  },
+  "virus": {
+   "group": "science",
+   "tags": [
+    "virus",
+    "bacteria",
+    "germ",
+    "infection",
+    "disease",
+    "covid",
+    "bug",
+    "pathogen"
+   ]
+  },
+  "virus_search": {
+   "group": "science",
+   "tags": [
+    "virus",
+    "scan",
+    "antivirus",
+    "malware",
+    "search",
+    "test",
+    "covid",
+    "infection"
+   ]
+  },
+  "walk": {
+   "group": "transport",
+   "tags": [
+    "walk",
+    "walking",
+    "pedestrian",
+    "person",
+    "steps",
+    "hiking",
+    "walker",
+    "stroll"
+   ]
+  },
+  "wallet": {
+   "group": "business",
+   "tags": [
+    "wallet",
+    "money",
+    "payment",
+    "purse",
+    "finance",
+    "cash",
+    "billfold",
+    "bricks"
+   ]
+  },
+  "wand": {
+   "group": "tech",
+   "tags": [
+    "magic",
+    "magic-wand",
+    "wizard",
+    "auto",
+    "ai",
+    "sparkle",
+    "tool",
+    "magic-trick"
+   ]
+  },
+  "wave_sine": {
+   "group": "science",
+   "tags": [
+    "sine",
+    "wave",
+    "waveform",
+    "signal",
+    "oscillator",
+    "audio",
+    "frequency",
+    "sound-wave"
+   ]
+  },
+  "wave_square": {
+   "group": "science",
+   "tags": [
+    "square-wave",
+    "wave",
+    "waveform",
+    "signal",
+    "pulse",
+    "digital",
+    "oscillator",
+    "sound-wave"
+   ]
+  },
+  "webhook": {
+   "group": "tech",
+   "tags": [
+    "webhook",
+    "api",
+    "integration",
+    "callback",
+    "http",
+    "event",
+    "trigger",
+    "automation"
+   ]
+  },
+  "wheel": {
+   "group": "transport",
+   "tags": [
+    "wheel",
+    "tire",
+    "tyre",
+    "car",
+    "rim",
+    "spin",
+    "wheels",
+    "tyres"
+   ]
+  },
+  "wheelchair": {
+   "group": "science",
+   "tags": [
+    "wheelchair",
+    "accessibility",
+    "accessible",
+    "disabled",
+    "handicap",
+    "a11y",
+    "wheels",
+    "mobility"
+   ]
+  },
+  "wifi": {
+   "group": "tech",
+   "tags": [
+    "wifi",
+    "wi-fi",
+    "wireless",
+    "internet",
+    "network",
+    "signal",
+    "connection",
+    "hotspot"
+   ]
+  },
+  "wifi_off": {
+   "group": "tech",
+   "tags": [
+    "wifi",
+    "wi-fi",
+    "wireless",
+    "offline",
+    "no-internet",
+    "disconnected",
+    "disabled",
+    "hotspot"
+   ]
+  },
+  "wind": {
+   "group": "science",
+   "tags": [
+    "wind",
+    "windy",
+    "breeze",
+    "air",
+    "weather",
+    "gust",
+    "windy-weather",
+    "airflow"
+   ]
+  },
+  "windmill": {
+   "group": "science",
+   "tags": [
+    "windmill",
+    "wind-turbine",
+    "mill",
+    "energy",
+    "renewable",
+    "farm",
+    "gust",
+    "wind-power"
+   ]
+  },
+  "world": {
+   "group": "business",
+   "tags": [
+    "globe",
+    "earth",
+    "world",
+    "internet",
+    "global",
+    "web",
+    "international",
+    "language"
+   ]
+  },
+  "world_longitude": {
+   "group": "education",
+   "tags": [
+    "longitude",
+    "meridians",
+    "globe",
+    "earth",
+    "world",
+    "geography",
+    "coordinates",
+    "planet"
+   ]
+  },
+  "world_www": {
+   "group": "tech",
+   "tags": [
+    "www",
+    "website",
+    "web",
+    "internet",
+    "url",
+    "domain",
+    "browser",
+    "globe"
+   ]
+  },
+  "writing": {
+   "group": "education",
+   "tags": [
+    "writing",
+    "pen",
+    "write",
+    "note",
+    "edit",
+    "compose",
+    "document",
+    "signing"
+   ]
+  },
+  "x": {
+   "group": "maths",
+   "tags": [
+    "close",
+    "cancel",
+    "remove",
+    "delete",
+    "dismiss",
+    "exit",
+    "clear",
+    "cross"
+   ]
+  },
+  "yoga": {
+   "group": "education",
+   "tags": [
+    "yoga",
+    "meditation",
+    "pose",
+    "exercise",
+    "fitness",
+    "relax",
+    "wellness",
+    "stretch"
+   ]
+  },
+  "zoom_in": {
+   "group": "tech",
+   "tags": [
+    "zoom-in",
+    "magnify",
+    "enlarge",
+    "plus",
+    "magnifier",
+    "magnifying-glass",
+    "scale",
+    "zooming"
+   ]
+  },
+  "zoom_money": {
+   "group": "business",
+   "tags": [
+    "zoom",
+    "magnifier",
+    "magnifying-glass",
+    "search",
+    "money",
+    "price",
+    "finance",
+    "dollar"
+   ]
+  }
+ }
+}
