@@ -1,0 +1,21 @@
+{
+  "id": "cb_ink_bleed",
+  "name": "Ink bleed",
+  "category": "TRANSITION",
+  "group": "Creative",
+  "purpose": "A speckled dissolve that spreads across the frame like ink.",
+  "minSourceDuration": 1.4,
+  "intensity": "balanced",
+  "parameters": {
+    "durationSeconds": {
+      "min": 0.2,
+      "max": 1.5,
+      "default": 0.7
+    }
+  },
+  "render": {
+    "kind": "XFADE",
+    "xfadeTransition": "dissolve",
+    "durationSeconds": "$durationSeconds"
+  }
+}

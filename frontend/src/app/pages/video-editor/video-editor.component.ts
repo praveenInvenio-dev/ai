@@ -203,6 +203,80 @@ interface TimelineDraft {
     </section>
 
     <section class="panel" *ngIf="clips.length">
+      <div class="section-head"><h2>Finish</h2><span class="muted small">Look strength, transitions, text, zoom moments, sound effects, AI voiceover and export. Everything here is also available from the assistant below.</span></div>
+
+      <div class="settings">
+        <label>Look strength: {{(finish.lookIntensity*100)|number:'1.0-0'}}%
+          <input type="range" min="0" max="100" step="5" [ngModel]="finish.lookIntensity*100" (ngModelChange)="finish.lookIntensity=$event/100;finishDirty=true"></label>
+        <label>Transition for every cut
+          <select [(ngModel)]="trSel"><option value="">None (hard cut)</option>
+            <optgroup *ngFor="let g of trGroups()" [label]="g.name"><option *ngFor="let t of g.items" [value]="t.id" [title]="t.purpose">{{t.name}}</option></optgroup></select></label>
+        <label>Transition length (s)<input type="number" min="0.2" max="1.5" step="0.1" [(ngModel)]="trSeconds" placeholder="default"></label>
+        <label>&nbsp;<button class="btn" [disabled]="busy||timeline.length<2" (click)="applyTransitionFromPanel()">Apply to all cuts</button></label>
+      </div>
+
+      <h3 class="small-head">Match a reference video</h3>
+      <div class="smart-row">
+        <label class="btn" style="cursor:pointer">Choose a video to copy the feel of<input type="file" accept="video/*" (change)="onReference($event)" hidden></label>
+        <span class="muted small" *ngIf="refBusy">Measuring cuts, loudness and colour… this takes about half a minute.</span>
+        <span class="small" style="color:#f87171" *ngIf="refErr">{{refErr}}</span>
+      </div>
+      <div *ngIf="ref" class="ref-card">
+        <div class="chips"><span *ngFor="let c of ref.profile.palette" class="chip" [style.background]="c.hex" [title]="c.hex + ' · ' + c.percent + '%'"></span></div>
+        <ul class="ref-notes"><li *ngFor="let n of ref.suggestions.notes">{{n}}</li></ul>
+        <p class="muted small">Applying sets: pace <b>{{ref.suggestions.intensity}}</b>, look <b>{{ref.suggestions.look || 'unchanged'}}</b>, loudness <b>{{ref.suggestions.loudness || 'unchanged'}}</b>, export <b>{{ref.suggestions.exportShortSide}}p · {{ref.suggestions.exportFps}} fps</b>. {{refAspectNote()}}</p>
+        <button class="btn" [disabled]="!project" (click)="applyReference()">Apply to this project</button>
+      </div>
+
+      <h3 class="small-head">Overlays on the timeline</h3>
+      <div class="settings">
+        <label>Type<select [(ngModel)]="newOv.type"><option value="text">Text / lower third</option><option value="zoom">Zoom moment</option><option value="sfx">Sound effect</option></select></label>
+        <label>Start (s)<input type="number" min="0" step="0.5" [(ngModel)]="newOv.start"></label>
+        <label *ngIf="newOv.type!=='sfx'">End (s)<input type="number" min="0" step="0.5" [(ngModel)]="newOv.end"></label>
+        <label *ngIf="newOv.type==='text'" class="grow">Text<input [(ngModel)]="newOv.text" maxlength="140" placeholder="e.g. Priya - Product designer"></label>
+        <label *ngIf="newOv.type==='text'">Style<select [(ngModel)]="newOv.style"><option value="title">Title</option><option value="lower_third">Lower third</option><option value="box">Boxed</option><option value="small">Small</option></select></label>
+        <label *ngIf="newOv.type==='text'&&newOv.style!=='lower_third'">Position<select [(ngModel)]="newOv.position"><option value="top">Top</option><option value="center">Centre</option><option value="bottom">Bottom</option></select></label>
+        <label *ngIf="newOv.type==='text'">Colour<select [(ngModel)]="newOv.color"><option *ngFor="let c of (caps?.overlayColors||['white','yellow'])" [value]="c">{{c}}</option></select></label>
+        <label *ngIf="newOv.type==='zoom'">Zoom ×<input type="number" min="1.05" max="2" step="0.05" [(ngModel)]="newOv.amount"></label>
+        <label *ngIf="newOv.type==='sfx'">Sound<select [(ngModel)]="newOv.sfx"><option *ngFor="let f of (caps?.soundEffects||['whoosh'])" [value]="f">{{f}}</option></select></label>
+        <label>&nbsp;<button class="btn" (click)="addOverlayFromForm()">Add</button></label>
+      </div>
+      <div class="version-list" *ngIf="finish.overlays.length">
+        <div class="version-row" *ngFor="let o of finish.overlays;let i=index"><span>{{overlayLabel(o)}}</span><button class="btn smallbtn" (click)="removeOverlay(i)">Remove</button></div>
+      </div>
+
+      <h3 class="small-head">AI voiceover</h3>
+      <textarea rows="3" [(ngModel)]="voScript" placeholder="Paste the voiceover script. It is spoken sentence by sentence and mixed in with the rest of the sound ducked underneath."></textarea>
+      <div class="smart-row">
+        <label>Voice<select [(ngModel)]="voVoice"><option *ngFor="let v of voVoices" [value]="v.id">{{v.label}}</option></select></label>
+        <label>Language<select [(ngModel)]="voLang"><option>English</option><option>Hindi</option><option>Kannada</option><option>Tamil</option><option>Telugu</option><option>Malayalam</option><option>Marathi</option><option>Bengali</option><option>Gujarati</option></select></label>
+        <button class="btn" [disabled]="voBusy||!project" (click)="generateVoiceover()">{{voBusy?'Speaking…':'Generate voiceover'}}</button>
+        <span class="muted small" *ngIf="voMsg">{{voMsg}}</span>
+      </div>
+
+      <h3 class="small-head">Dub into another language</h3>
+      <div class="smart-row">
+        <label>Language<select [(ngModel)]="dubLang"><option *ngFor="let l of (caps?.dubLanguages||['Hindi'])" [value]="l">{{l}}</option></select></label>
+        <button class="btn" [disabled]="dubBusy||!project" (click)="startDub()">{{dubBusy?'Dubbing…':'Dub the latest render'}}</button>
+        <label class="check"><input type="checkbox" [(ngModel)]="finish.voiceoverReplace" (ngModelChange)="finishDirty=true"> Replace the original voice with the voiceover</label>
+      </div>
+      <p class="muted small" *ngIf="dubMsg">{{dubMsg}}</p>
+      <ul class="ref-notes" *ngIf="dubPreview.length"><li *ngFor="let l of dubPreview">{{l}}</li></ul>
+      <p class="muted small">Render a Preview first: the dub is matched to that cut (it uses the voice chosen above).</p>
+
+      <h3 class="small-head">Export</h3>
+      <div class="settings">
+        <label>Format<select [(ngModel)]="finish.exportFormat" (ngModelChange)="finishDirty=true"><option value="">MP4</option><option *ngFor="let f of (caps?.exportFormats||[])" [value]="f" [hidden]="f==='mp4'">{{f.toUpperCase()}}</option></select></label>
+        <label>Resolution (short side)<select [(ngModel)]="finish.exportHeight" (ngModelChange)="finishDirty=true"><option [ngValue]="0">Default</option><option *ngFor="let h of (caps?.exportHeights||[])" [ngValue]="h">{{h===2160?'4K (2160p)':h+'p'}}</option></select></label>
+        <label>Platform preset<select [(ngModel)]="platformSel" (ngModelChange)="applyPlatform($event)"><option value="">Choose…</option><option *ngFor="let p of (caps?.platforms||[])" [value]="p.id" [title]="p.note">{{p.label}}</option></select></label>
+        <label>Loudness<select [(ngModel)]="finish.loudness" (ngModelChange)="finishDirty=true"><option value="">Leave as is</option><option *ngFor="let l of (caps?.loudnessTargets||[])" [value]="l.id">{{l.label}}</option></select></label>
+        <label>Frame rate<select [(ngModel)]="finish.exportFps" (ngModelChange)="finishDirty=true"><option [ngValue]="0">Keep</option><option *ngFor="let f of (caps?.exportFps||[])" [ngValue]="f">{{f}} fps</option></select></label>
+      </div>
+      <p class="muted small" *ngIf="platformHint">{{platformHint}}</p>
+      <div class="actions" style="margin-top:.8rem"><button class="btn primary" [disabled]="!finishDirty||!project" (click)="saveSettings()">Save finishing settings</button><span class="muted small" *ngIf="finishDirty">Unsaved changes - press Save, then Preview or Render.</span></div>
+    </section>
+
+    <section class="panel" *ngIf="clips.length">
       <div class="section-head"><h2>Edit assistant</h2><span class="muted small">Try: "add captions", "warm look", "make it vertical", "speed up shot 2", "trim shot 3 to 4 seconds", "make the intro faster", "add title: My trip", "clean up speech", "find best moments", "undo" - or any free-form direction</span></div>
       <div class="chat-log" *ngIf="chatLog.length">
         <p *ngFor="let m of chatLog" [class]="'chat-'+m.role">{{m.text}}</p>
@@ -246,6 +320,9 @@ interface TimelineDraft {
     </section>
   `,
   styles: [`
+    .ref-card{margin:.6rem 0 1rem;padding:.8rem;border:1px solid rgba(255,255,255,.1);border-radius:12px}
+    .ref-card .chip{display:inline-block;width:30px;height:30px;border-radius:50%;margin-right:6px;border:1px solid rgba(255,255,255,.3)}
+    .ref-notes{margin:.5rem 0;padding-left:1.1rem;display:flex;flex-direction:column;gap:.2rem}
     .page-head,.section-head{display:flex;align-items:center;justify-content:space-between;gap:1rem}.page-head{margin-bottom:1rem}h1{font-family:var(--font-display);margin:0}.muted{color:var(--muted);font-size:.88rem}.small{font-size:.78rem}.state,.count{font-size:.72rem;border:1px solid var(--border);border-radius:999px;padding:.15rem .55rem;color:var(--muted)}
     .panel{background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1rem}.notice,.error{color:var(--danger);font-size:.88rem}.dropzone{border:2px dashed var(--border);border-radius:var(--radius);padding:2rem;text-align:center}.dropzone.dragging{border-color:var(--accent)}.drop-title{font-family:var(--font-display);font-size:1.15rem}.btn{display:inline-block;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:8px;padding:.55rem .9rem;font:inherit;text-decoration:none}.btn:hover{border-color:var(--accent)}.btn:disabled{opacity:.45;cursor:not-allowed}.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}.smallbtn{padding:.4rem .65rem;font-size:.8rem}
     .source-list{display:grid;gap:.45rem}.source-row{display:flex;align-items:center;gap:.65rem;padding:.45rem;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer}.source-row.selected{border-color:var(--accent)}.source-thumb{width:70px;height:42px;background:#111;border-radius:5px;overflow:hidden;position:relative;display:grid;place-items:center}.source-thumb img{width:100%;height:100%;object-fit:cover}.source-thumb span{position:absolute;left:4px;bottom:3px;background:#000a;padding:1px 4px;border-radius:3px}.source-main{flex:1;min-width:0}.clip-name{width:100%;background:transparent;color:inherit;border:0;border-bottom:1px solid transparent;font:inherit}.clip-name:focus{outline:0;border-bottom-color:var(--accent)}.clip-meta{display:flex;gap:.65rem;flex-wrap:wrap;color:var(--muted);font-size:.74rem}.clip-actions{display:flex;gap:.2rem}.icon{cursor:pointer;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;width:1.8rem;height:1.8rem}.icon:disabled{opacity:.3}.danger:hover{color:var(--danger);border-color:var(--danger)}
@@ -261,6 +338,33 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
   resultUrl=''; downloadUrl=''; resultKind=''; musicName=''; sourceUrl=''; selectedClipId=''; selectedRowIndex=-1; splitTime=0; planRationale='';
   versions:VideoEditorVersion[]=[]; showVersions=false;
   chatLog:{role:'user'|'system';text:string}[]=[]; chatInput='';
+  // ---- finishing (Cardboard parity): look strength, overlays, transitions, voiceover, export. Kept apart from `form` and only
+  // sent when changed, so saving other settings can never wipe overlays that were saved earlier.
+  finish:any={lookIntensity:1,overlays:[] as any[],exportFormat:'',exportHeight:0,exportFps:0,loudness:'',voiceoverReplace:false}; finishDirty=false; platformSel=''; platformHint='';
+  newOv:any={type:'text',start:0,end:3,text:'',position:'bottom',style:'title',color:'white',amount:1.3,sfx:'whoosh'};
+  trSel=''; trSeconds:number|null=null;
+  // dub the latest render into another language
+  dubLang='Hindi'; dubBusy=false; dubMsg=''; dubPreview:string[]=[];
+  startDub(lang?:string){
+    if(!this.project){this.dubMsg='Open a project first.';return;}
+    if(lang)this.dubLang=lang;
+    this.dubBusy=true;this.dubMsg=`Listening to the latest render, translating to ${this.dubLang} and speaking it… this can take a few minutes.`;this.dubPreview=[];
+    this.api.dubVideo(this.project.id,{language:this.dubLang,voice:this.voVoice}).subscribe({
+      next:r=>{this.dubBusy=false;this.finish.voiceoverReplace=true;this.dubPreview=r.preview||[];
+        this.dubMsg=`Dubbed ${r.placed} of ${r.lines} lines into ${r.language}`+(r.sped?` (${r.sped} sped up to fit)`:'')+(r.notes?.length?`. ${r.notes.join(' ')}`:'.')+' Press Preview to hear it - the original voice is lowered. Edited the cut? Dub again.';
+        this.chatLog.push({role:'system',text:this.dubMsg});},
+      error:e=>{this.dubBusy=false;this.dubMsg=e?.error?.error??'Could not dub the video.';}});}
+  // match a reference video
+  ref:any=null; refBusy=false; refErr='';
+  onReference(ev:Event){const input=ev.target as HTMLInputElement;const f=input.files?.[0];if(!f)return;this.refBusy=true;this.refErr='';this.ref=null;
+    this.api.analyseReference(f).subscribe({next:r=>{this.ref=r;this.refBusy=false;},error:e=>{this.refBusy=false;this.refErr=e?.error?.error||'Could not analyse that video.';}});input.value='';}
+  refAspectNote():string{const a=this.ref?.suggestions?.aspectRatio,mine=(this.project as any)?.aspectRatio||this.form.aspectRatio;return a&&mine&&a!==mine?`The reference is ${String(a).replace(/^[A-Z]+_/,'').replace('_',':')}, this project is ${String(mine).replace(/^[A-Z]+_/,'').replace('_',':')} - the shape is not changed here.`:'';}
+  applyReference(){const s=this.ref?.suggestions;if(!s||!this.project)return;
+    if(s.intensity)this.form.intensity=s.intensity;if(s.look)this.form.look=s.look;
+    if(s.loudness)this.finish.loudness=s.loudness;if(s.exportShortSide)this.finish.exportHeight=s.exportShortSide;if(s.exportFps)this.finish.exportFps=s.exportFps;
+    this.finishDirty=true;this.saveSettings();
+    this.chatLog.push({role:'system',text:`Matched the reference: pace ${s.intensity}${s.look?', look '+s.look:''}${s.loudness?', loudness '+s.loudness:''}. Press Preview to see it.`});}
+  voScript=''; voVoice='narrator-in-male'; voLang='English'; voBusy=false; voMsg=''; voVoices:{id:string;label:string}[]=[];
   moments:VideoMoment[]=[];
   searchQuery=''; hits:VideoSpeechHit[]=[]; searchNote=''; transcriptStatus:{indexedClips:number;totalClips:number}|null=null;
   private stream?:EventSource; private history:TimelineDraft[][]=[]; redoStack:TimelineDraft[][]=[];
@@ -306,7 +410,10 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
       durations:[15,30,45,60,90,120],aspectRatios:['VERTICAL_9_16','LANDSCAPE_16_9','SQUARE_1_1','PORTRAIT_4_5'],
       intensityLabels:this.defaultIntensityLabels}];
   constructor(private api:ApiService){}
-  ngOnInit(){this.api.videoEditorCapabilities().subscribe({next:c=>this.caps=c,error:()=>this.loadError='Could not reach the video editor API.'});}
+  ngOnInit(){this.api.videoEditorCapabilities().subscribe({next:c=>this.caps=c,error:()=>this.loadError='Could not reach the video editor API.'});
+    // voices for "AI voiceover": the Indian-English / Chatterbox / Voice Lab voices first, then everything the app can speak
+    this.api.listVoices().subscribe({next:r=>{const v=(r?.voices||[]) as any[];const rank=(x:any)=>String(x.id).startsWith('narrator-in-')?0:String(x.id).startsWith('profile:')?1:String(x.id).startsWith('narrator-')?2:3;
+      this.voVoices=[{id:'narrator-in-male',label:'Arjun - Indian English, male'},{id:'narrator-in-female',label:'Meera - Indian English, female'},...v.filter(x=>x.installed!==false&&!String(x.id).startsWith('narrator-in-')).sort((a,b)=>rank(a)-rank(b)).slice(0,80).map(x=>({id:x.id,label:x.label+(x.gender?' - '+x.gender:'')}))];},error:()=>{this.voVoices=[{id:'narrator-in-male',label:'Arjun - Indian English, male'},{id:'narrator-in-female',label:'Meera - Indian English, female'}];}});}
   ngOnDestroy(){this.closeStream();}
   selectCategory(id:string){
     this.form.category=id;
@@ -356,14 +463,16 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
   remove(c:VideoClip){if(!this.project)return;this.api.removeVideoClip(this.project.id,c.id).subscribe({next:()=>{this.clips=this.clips.filter(x=>x.id!==c.id);this.timeline=this.timeline.filter(x=>x.clipId!==c.id);if(this.selectedClipId===c.id){this.selectedClipId='';this.sourceUrl='';this.selectedRowIndex=-1}},error:err=>this.uploadError=err?.error?.error??'Could not remove clip.'});}
   move(i:number,d:number){const t=i+d;if(!this.project||t<0||t>=this.clips.length)return;const n=[...this.clips];[n[i],n[t]]=[n[t],n[i]];this.clips=n;this.api.reorderVideoClips(this.project.id,n.map(x=>x.id)).subscribe({next:u=>this.clips=u,error:()=>this.reload()});}
   rename(c:VideoClip,name:string){if(!this.project||!name.trim()||name===c.displayName)return;this.api.renameVideoClip(this.project.id,c.id,name.trim()).subscribe({next:u=>c.displayName=u.displayName,error:()=>this.reload()});}
-  saveSettings(){if(!this.project)return;this.api.updateVideoEditorProject(this.project.id,this.form).subscribe({next:p=>this.project=p,error:e=>this.uploadError=e?.error?.error??'Could not save settings.'});}
+  saveSettings(){if(!this.project)return;this.api.updateVideoEditorProject(this.project.id,this.settingsPayload()).subscribe({next:p=>{this.project=p;this.finishDirty=false;this.finishFromProject();},error:e=>this.uploadError=e?.error?.error??'Could not save settings.'});}
   captionStyle='BOLD_REEL';
   readonly effectList=[{id:'soft_blur',label:'Soft blur'},{id:'glow',label:'Soft glow'},{id:'halation',label:'Halation'},{id:'vignette',label:'Vignette'},{id:'film_grain',label:'Film grain'},{id:'scanlines',label:'Scanlines'},{id:'letterbox',label:'Cinematic bars'}];
   hasEffect(id:string){return (this.form.effects||'').split(',').includes(id);}
   toggleEffect(id:string){const cur=(this.form.effects||'').split(',').filter((x:string)=>x);this.form.effects=(cur.includes(id)?cur.filter((x:string)=>x!==id):[...cur,id]).join(',');}
   readonly looks=[{id:'vivid',label:'Vivid'},{id:'warm',label:'Warm'},{id:'cool',label:'Cool'},{id:'golden_hour',label:'Golden hour'},{id:'moody',label:'Moody'},{id:'vintage',label:'Vintage film'},{id:'bw',label:'Black & white'},{id:'soft_pastel',label:'Soft pastel'},{id:'fresh',label:'Fresh & bright'},{id:'drama',label:'Dramatic'}];
-  private saveSettingsThen(next:()=>void){if(!this.project){return}this.api.updateVideoEditorProject(this.project.id,this.form).subscribe({next:p=>{this.project=p;if(this.form.autoCaptions){this.api.updateVideoCaptions(p.id,this.captionStyle,true).subscribe({next:()=>next(),error:()=>next()});return;}next()},error:e=>{this.busy=false;this.uploadError=e?.error?.error??'Could not save settings.'}})}
-  private reload(){if(!this.project)return;this.api.getVideoEditorProject(this.project.id).subscribe({next:d=>{this.project=d.project;this.clips=d.clips;this.timeline=d.timeline;this.refreshTranscriptStatus()}})}
+  private settingsPayload():any{return this.finishDirty?{...this.form,lookIntensity:this.finish.lookIntensity,overlays:JSON.stringify(this.finish.overlays),exportFormat:this.finish.exportFormat||'mp4',exportHeight:+this.finish.exportHeight||0,exportFps:+this.finish.exportFps||0,loudness:this.finish.loudness||'',voiceoverReplace:!!this.finish.voiceoverReplace}:this.form;}
+  private finishFromProject(){const p:any=this.project;if(!p||this.finishDirty)return;let ov:any[]=[];try{ov=p.overlays?JSON.parse(p.overlays):[]}catch{ov=[]}this.finish={lookIntensity:p.lookIntensity??1,overlays:ov,exportFormat:p.exportFormat||'',exportHeight:p.exportHeight||0,exportFps:p.exportFps||0,loudness:p.loudness||'',voiceoverReplace:!!p.voiceoverReplace};}
+  private saveSettingsThen(next:()=>void){if(!this.project){return}this.api.updateVideoEditorProject(this.project.id,this.settingsPayload()).subscribe({next:p=>{this.project=p;this.finishDirty=false;this.finishFromProject();if(this.form.autoCaptions){this.api.updateVideoCaptions(p.id,this.captionStyle,true).subscribe({next:()=>next(),error:()=>next()});return;}next()},error:e=>{this.busy=false;this.uploadError=e?.error?.error??'Could not save settings.'}})}
+  private reload(){if(!this.project)return;this.api.getVideoEditorProject(this.project.id).subscribe({next:d=>{this.project=d.project;this.finishFromProject();this.clips=d.clips;this.timeline=d.timeline;this.refreshTranscriptStatus()}})}
   analysisDone(){return this.clips.length>0&&this.clips.every(c=>c.analyzed)}
   /** One-click production flow: Analyse → AI Director → build timeline → final MP4.
    *  The user should not have to manually chain four buttons just to get the
@@ -563,7 +672,7 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
     const smart=this.interpretSmartCommand(raw,text);
     if(smart!==null)return smart;
 
-    if((m=text.match(/\b(\d+)\s*(?:s|sec|secs|seconds)\b/)) && /\b(make|set|duration|long|length)\b/.test(text)){
+    if((m=text.match(/\b(\d+)\s*(?:s|sec|secs|seconds?)\b/)) && /\b(make|set|duration|long|length)\b/.test(text)){
       const secs=+m[1];
       if(secs>0){
         this.form.targetDurationSec=secs;
@@ -587,8 +696,107 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
     [/vintage|retro|old film|film look/,'vintage','Vintage film'],[/pastel|soft/,'soft_pastel','Soft pastel'],[/moody|dark and/,'moody','Moody'],
     [/dramatic|drama|high contrast/,'drama','Dramatic'],[/vivid|punchy|saturated|colou?rful/,'vivid','Vivid'],[/\bwarm(er)?\b/,'warm','Warm'],
     [/\bcool(er)?\b|\bcold\b|bluish/,'cool','Cool'],[/fresh|bright/,'fresh','Fresh & bright']];
+  // ---- finishing helpers (also used by the chat commands below) ------------------------------------------------
+  private static readonly TRANSITION_WORDS:[RegExp,string,string][]=[
+    [/audio fade/,'cb_audio_fade','Audio fade'],[/light leak/,'cb_light_leak','Light leak'],[/film burn/,'cb_film_burn','Film burn'],
+    [/cross ?zoom/,'cb_cross_zoom','Cross zoom'],[/radial|clock wipe/,'cb_radial_wipe','Radial wipe'],[/\bink\b/,'cb_ink_bleed','Ink bleed'],
+    [/glitch/,'cb_glitch','Glitch'],[/chromatic|rgb split/,'cb_chromatic','Chromatic aberration'],[/dissolve|crossfade|cross fade/,'cb_dissolve','Dissolve'],
+    [/\bfly\b/,'cb_fly_','Fly'],[/\bpush\b/,'cb_push_','Push'],[/\bslide\b/,'cb_slide_','Slide'],[/\bzoom\b/,'cb_zoom','Zoom'],[/\bfade\b|dip to black/,'cb_fade','Fade']];
+  private toSec(t:string):number{const x=t.trim().toLowerCase();let m=x.match(/^(\d+):(\d{1,2})$/);if(m)return +m[1]*60+ +m[2];m=x.match(/^(\d+(?:\.\d+)?)/);return m?+m[1]:0;}
+  private clock(sec:number):string{const s=Math.round(sec);return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;}
+  addOverlay(o:any){this.finish.overlays=[...this.finish.overlays,{...o}];this.finishDirty=true;}
+  removeOverlay(i:number){this.finish.overlays=this.finish.overlays.filter((_:any,k:number)=>k!==i);this.finishDirty=true;}
+  addOverlayFromForm(){const o={...this.newOv};if(o.type==='text'&&!String(o.text).trim())return;if(o.type==='sfx')o.end=o.start;else if(+o.end<=+o.start)o.end=+o.start+(o.type==='zoom'?2:3);this.addOverlay(o);this.newOv={...this.newOv,text:''};}
+  overlayLabel(o:any):string{const t=this.clock(+o.start);return o.type==='text'?`${t}  “${o.text}”`:o.type==='zoom'?`${t}  zoom ×${o.amount}`:`${t}  sound: ${o.sfx}`;}
+  /** Sets the transition after shot `afterShot` (1-based), or after every shot but the last when afterShot is 0. id '' clears. */
+  applyTransition(id:string,afterShot:number,seconds?:number|null):number{
+    let n=0;this.timeline.forEach((r:any,i:number)=>{if(i>=this.timeline.length-1)return;if(afterShot>0&&i!==afterShot-1)return;r.techniqueOut=id||null;r.transitionSec=id&&seconds?seconds:null;n++;});
+    if(n)this.saveTimeline();return n;}
+  trGroups():{name:string;items:any[]}[]{const t=this.caps?.transitions||[];const g:Record<string,any[]>={};t.forEach((x:any)=>(g[x.group]=g[x.group]||[]).push(x));return Object.keys(g).map(k=>({name:k,items:g[k]}));}
+  applyTransitionFromPanel(){const n=this.applyTransition(this.trSel,0,this.trSeconds);this.chatLog.push({role:'system',text:n?(this.trSel?`Applied the transition to all ${n} cuts. Press Preview to see it.`:`Cleared the transitions on ${n} cuts.`):'You need at least two shots in the timeline first.'});}
+  generateVoiceover(){
+    if(!this.project){this.voMsg='Open a project first.';return;}
+    if(!this.voScript.trim()){this.voMsg='Write or paste the voiceover script first.';return;}
+    this.voBusy=true;this.voMsg='Speaking the script… this can take a minute for a long script.';
+    this.api.generateVideoVoiceover(this.project.id,{script:this.voScript,voice:this.voVoice,language:this.voLang}).subscribe({
+      next:r=>{this.voBusy=false;this.voMsg=`Voiceover ready: ${r.sentences} sentences, ${Math.round(r.seconds)} s.`+(r.note?` ${r.note}`:'')+' It is mixed in on the next Preview / Render, with the other sound ducked under it.';this.chatLog.push({role:'system',text:this.voMsg});},
+      error:e=>{this.voBusy=false;this.voMsg=e?.error?.error??'Could not generate the voiceover.';}});}
+  // platform presets: the server list (caps.platforms) is used when loaded; this copy only keeps the chat commands working offline
+  private static readonly PLATFORM_WORDS:[RegExp,string][]=[[/youtube shorts|\bshorts\b/,'youtube_shorts'],[/instagram reels|\breels\b/,'instagram_reels'],[/tiktok/,'tiktok'],[/instagram feed/,'instagram_feed'],
+    [/instagram/,'instagram_reels'],[/linkedin/,'linkedin'],[/classroom|\blesson\b/,'classroom'],[/broadcast|\btv\b/,'broadcast'],[/youtube/,'youtube']];
+  private static readonly PLATFORM_FALLBACK:Record<string,any>={youtube:{label:'YouTube',aspect:'LANDSCAPE_16_9',shortSide:1080,fps:30,loudness:'social'},youtube_shorts:{label:'YouTube Shorts',aspect:'VERTICAL_9_16',shortSide:1080,fps:30,loudness:'social'},
+    instagram_reels:{label:'Instagram Reels',aspect:'VERTICAL_9_16',shortSide:1080,fps:30,loudness:'social'},tiktok:{label:'TikTok',aspect:'VERTICAL_9_16',shortSide:1080,fps:30,loudness:'social'},
+    instagram_feed:{label:'Instagram feed',aspect:'PORTRAIT_4_5',shortSide:1080,fps:30,loudness:'social'},linkedin:{label:'LinkedIn',aspect:'SQUARE_1_1',shortSide:1080,fps:30,loudness:'social'},
+    classroom:{label:'Classroom / lesson',aspect:'LANDSCAPE_16_9',shortSide:720,fps:30,loudness:'podcast'},broadcast:{label:'Broadcast',aspect:'LANDSCAPE_16_9',shortSide:1080,fps:25,loudness:'broadcast'}};
+  /** Sets resolution, frame rate and loudness for a platform. The picture shape is the project's: a hint says when it differs. */
+  applyPlatform(id:string):string{
+    const p=this.caps?.platforms?.find((x:any)=>x.id===id)||VideoEditorComponent.PLATFORM_FALLBACK[id];if(!p)return '';
+    this.finish.exportFormat='';this.finish.exportHeight=p.shortSide;this.finish.exportFps=p.fps;this.finish.loudness=p.loudness;this.finishDirty=true;
+    const mine=(this.project as any)?.aspectRatio||this.form.aspectRatio;
+    this.platformHint=mine&&p.aspect&&mine!==p.aspect?`${p.label} is usually ${String(p.aspect).replace('VERTICAL_','').replace('LANDSCAPE_','').replace('PORTRAIT_','').replace('SQUARE_','').replace('_',':')} but this project is ${String(mine).replace('VERTICAL_','').replace('LANDSCAPE_','').replace('PORTRAIT_','').replace('SQUARE_','').replace('_',':')} - change the project format if you want the platform's usual shape.`:'';
+    return `${p.label}: ${p.shortSide}p, ${p.fps} fps, ${p.loudness==='social'?'-14':p.loudness==='podcast'?'-16':'-23'} LUFS. ${this.platformHint}`.trim();}
+  /** Cardboard-style finishing commands; returns a reply, or null when the phrase is not one of them. */
+  private interpretFinishCommand(raw:string,text:string):string|null {
+    let m:RegExpMatchArray|null;
+    const saved=()=>this.saveSettingsThen(()=>{});
+    const TIME='(\\d+:\\d{2}|\\d+(?:\\.\\d+)?\\s*(?:s|sec|secs|seconds?)?)';
+    // dub into another language / keep or replace the original voice
+    if((m=text.match(/\bdub\b.*\b(?:into|to|in)\s+(hindi|kannada|tamil|telugu|malayalam|marathi|bengali|gujarati|english)\b/))){
+      const lang=m[1][0].toUpperCase()+m[1].slice(1);this.startDub(lang);return `Dubbing the latest render into ${lang}…`;}
+    if(/\b(replace|mute|silence|lower)\b.*\boriginal\b.*\b(voice|audio|sound|speech)\b/.test(text)){this.finish.voiceoverReplace=true;this.finishDirty=true;saved();return 'The voiceover now replaces the original voice (the original is lowered to about 16%).';}
+    if(/\b(keep|restore|bring back)\b.*\boriginal\b.*\b(voice|audio|sound|speech)\b/.test(text)){this.finish.voiceoverReplace=false;this.finishDirty=true;saved();return 'The original voice is kept; it is only ducked under the voiceover.';}
+    // voiceover from a script
+    if((m=raw.match(/^\s*(?:ai\s+)?(?:voice ?over|narrat(?:e|ion))\s*[:\-]\s*([\s\S]{3,})$/i))){this.voScript=m[1].trim();this.generateVoiceover();return 'Generating the voiceover from your script…';}
+    // text overlay / lower third at a time
+    if((m=raw.match(new RegExp('\\b(?:add|put|show)\\s+(?:a\\s+)?(lower third|text|label|callout)\\s*[:\\-]?\\s*["“\']?(.+?)["”\']?\\s+(?:at|from)\\s+'+TIME+'(?:\\s+(?:for|to)\\s+(\\d+(?:\\.\\d+)?)\\s*(?:s|sec|secs|seconds?)?)?\\s*$','i')))){
+      const start=this.toSec(m[3]),len=m[4]?+m[4]:3;this.addOverlay({type:'text',start,end:start+len,text:m[2].trim(),position:'bottom',style:/lower/i.test(m[1])?'lower_third':'title',color:'white'});saved();
+      return `Added “${m[2].trim()}” at ${this.clock(start)} for ${len} s.`;}
+    // sound effect at a time
+    if((m=text.match(new RegExp('\\b(?:add|play|put|drop)\\s+(?:a\\s+|an\\s+|the\\s+)?(whoosh|sparkle|door|footstep|pop|click|tick|ding|success|error|swipe|riser|impact|typing|shutter|bubble|coin|notification|boing|tada)s?(?:\\s+sound(?:\\s+effect)?)?\\b.*?\\b(?:at|on)\\s+'+TIME)))){
+      const start=this.toSec(m[2]);this.addOverlay({type:'sfx',start,end:start,sfx:m[1],gain:1});saved();return `Added a ${m[1]} sound at ${this.clock(start)}.`;}
+    // zoom moment (not a transition)
+    if(!/\btransitions?\b/.test(text)&&(m=text.match(new RegExp('\\bzoom(?:\\s+in)?\\b.*?\\b(?:at|on|around)\\s+'+TIME)))){
+      const start=this.toSec(m[1]),big=/\b(a lot|more|big|strong)\b/.test(text),amt=big?1.6:1.3;this.addOverlay({type:'zoom',start,end:start+2,amount:amt});saved();
+      return `Added a zoom moment at ${this.clock(start)} (×${amt}, 2 s).`;}
+    if(/\b(remove|clear|delete|reset)\b.*\b(overlays?|text overlays?|zoom moments?|sound effects?)\b/.test(text)){
+      const only=/sound effects?/.test(text)?'sfx':/zoom/.test(text)?'zoom':/text/.test(text)?'text':'';
+      this.finish.overlays=only?this.finish.overlays.filter((o:any)=>o.type!==only):[];this.finishDirty=true;saved();return only?`Removed the ${only==='sfx'?'sound effects':only==='zoom'?'zoom moments':'text overlays'}.`:'Removed all overlays.';}
+    // look strength
+    if(/\b(look|filter|grade|colou?r)\b/.test(text)&&(m=text.match(/(\d{1,3})\s*%/)||(/\bhalf\b/.test(text)?['','50']:null))){
+      const v=Math.max(0,Math.min(100,+m[1]));this.finish.lookIntensity=v/100;this.finishDirty=true;saved();return `Look strength set to ${v}%.`;}
+    // platform preset: "export for youtube shorts", "optimise for instagram reels"
+    if((m=text.match(/\b(?:export|optimi[sz]e|publish|render|prepare)\b.*\b(?:for|to)\b\s+(?:the\s+)?(.+)$/))){
+      const hit=VideoEditorComponent.PLATFORM_WORDS.find(([re])=>re.test(m![1]));
+      if(hit){const msg=this.applyPlatform(hit[1]);saved();return msg;}}
+    // loudness: "normalise the audio", "set loudness to -16 lufs", "turn off loudness normalisation"
+    if(/\bloudness\b|\blufs\b|\b(normali[sz]e|even out)\b.*\b(audio|volume|sound)\b|\b(audio|volume|sound)\b.*\bnormali[sz]/.test(text)){
+      if(/\b(no|off|disable|remove|without|stop)\b/.test(text)){this.finish.loudness='';this.finishDirty=true;saved();return 'Loudness normalisation is off.';}
+      const t=/(-?\s?23)\s*lufs|\bbroadcast\b|\bebu\b/.test(text)?'broadcast':/(-?\s?16)\s*lufs|\bpodcast\b|\blesson\b|\bclassroom\b/.test(text)?'podcast':'social';
+      this.finish.loudness=t;this.finishDirty=true;saved();
+      return `Loudness set to ${t==='social'?'-14':t==='podcast'?'-16':'-23'} LUFS (${t}) - applied on the next final Render, picture untouched.`;}
+    // export settings
+    if(/\bexport\b|\b(save|render) (it )?as\b|\b(1080|720|480|1440|2160)p\b|\b4k\b|\b\d{2}\s?fps\b|\bwebm\b|\bmkv\b/.test(text)&&!/\b(make|set)\b.*\bseconds?\b/.test(text)){
+      const fmt=text.match(/\b(webm|mov|mkv|mp4)\b/),res=text.match(/\b(480|720|1080|1440|2160)p\b/),fps=text.match(/\b(24|25|30|50|60)\s?fps\b/);
+      if(!fmt&&!res&&!fps&&!/\b4k\b/.test(text))return null;
+      if(fmt)this.finish.exportFormat=fmt[1]==='mp4'?'':fmt[1];
+      if(res)this.finish.exportHeight=+res[1];else if(/\b4k\b/.test(text))this.finish.exportHeight=2160;
+      if(fps)this.finish.exportFps=+fps[1];
+      this.finishDirty=true;saved();
+      return `Export set to ${(this.finish.exportFormat||'mp4').toUpperCase()}${this.finish.exportHeight?', '+this.finish.exportHeight+'p':''}${this.finish.exportFps?', '+this.finish.exportFps+' fps':''} - applied on the next final Render.`;}
+    // transitions between shots
+    if(/\btransitions?\b|\bbetween (every|all|the) (clips?|shots?|cuts?)\b/.test(text)){
+      if(/\b(no|remove|clear|without|delete)\b.*\btransitions?\b/.test(text)){const n=this.applyTransition('',0);return n?`Cleared the transitions on ${n} cuts.`:'There are no cuts to clear.';}
+      const dir=(text.match(/\b(left|right|up|down)\b/)||[,'left'])[1];
+      const hit=VideoEditorComponent.TRANSITION_WORDS.find(([re])=>re.test(text));
+      if(!hit)return null;
+      const id=hit[1].endsWith('_')?hit[1]+dir:hit[1],after=text.match(/\bafter (?:shot|clip)\s*#?(\d+)/),secs=text.match(/(\d+(?:\.\d+)?)\s*(?:s|secs?|seconds?)\b/);
+      const n=this.applyTransition(id,after?+after[1]:0,secs?+secs[1]:null);
+      return n?`Set “${hit[2]}${hit[1].endsWith('_')?' ('+dir+')':''}” ${after?'after shot '+after[1]:'on all '+n+' cuts'}. Press Preview to see it.`:'You need at least two shots in the timeline first.';}
+    return null;
+  }
   private interpretSmartCommand(raw:string,text:string):string|null {
     let m:RegExpMatchArray|null;
+    const fin=this.interpretFinishCommand(raw,text);if(fin!==null)return fin;
     const off=/\b(no|not|without|remove|turn off|disable|hide|stop|don'?t)\b/.test(text);
     const saved=()=>this.saveSettingsThen(()=>{});
 
@@ -659,7 +867,7 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
       const slow=/slow/.test(word);const factor=factorTxt?+factorTxt:(slow?0.5:1.5);
       return this.commandOnRow(idx,slow?'slowed down':'sped up',(i)=>{const r=this.timeline[i];r.speed=Math.max(0.25,Math.min(4,slow?(factorTxt?1/factor:factor):factor));this.saveTimeline();});
     }
-    if((m=text.match(/\btrim\s+(?:shot|clip)\s*#?(\d+)\s+(?:to|down to)\s+(\d+(?:\.\d+)?)\s*(?:s|sec|secs|seconds)\b/))){
+    if((m=text.match(/\btrim\s+(?:shot|clip)\s*#?(\d+)\s+(?:to|down to)\s+(\d+(?:\.\d+)?)\s*(?:s|sec|secs|seconds?)\b/))){
       const secs=+m[2];
       return this.commandOnRow(+m[1],`trimmed to ${secs}s`,(i)=>{const r=this.timeline[i];const end=r.sourceStartSec+secs*(r.speed||1);if(end<r.sourceEndSec){r.sourceEndSec=end;this.saveTimeline();}});
     }

@@ -48,6 +48,13 @@ import java.util.concurrent.Executor;
 @ConditionalOnProperty(name = "studio.video-editor.enabled", havingValue = "true", matchIfMissing = true)
 public class VideoEditorController {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistorystudio.videoeditor.editing.TechniqueLibrary library;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private VoiceoverService voiceovers;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private DubService dubs;
+
     private final VideoEditorProjectService service;
     private final VideoEditorStorageService storage;
     private final VideoEditorProperties properties;
@@ -138,6 +145,28 @@ public class VideoEditorController {
         implemented.put("captions", true); // auto captions: faster-whisper in video-worker + libass burn-in
         implemented.put("music", true);
         capabilities.put("implemented", implemented);
+
+        // Cardboard-parity finishing options (the UI builds its pickers from these, never from hard-coded lists)
+        List<Map<String, Object>> transitions = new java.util.ArrayList<>();
+        for (var t : library.all()) {
+            if (!"TRANSITION".equals(t.category()) || t.group() == null) continue;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", t.id());
+            m.put("name", t.name());
+            m.put("group", t.group());
+            m.put("seconds", t.param("durationSeconds", null));
+            m.put("purpose", t.purpose());
+            transitions.add(m);
+        }
+        capabilities.put("transitions", transitions);
+        capabilities.put("soundEffects", com.aistorystudio.videoeditor.editing.TimelineFinisher.SFX_IDS);
+        capabilities.put("overlayColors", com.aistorystudio.videoeditor.editing.TimelineFinisher.COLOR_IDS);
+        capabilities.put("exportFormats", com.aistorystudio.videoeditor.editing.TimelineFinisher.EXPORT_FORMATS);
+        capabilities.put("exportHeights", com.aistorystudio.videoeditor.editing.TimelineFinisher.EXPORT_HEIGHTS);
+        capabilities.put("exportFps", com.aistorystudio.videoeditor.editing.TimelineFinisher.EXPORT_FPS);
+        capabilities.put("loudnessTargets", com.aistorystudio.qa.Loudness.TARGETS);
+        capabilities.put("dubLanguages", DubService.LANGUAGES);
+        capabilities.put("platforms", com.aistorystudio.videoeditor.editing.PlatformPresets.ALL);
 
         return capabilities;
     }
@@ -322,6 +351,38 @@ public class VideoEditorController {
     public ResponseEntity<Void> removeAudio(@PathVariable UUID id, @PathVariable UUID trackId) {
         service.removeAudio(id, trackId);
         return ResponseEntity.noContent().build();
+    }
+
+    public record DubRequest(String language, String voice, String model) {}
+
+    /** Dub the latest rendered cut into another language (translate to fit, speak, store as the voiceover with "replace the original voice"). */
+    @PostMapping("/projects/{id}/dub")
+    public ResponseEntity<?> dub(@PathVariable UUID id, @RequestBody DubRequest request) {
+        if (dubs == null) return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(Map.of("error", "Dubbing is not available in this build."));
+        try {
+            return ResponseEntity.ok(dubs.dub(id, request.language(), request.voice(), request.model()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("error", "Could not dub the video: " + message(e)));
+        }
+    }
+
+    public record VoiceoverRequest(String script, String voice, String language, Double speed) {}
+    public record VoiceoverView(AudioTrackView track, int sentences, double seconds, String note) {}
+
+    /** AI voiceover from a script: speaks it with the chosen voice and stores it as the project's voiceover track. */
+    @PostMapping("/projects/{id}/voiceover/generate")
+    public ResponseEntity<?> generateVoiceover(@PathVariable UUID id, @RequestBody VoiceoverRequest request) {
+        if (voiceovers == null) return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(Map.of("error", "Voiceover generation is not available in this build."));
+        try {
+            var r = voiceovers.generate(id, request.script(), request.voice(), request.language(), request.speed());
+            return ResponseEntity.ok(new VoiceoverView(AudioTrackView.of(r.track()), r.sentences(), r.seconds(), r.note()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("error", "Could not generate the voiceover: " + message(e)));
+        }
     }
 
     @PutMapping("/projects/{id}/captions")
@@ -615,11 +676,12 @@ public class VideoEditorController {
                     if (!Files.exists(file)) {
                         return ResponseEntity.<Resource>notFound().build();
                     }
+                    String ext = extensionOf(j.getOutputFilename());
                     return ResponseEntity.<Resource>ok()
-                            .contentType(MediaType.parseMediaType("video/mp4"))
+                            .contentType(MediaType.parseMediaType(mimeFor(ext)))
                             .header(HttpHeaders.ACCEPT_RANGES, "bytes")
                             .header(HttpHeaders.CONTENT_DISPOSITION,
-                                    "inline; filename=\"" + j.getKind().name().toLowerCase() + ".mp4\"")
+                                    "inline; filename=\"" + j.getKind().name().toLowerCase() + "." + ext + "\"")
                             .body((Resource) new FileSystemResource(file));
                 })
                 .orElseGet(() -> ResponseEntity.<Resource>notFound().build());
@@ -638,14 +700,25 @@ public class VideoEditorController {
                     if (!Files.exists(file)) {
                         return ResponseEntity.<Resource>notFound().build();
                     }
+                    String ext = extensionOf(j.getOutputFilename());
                     String filename = j.getKind() == RenderKind.FINAL
-                            ? "ai-story-studio-final.mp4" : "ai-story-studio-preview.mp4";
+                            ? "ai-story-studio-final." + ext : "ai-story-studio-preview." + ext;
                     return ResponseEntity.<Resource>ok()
-                            .contentType(MediaType.parseMediaType("video/mp4"))
+                            .contentType(MediaType.parseMediaType(mimeFor(ext)))
                             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                             .body((Resource) new FileSystemResource(file));
                 })
                 .orElseGet(() -> ResponseEntity.<Resource>notFound().build());
+    }
+
+    private static String extensionOf(String name) {
+        int i = name == null ? -1 : name.lastIndexOf('.');
+        String e = i < 0 ? "mp4" : name.substring(i + 1).toLowerCase(java.util.Locale.ROOT);
+        return java.util.List.of("mp4", "webm", "mov", "mkv").contains(e) ? e : "mp4";
+    }
+
+    private static String mimeFor(String ext) {
+        return switch (ext) { case "webm" -> "video/webm"; case "mov" -> "video/quicktime"; case "mkv" -> "video/x-matroska"; default -> "video/mp4"; };
     }
 
     private ResponseEntity<Resource> serveVideo(Path file, MediaType mediaType) {
@@ -703,14 +776,16 @@ public class VideoEditorController {
                               String customInstructions, VideoEditorState state, String errorMessage,
                               boolean smartCuts, boolean beatSync, boolean smartTransitions,
                               boolean autoCaptions, boolean audioEnhancement, boolean smartReframing,
-                              String look, String titleText, boolean stabilize, String effects) {
+                              String look, String titleText, boolean stabilize, String effects,
+                              double lookIntensity, String overlays, String exportFormat, Integer exportHeight, Integer exportFps, String loudness, boolean voiceoverReplace) {
         static ProjectView of(VideoEditorProject p) {
             return new ProjectView(p.getId(), p.getName(), p.getCategory(), p.getEditingStyle(),
                     p.getIntensity(), p.getAspectRatio(), p.getTargetDurationSec(),
                     p.getCustomInstructions(), p.getState(), p.getErrorMessage(),
                     p.isSmartCuts(), p.isBeatSync(), p.isSmartTransitions(),
                     p.isAutoCaptions(), p.isAudioEnhancement(), p.isSmartReframing(),
-                    p.getLook(), p.getTitleText(), p.isStabilize(), p.getEffects());
+                    p.getLook(), p.getTitleText(), p.isStabilize(), p.getEffects(),
+                    p.getLookIntensity(), p.getOverlaysJson(), p.getExportFormat(), p.getExportHeight(), p.getExportFps(), p.getLoudness(), p.isVoiceoverReplace());
         }
     }
 

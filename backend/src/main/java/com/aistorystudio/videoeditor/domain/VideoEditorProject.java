@@ -64,6 +64,30 @@ public class VideoEditorProject {
     @Column(name = "effects", length = 160)
     private String effects;
 
+    /** Strength of the colour look, 0 = off .. 1 = full (Cardboard: LUT intensity). */
+    @Column(name = "look_intensity", nullable = false)
+    private double lookIntensity = 1.0;
+
+    /** Timed overlays on the finished cut: [{"type":"text"|"zoom"|"sfx", "start":s, "end":s, ...}] (see TimelineFinisher). */
+    @Column(name = "overlays_json", columnDefinition = "TEXT")
+    private String overlaysJson;
+
+    /** Final export: mp4 | webm | mov | mkv (null = mp4), height 480..2160 (null = default), fps 24/25/30/50/60 (null = keep). */
+    @Column(name = "export_format", length = 8)
+    private String exportFormat;
+    @Column(name = "export_height")
+    private Integer exportHeight;
+    @Column(name = "export_fps")
+    private Integer exportFps;
+
+    /** Loudness target for the final render: social (-14 LUFS), podcast (-16), broadcast (-23); null = leave the audio as it is. */
+    @Column(name = "loudness", length = 12)
+    private String loudness;
+
+    /** A dub: the voiceover replaces the original voice (the original is lowered to about 16 %) instead of only being ducked under it. */
+    @Column(name = "voiceover_replace", nullable = false)
+    private boolean voiceoverReplace = false;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private VideoEditorState state = VideoEditorState.DRAFT;

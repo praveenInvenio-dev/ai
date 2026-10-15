@@ -282,6 +282,54 @@ def voices():
     })
 
 
+def _expected_seconds(text: str) -> float:
+    """Generous upper bound for how long a line can take to say (any script, any pace)."""
+    return 2.5 + len(text) / 9.0
+
+
+def _too_long(wav, sr, text) -> bool:
+    return wav.shape[-1] / sr > _expected_seconds(text) * 1.6
+
+
+def _cap_length(wav, sr, text):
+    limit = int(_expected_seconds(text) * 1.6 * sr)
+    return wav[..., :limit] if wav.shape[-1] > limit else wav
+
+
+def _squeeze_silence(wav, sr, max_gap=0.6, keep=0.35, floor_db=-45.0):
+    """Shorten every pause longer than max_gap seconds to keep seconds, and trim trailing silence."""
+    try:
+        import torch
+        x = wav if wav.dim() == 2 else wav.unsqueeze(0)
+        mono = x.abs().mean(0)
+        hop = int(sr * 0.02)
+        n = mono.shape[-1] // hop
+        if n == 0:
+            return wav
+        frames = mono[: n * hop].reshape(n, hop).pow(2).mean(1).sqrt()
+        loud = (20 * torch.log10(frames + 1e-9)) > floor_db
+        keep_mask = torch.ones(n, dtype=torch.bool)
+        run_start, max_frames, keep_frames = None, int(max_gap / 0.02), int(keep / 0.02)
+        for i in range(n + 1):
+            silent = i < n and not bool(loud[i])
+            if silent and run_start is None:
+                run_start = i
+            elif not silent and run_start is not None:
+                length = i - run_start
+                tail = i == n
+                if tail:
+                    keep_mask[run_start + min(length, keep_frames):] = False
+                elif length > max_frames:
+                    keep_mask[run_start + keep_frames // 2: i - keep_frames // 2] = False
+                run_start = None
+        idx = torch.repeat_interleave(keep_mask, hop)
+        out = x[..., : n * hop][..., idx]
+        out = torch.cat([out, x[..., n * hop:]], dim=-1) if keep_mask[-1] else out
+        return out if wav.dim() == 2 else out.squeeze(0)
+    except Exception:  # noqa: BLE001 - never lose a line over the guard
+        return wav
+
+
 @app.post("/api/unload")
 def api_unload():
     return jsonify({"unloaded": unload_models("requested by backend"), "device": DEVICE})
@@ -346,6 +394,11 @@ def synthesize():
             "temperature": 0.65 if intensity < 0.7 else 0.8,
             "cfg_weight": 0.5,
         }
+        if language != "en":
+            # the multilingual model drifts and runs on with strong exaggeration / guidance on non-English text
+            kwargs["exaggeration"] = min(kwargs["exaggeration"], 0.55)
+            kwargs["cfg_weight"] = 0.3
+            kwargs["temperature"] = min(kwargs["temperature"], 0.7)
         if language != "en" or MODEL_TYPE == "multilingual":
             kwargs["language_id"] = language
 
@@ -363,6 +416,17 @@ def synthesize():
                 log.warning("Chatterbox CUDA out of memory - clearing cache and retrying once")
                 _free_cuda()
                 wav_tensor = model.generate(text, **kwargs)
+            # Runaway guard: on text it struggles with, the model keeps generating near-silence up to its length limit
+            # (~30 s of dead air per line in a lesson). Cut long pauses; if it is still far longer than the text can
+            # take to say, try once more with calmer settings and keep the shorter result.
+            wav_tensor = _squeeze_silence(wav_tensor, model.sr)
+            if _too_long(wav_tensor, model.sr, text):
+                log.warning("Chatterbox runaway on %d chars (%.1f s) - retrying with calmer settings", len(text), wav_tensor.shape[-1] / model.sr)
+                calm = dict(kwargs, temperature=0.5, exaggeration=min(kwargs["exaggeration"], 0.4), cfg_weight=0.3)
+                retry = _squeeze_silence(model.generate(text, **calm), model.sr)
+                if retry.shape[-1] < wav_tensor.shape[-1]:
+                    wav_tensor = retry
+                wav_tensor = _cap_length(wav_tensor, model.sr, text)
             buf = io.BytesIO()
             ta.save(buf, wav_tensor, model.sr, format="wav")
             wav_bytes = buf.getvalue()

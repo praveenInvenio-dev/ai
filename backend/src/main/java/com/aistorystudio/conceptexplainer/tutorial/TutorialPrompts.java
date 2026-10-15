@@ -1,5 +1,6 @@
 package com.aistorystudio.conceptexplainer.tutorial;
 
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -16,6 +17,88 @@ import java.util.Locale;
 public final class TutorialPrompts {
 
     private TutorialPrompts() { }
+
+    // ------------------------------------------------------------------ variety (every format)
+
+    /** Teaching devices every format can use; each one carries a different kind of idea. */
+    static final String DEVICES = """
+            TEACHING DEVICES (pick the one that fits the idea; they work in every look):
+              timeline  lines=["1876|Telephone","2007|Smartphone"], style="3" highlights event 3     (history, evolution, sequence in time)
+              steps     lines=["Swallow|muscles open the tube",...], style "vertical" or "2" (highlight)  (a process, how-to, order matters)
+              compare   title="SQL|NoSQL", lines=["Schema|✓ Fixed|✗ Flexible",...]            (A vs B, before vs after, myth vs fact)
+              cycle     text=centre label, lines=["Evaporation","Condensation","Rain"]          (loops, feedback, repeating processes)
+              layers    lines=["Apps|what you use","OS|...",...] top->bottom, style "pyramid"  (stacks, hierarchies, levels, needs)
+              venn      lines=["Maths","Coding","Domain"], text=what sits in the overlap       (overlap, what two things share)
+              meter     text="72%", title=label, lines=["low","high"]                          (a level, risk, score, "how much")
+              checklist title, lines=["✓ Chew gum","✗ Sleep through landing"]                   (do / don't, symptoms, requirements)
+              analogy   title=the idea, icon=its icon, text=everyday thing, content=its icon, lines=[shared traits]   (explain by comparison)
+              matrix    title="x axis|y axis", lines=[4 quadrant labels TL,TR,BL,BR], style="2" highlights one  (2x2 trade-offs, priorities)
+              formula   text="E = m × c²", lines=["E|energy","m|mass"]                          (a rule, equation, ratio)
+              pie       text=centre caption, lines=["Rent|40","Food|25"] (percent)              (parts of a whole - real numbers only)
+              tree      text=root, lines=["Plants: trees, grass","Animals: birds, fish"]         (categories, family, breakdown)
+            SUBJECT DEVICES:
+              forces    text=object, lines=["up|N|Normal","down|mg|Weight","right|F|Push"] (dir|symbol|name[|size 0.5-2])   (physics: free-body)
+              wave      title=caption, lines=["λ = 0.5 m","A = 2 cm"], style "square" optional    (physics: waves, sound, light, AC)
+              circuit   text=law in the middle, lines=["battery|9 V","resistor|R = 3 Ω","bulb|","ammeter|","switch|"]   (electricity)
+              atom      text=symbol, title=caption, lines=electrons per shell ["2","8","1"]      (chemistry: structure, valency)
+              molecule  text=formula like "H2O", lines=atoms, first is central ["O","H","H"], "=O" = double bond   (chemistry: bonding, shape)
+              reaction  text="2H2 + O2 -> 2H2O" (digits become subscripts), title=condition above the arrow, lines=labels   (chemistry)
+              element   text=symbol, title=name, lines=[atomic number, atomic mass]                   (periodic table)
+              pins      from=id of a photo / shape, lines=["Eardrum@50,55"] (label @ x%,y% inside it)  (biology / anatomy / geography labels)
+              numberline title="-5..5", lines=["-2|x","3|y"], style="-2..3" shades an interval     (maths: integers, inequalities)
+              triangle  lines=["a|4","b|3","c|5"], text=angle label, style "right"                   (maths: geometry, trigonometry)
+              fraction  lines=["3/4|three slices of pizza","1/2|half a glass"]                        (maths for beginners / kids)
+              quiz      title=question, lines=[options], style=number of the right option, highlightAt=[sentence that reveals it]  (recall / exams / kids)
+              factcard  title="Did you know?", text=one surprising true fact, icon                      (general knowledge, hooks)
+              mascot    text="Robo", style happy|wow|thinking|wave                                    (kids: the friendly guide)
+              speech    text=what the mascot says (short), style left|right = tail side              (kids)
+              badge     text="Great job!"                                                             (kids: celebrate at the end)
+            KIDS / AGE DEVICES:
+              cloudtitle text=title, title="Explore · Play · Learn" (3 short words)          (kids: title banner over an illustrated scene)
+              iconrow   lines=["Letters|ABC|pink","Numbers|123|green","Coding|code|violet"] (label|icon or 3-letter text|colour)
+              bigpic    text=the one word, icon, color                                      (ages 2-5: one big thing)
+              count     text=how many (1-5 for toddlers), icon                               (ages 2-5: counting)
+              choose    lines=["Phone|phone","Apple|apple"], style=right one, highlightAt=[answer sentence]   (ages 2-5: pick a picture)
+              sizes     icon, lines=["BIG","small"]                                          (ages 2-5)
+              pip       text="Pip", style happy|wow|listen|wave                              (ages 2-5 drawn friend, when no picture)
+              flowchart text=edges "start>check, check>pay:yes, check>retry:no", lines=["start|Open the app|start","check|Card valid?|decision","pay|Take payment|process","done|Order placed|end"] (kind: start|process|decision|end|io)   (algorithms, processes, decisions)
+              sequence  lines=["Browser|laptop","Server|server","DB|database"], text="Browser>Server:GET /login, Server>DB:find user, DB>Server:user row!" (trailing ! = dashed reply)   (who talks to whom, APIs, handshakes)
+              datastruct style=array|array:2|stack|queue|linkedlist|hash (":2" highlights item 2), lines=values (hash: "0|cat:3, dog:7")   (data structures, memory)
+              periodic  text="alkali, halogen, Fe" (symbols and/or groups; empty = whole table by group), title=caption   (chemistry: trends, groups)
+              energy    lines=["Reactants|0","Transition state|65","Products|-30"] (kJ), style="catalyst" adds the lower route, title=x caption   (chemistry: Ea, delta H)
+              lens      style=convex|concave, text="u=30, f=10"   (physics: ray diagram, image position and kind)
+              funnel    lines=["Visitors|10000","Sign-ups|2400","Paying|310"] largest first   (business: conversion, filtering, selection)
+              level     title="LEVEL 2", text=what this level unlocks, style=XP percent      (ages 10-15)
+              challenge title=the puzzle, lines=options, style=right one, text="10 s", highlightAt=[answer sentence]   (ages 10-15)
+            """;
+
+    static final String VARIETY = """
+            VARIETY (the lesson must not look like every other lesson):
+            - Every scene has ONE main visual device chosen for what that scene teaches (devices above, or the diagram / window /
+              chart elements). Two consecutive scenes never use the same main device.
+            - Use at least MIN_DEVICES different main devices across the lesson. Mix structure (steps, cycle, tree, layers),
+              comparison (compare, venn, matrix, analogy), quantity (meter, pie, formula, plot/bars) and story (actors, chat, photo).
+            - Vary the composition from scene to scene: centred hero, left-right split, top-to-bottom flow, grid of items.
+            """;
+
+    /** Teaching approaches; a different one is suggested for each lesson so lessons do not all follow the same arc. */
+    public static final List<String> APPROACHES = List.of(
+            "STORY-FIRST: follow one person through a real situation; the concept appears exactly when they need it",
+            "MYTH-BUSTER: start from what most people wrongly believe, then show what is really going on",
+            "BUILD IT FROM SCRATCH: start with the simplest version, add one piece per scene until the full idea stands",
+            "QUESTION LADDER: five questions a curious learner would ask, each answer unlocking the next question",
+            "COMPARE AND CONTRAST: understand the idea by putting it next to its opposite or its older alternative",
+            "HOW WE GOT HERE: the history - the problem people had, the failed fixes, and the idea that finally worked",
+            "ANALOGY-FIRST: open with an everyday thing that works the same way, then map each part onto the real concept",
+            "MISTAKE-DRIVEN: walk through the most common mistakes and what each one teaches about how it really works",
+            "NUMBERS-FIRST: open with one striking real number, then explain what produces it");
+
+    public static String approachFor(long seed) {
+        return APPROACHES.get((int) Math.floorMod(seed, (long) APPROACHES.size()));
+    }
+
+    static String variety(int minDevices) { return VARIETY.replace("MIN_DEVICES", String.valueOf(minDevices)); }
+
 
     /** Lesson size per duration choice. */
     public record Size(int minScenes, int maxScenes, int minWords, int maxWords) { }
@@ -41,8 +124,8 @@ public final class TutorialPrompts {
               fix -> what it is exactly -> how it works step by step (who calls whom, what data moves) -> what it really looks like
               (a request, a response, a config, a few lines of code) -> how it fits with related ideas -> real-world use cases with a
               concrete user request in quotes -> a short recap of the whole picture.
-            - ONE running example for the whole lesson (for example a travel app booking flights through three airlines, a shop, a
-              hospital, a bank). Use made-up company and product names (like "Joyair", "DracAir", "AeroGo") instead of real brands.
+            - ONE running example for the whole lesson that fits the SUBJECT (tech: an app or system; health: a person and their body,
+              e.g. a passenger whose ears pop on a flight; money: a family budget; science: an everyday object). Use made-up company and product names (like "Joyair", "DracAir", "AeroGo") instead of real brands.
               Each scene adds one piece to that same picture, so the learner watches the system being built.
             - Accurate. If a detail is simplified, say "in simple terms" or "a simplified version". Never invent version numbers,
               statistics or quotes from real people.
@@ -90,10 +173,18 @@ public final class TutorialPrompts {
               icon      icon, color (a lone glyph, e.g. sparkle)
             Optional on any element: dimAt (sentence index from which it fades into the background), highlightAt ([sentence indexes] when it
             glows because the narration talks about it).
+            """ + DEVICES + """
             Icons: user, agent, robot, plane, hotel, server, database, cloud, brain, gear, terminal, browser, doc, lock, chart, mail, git,
-            code, search, bolt, cart, folder, key, globe, phone, check, warning, api, sparkle, money, clock, book, cpu, network, chat, shield, list.
+            code, search, bolt, cart, folder, key, globe, phone, check, warning, api, sparkle, money, clock, book, cpu, network, chat, shield, list,
+            ear, eye, heart, lungs, tooth, bone, pill, syringe, stethoscope, virus, bacteria, cell, dna, drop, water, thermometer, hospital,
+            plus, stomach, kidney, muscle, apple, food, leaf, sun, moon, wind, gauge, person, baby, family, home, car, bed, mask, microscope.
+              photo     text = what to picture (an anatomy cross-section, a real object or place), style "framed", w/h in % - a generated
+                        illustration. Max 3 per lesson, only where a real picture explains more than a diagram.
             LAYOUT: 1920x1080 frame. Keep y >= 14 when there is a heading. Left column x 10-30, middle 40-60, right column x 75-90.
             Stack tiles/buttons with about 17-25 y between them. Never place two elements on the same spot. Max ~10 visible elements.
+            - MATCH THE SUBJECT. Health / body / biology topics: use body-part and medical icons (ear, heart, lungs, pill, virus ...)
+              on tiles for organs and parts, people as actors, a photo for the anatomy; NEVER app tiles, servers, code or terminals.
+              Money, food, travel, everyday topics: everyday icons (money, home, car, food, plane ...). Tech vocabulary only for tech topics.
             - A container always has a title (text) and its members are placed INSIDE its box (never half on its border); an empty container
               is not allowed. To change code / a list / a card, re-declare the SAME id with the new content (it updates in place) instead of
               adding a second window. Leave at least 6 % between boxes so arrows and their labels have room.
@@ -129,14 +220,17 @@ public final class TutorialPrompts {
 
     public static String outlineSystemPrompt() {
         return "You are the lead instructor and course designer of a top technical training platform. You design ONE video lesson in the\n"
-                + "exact style described below. Plan only; narration is written later.\n\n" + VOICE + "\n" + SCREEN + """
+                + "exact style described below. Plan only; narration is written later.\n\n" + VOICE + "\n" + SCREEN + "\n" + DEVICES + """
 
                 Return JSON only:
                 {"title": "lesson title",
                  "summary": "one sentence",
+                 "domain": "technology|medical|biology|science|finance|everyday|history|other",
                  "runningExample": "the single scenario that is built up through the whole lesson, with the made-up names",
                  "cast": [{"id": "agent", "type": "actor|tile|button|card|container|...", "text": "label", "icon": "...", "color": "..."}],
+                 "approach": "the teaching approach you follow",
                  "scenes": [{"section": "HOOK|FAMILIAR|PROBLEM|CONCEPT|HOW_IT_WORKS|IN_PRACTICE|ECOSYSTEM|USE_CASES|RECAP",
+                             "device": "the scene's main visual device (timeline, steps, compare, cycle, ... or diagram)",
                              "heading": "on-screen heading or empty",
                              "keyIdea": "the one thing this scene teaches",
                              "screen": "what is on screen at the start and what each sentence adds, using cast ids"}]}
@@ -144,7 +238,13 @@ public final class TutorialPrompts {
     }
 
     public static String outlineUserPrompt(String topic, String language, String difficulty, String instructions, String trackNotes, Size size) {
+        return outlineUserPrompt(topic, language, difficulty, instructions, trackNotes, size, null);
+    }
+
+    public static String outlineUserPrompt(String topic, String language, String difficulty, String instructions, String trackNotes, Size size, String approach) {
         StringBuilder sb = new StringBuilder();
+        if (approach != null) sb.append("Teaching approach for THIS lesson (follow it, it keeps lessons from all feeling the same): ").append(approach).append("\n");
+        sb.append(variety(size.maxScenes() >= 30 ? 9 : size.maxScenes() >= 15 ? 6 : 4)).append("\n");
         sb.append("Topic: ").append(topic);
         sb.append("\n").append(languageRule(language));
         sb.append("\nLearner level: ").append(difficulty);
@@ -182,6 +282,7 @@ public final class TutorialPrompts {
         StringBuilder sb = new StringBuilder();
         sb.append("Topic: ").append(topic).append("\n").append(languageRule(language));
         sb.append("\nLesson outline (all ").append(totalScenes).append(" scenes):\n").append(outlineJson);
+        sb.append("\nEach outlined scene names its main visual \"device\" - build that scene around exactly that device.");
         sb.append("\n\nWrite scenes ").append(from).append(" to ").append(to).append(" (1-based) now, about ")
                 .append(wordsForBatch).append(" spoken words in total for these scenes.");
         if (previousScene != null && !previousScene.isBlank()) {
@@ -223,7 +324,8 @@ public final class TutorialPrompts {
               drawn big in green), content = a 3-6 word subtitle ("how AI models learn"), style = "Learn one concept a day".
             - Teaching scenes: a small mono "label" like "02 · the hypervisor" and a short "heading" (2-6 words, the scene's claim).
             - Use: node (wireframe cube + name + mono sub-label), button (a wide dark bar such as "hypervisor" or "host kernel"),
-              chips (rows of small numbered squares with a caption), table (dark info card with numbered key|value rows),
+              (for health / body / biology / everyday topics use matching icons on nodes and tiles - ear, heart, pill, virus, money,
+              food ... - never servers, terminals or code), chips (rows of small numbered squares with a caption), table (dark info card with numbered key|value rows),
               bars (two-row size/speed comparison), tabs (1 · speed / 2 · size / 3 · security with the active one), value (mono
               number pill like "w 0.2"), metric (huge number + label like "11.4 LOSS"), plot (points + line / error lines /
               falling loss curve), arrow (thin connector), label (small text).
@@ -249,23 +351,31 @@ public final class TutorialPrompts {
               plot: title=y-axis label, text=x-axis label, lines=["x,y",...], style="residual" (error lines to the line) | "fit" | "decay"
                     (falling curve), content="slope, intercept" to draw a specific (e.g. wrong first-guess) line
               arrow: from, to, text optional      label: text, style=small|medium|large, color
+            """ + DEVICES + """
             Optional: dimAt, highlightAt (sentence indexes).  Re-declare a kept id with a new x/y to glide it; place things at
             y > 100 only when the picture must grow (the camera pulls back).
             """;
 
     public static String shortOutlineSystemPrompt() {
         return "You design 60-second vertical explainer reels that teach one concept so clearly a beginner gets it in one watch.\n\n"
-                + SHORT_VOICE + "\n" + SHORT_SCREEN + """
+                + SHORT_VOICE + "\n" + SHORT_SCREEN + "\n" + DEVICES + """
 
                 Return JSON only:
                 {"title":"concept name","summary":"one sentence","hook":"the opening question",
                  "example":"the one tiny concrete example built up on screen (with its numbers)",
-                 "scenes":[{"section":"HOOK|SETUP|STEP|PAYOFF|NAME|SCALE|OUTRO","label":"0N · name","heading":"claim","keyIdea":"...","screen":"what appears, per sentence"}]}
+                 "approach":"the teaching approach you follow",
+                 "scenes":[{"section":"HOOK|SETUP|STEP|PAYOFF|NAME|SCALE|OUTRO","device":"main visual device","label":"0N · name","heading":"claim","keyIdea":"...","screen":"what appears, per sentence"}]}
                 """;
     }
 
     public static String shortOutlineUserPrompt(String topic, String language, String difficulty, String instructions, String trackNotes, Size size) {
+        return shortOutlineUserPrompt(topic, language, difficulty, instructions, trackNotes, size, null);
+    }
+
+    public static String shortOutlineUserPrompt(String topic, String language, String difficulty, String instructions, String trackNotes, Size size, String approach) {
         StringBuilder sb = new StringBuilder();
+        if (approach != null) sb.append("Teaching approach for THIS reel: ").append(approach).append("\n");
+        sb.append(variety(4)).append("\n");
         sb.append("Topic: ").append(topic).append("\n").append(languageRule(language)).append("\nLearner level: ").append(difficulty);
         sb.append("\nScenes: ").append(size.minScenes()).append("-").append(size.maxScenes()).append(" including the title card and the outro")
                 .append(" | Total narration: ").append(size.minWords()).append("-").append(size.maxWords()).append(" words (60 seconds).");
@@ -337,22 +447,24 @@ public final class TutorialPrompts {
               rows: lines=["21|B4|BOOKED","23|B4|LOCKED · YOU|v7"]      particles: text=how many (e.g. 200), style bots, w/h
               cables: from, to, text=count      sql: title, content="SELECT * FROM seats\nWHERE id = 23 FOR UPDATE;"
               pill: text, color yellow|white     icon: icon=padlock     arrow: from, to, text
+            """ + DEVICES + """
             Optional: dimAt, highlightAt.
             """;
 
     public static String breakdownOutlineSystemPrompt() {
         return "You create premium 2-minute vertical explainer reels that teach a concept through one real-world product the viewer uses every day,\n"
-                + "with the clarity of a senior engineer and the pace of a top creator.\n\n" + BREAKDOWN_VOICE + "\n" + BREAKDOWN_SCREEN + """
+                + "with the clarity of a senior engineer and the pace of a top creator.\n\n" + BREAKDOWN_VOICE + "\n" + BREAKDOWN_SCREEN + "\n" + DEVICES + """
 
                 Return JSON only:
                 {"title":"...","summary":"one sentence","example":"the real-world product/situation used","label":"SERIES · 0NN",
                  "challenge":"the opening challenge line","naive":"the naive answer","journey":["step 1","step 2","step 3"],
-                 "scenes":[{"section":"CHALLENGE|NAIVE|SCALE|JOURNEY|NAME|TRADEOFF|BEST_PART|RECAP|CTA","keyIdea":"...","screen":"what is on screen per sentence"}]}
+                 "scenes":[{"section":"CHALLENGE|NAIVE|SCALE|JOURNEY|NAME|TRADEOFF|BEST_PART|RECAP|CTA","device":"main visual device","keyIdea":"...","screen":"what is on screen per sentence"}]}
                 """;
     }
 
     public static String breakdownOutlineUserPrompt(String topic, String language, String difficulty, String instructions, String trackNotes, Size size) {
         StringBuilder sb = new StringBuilder();
+        sb.append(variety(6)).append("\n");
         sb.append("Concept / topic: ").append(topic).append("\n").append(languageRule(language)).append("\nViewer level: ").append(difficulty);
         sb.append("\nScenes: ").append(size.minScenes()).append("-").append(size.maxScenes()).append(" | Narration: ").append(size.minWords())
                 .append("-").append(size.maxWords()).append(" words.");
@@ -369,5 +481,144 @@ public final class TutorialPrompts {
                 RULES: 2-5 sentences per scene; every element's "at" is the sentence that mentions it; numbers on screen match the narration;
                 callout text is short (max ~10 words); reuse ids across scenes. Return JSON only: {"scenes":[ ...the scenes asked for... ]}
                 """;
+    }
+
+    // ================================================================== pre-production craft (all formats)
+    // Ideas drawn from published explainer-video research (hook in the first seconds, misconception-first, but/therefore links,
+    // guided discovery, one idea at a time, deliberate silence) and from the way OpenMontage structures its script stage.
+    // The wording here is our own.
+
+    /** Seconds for hook / tension / core / proof / close, interpolated between lengths (1, 2, 3, 5 min), scaled beyond. */
+    static int[] arcSeconds(int total) {
+        int[][] rows = {{60, 5, 10, 30, 10, 5}, {120, 8, 15, 60, 25, 12}, {180, 8, 22, 100, 30, 15}, {300, 10, 30, 180, 50, 20}};
+        if (total <= rows[0][0]) {
+            double k = Math.max(0.5, total / 60.0);
+            return new int[]{(int) Math.max(3, Math.round(5 * k)), (int) Math.round(10 * k), (int) Math.round(30 * k), (int) Math.round(10 * k), (int) Math.round(5 * k)};
+        }
+        if (total >= rows[3][0]) {
+            double k = total / 300.0;
+            return new int[]{(int) Math.min(15, Math.round(10 + (k - 1) * 3)), (int) Math.round(30 * k), (int) Math.round(180 * k), (int) Math.round(50 * k), (int) Math.round(20 * k)};
+        }
+        for (int r = 0; r < 3; r++) {
+            if (total <= rows[r + 1][0]) {
+                double f = (total - rows[r][0]) / (double) (rows[r + 1][0] - rows[r][0]);
+                int[] o = new int[5];
+                for (int c = 0; c < 5; c++) o[c] = (int) Math.round(rows[r][c + 1] + f * (rows[r + 1][c + 1] - rows[r][c + 1]));
+                return o;
+            }
+        }
+        return new int[]{8, 15, 60, 25, 12};
+    }
+
+    public static String storyCraft(int totalSeconds) {
+        int[] a = arcSeconds(Math.max(30, totalSeconds));
+        return """
+                STORY CRAFT - how this video holds attention (follow these on top of everything above):
+                1. SHAPE: hook, tension, core, proof, close. Time plan for about %d s: hook %d s, tension %d s, core %d s, proof %d s, close %d s.
+                2. HOOK in the first seconds. Pick the type that fits the topic: contrarian ("what you were told about X is wrong"), outcome
+                   ("by the end you will be able to ..."), mystery (a strange fact or event) or stakes ("this one mistake costs people ...").
+                   Never open with a greeting, "in this video", a definition or the bare topic name.
+                3. Hook and problem together are finished in the first 30 s (the first 15 s of a one-minute video): most viewers decide then.
+                4. Join ideas with BUT and THEREFORE, never "and then": "X is true, BUT it breaks when ..., THEREFORE we need ...".
+                5. For science and technical topics begin with the common misconception, then show what is really true: people learn more
+                   from a refuted belief than from the plain fact.
+                6. Guided discovery: ask a concrete question, show the obvious attempt, let it fail, give ONE key insight, build it step by
+                   step, then show it works elsewhere. Do not simply announce the answer.
+                7. One new idea at a time (about one per 30-45 s). Signpost where you are ("here is where it gets interesting"). In lessons over
+                   two minutes add a light breather (a joke, a quick recap) about once a minute and change the rhythm every 45-90 s.
+                8. Silence is a tool: the sentence that carries the key insight is followed by a pause.
+                9. Say what is SEEN, not how it should feel. In picture and visual descriptions give framing, subject, action, light and
+                   expression ("wide shot, a child points at a glowing screen, warm lamp light"); never "epic", "magical", "stunning", "inspiring".
+                10. Never invent statistics, dates, names or quotes. If unsure say "about", "imagine", or leave the number out.
+                Every scene also returns:
+                  "camera": one of push-in | pull-out | pan-left | pan-right | rise | hold   (the camera idea for the picture)
+                  "delivery": {"pace":"slow|measured|brisk", "energy":"calm|curious|excited|warm|serious",
+                               "emphasis":["1-3 words to stress"], "pauseAfter":[one number of seconds per narration sentence],
+                               "note":"one concrete direction, e.g. measured, then slow down on the last phrase"}
+                  pauseAfter: 0 for most sentences, 1-2 s after the sentence that carries the reveal, never more than 3 s in a scene.
+                """.formatted(totalSeconds, a[0], a[1], a[2], a[3], a[4]);
+    }
+
+    /** The system prompt with the story craft appended, plus the Manim templates when the animation service is running. */
+    public static String withCraft(String system, int totalSeconds, boolean manim) {
+        return withCraft(system, totalSeconds) + (manim ? "\n\n" + manimBlock() : "");
+    }
+
+    public static String manimBlock() {
+        return """
+                ANIMATED MATHS / PHYSICS SCENES (Manim) - available now:
+                A scene may carry a "manim" object next to its "elements": a real animation (a graph being drawn, vectors adding, a ball flying)
+                that plays behind the scene's overlays and is paced to the narration. Use it when a MOVING mathematical picture teaches the idea
+                better than boxes and arrows - never as decoration.
+                  "manim": {"template": "<name>", "params": {...}}
+                  function_plot   {"expr":"x^2 - 4x + 3","xmin":-1,"xmax":5,"points":[{"x":1,"label":"root"}],"area":[1,3],"tangent":2,"caption":"short line"}
+                  vector_add      {"vectors":[{"x":3,"y":2,"label":"A"},{"x":2,"y":-1,"label":"B"}],"resultant":true}
+                  projectile      {"v0":20,"angle":45}
+                  equation_steps  {"lines":["x^2 + 5x + 6 = 0","(x + 2)(x + 3) = 0","x = -2 or x = -3"],"notes":["","factorise","each bracket = 0"]}
+                  wave            {"waves":[{"amp":1,"freq":1},{"amp":0.7,"freq":3}],"sum":true}
+                  unit_circle     {"angle":50}
+                  pythagoras      {"a":3,"b":4}
+                Rules: write formulas as plain text (x^2, sin(x)/x, 2x(x+1)), never LaTeX. The numbers must be correct - a wrong graph is worse than none.
+                The animation shows its steps in order (axes, curve, points, area ...) spread evenly over the narration, so narrate them in that order.
+                In a Manim scene leave "elements" EMPTY ([]): the scene heading already titles it and the animation fills the frame; put any words
+                on screen through the template itself (function_plot "caption", equation_steps "notes", point labels). At most one Manim scene in every three. Best for maths and physics (NEET / JEE):
+                graphs, vectors, motion, waves, trigonometry, algebra steps.
+                """;
+    }
+
+    /** The system prompt with the story craft appended. */
+    public static String withCraft(String system, int totalSeconds) {
+        return system + "\n\n" + storyCraft(totalSeconds);
+    }
+
+    // ------------------------------------------------------------------ concepts first (the proposal step)
+
+    public static String conceptsSystemPrompt() {
+        return """
+                You are a creative director pitching video concepts to a creator before anything is made.
+                Pitch exactly 3 concepts for the topic. They must be genuinely different from each other (different hook type AND different
+                angle), not three versions of the same idea. Every premise must be true and checkable; do not invent statistics.
+                Return JSON only:
+                {"concepts":[{"title":"short working title",
+                              "hookType":"contrarian|outcome|mystery|stakes",
+                              "hook":"the exact opening line, one sentence",
+                              "angle":"the one idea, misconception or story the video is built on",
+                              "approach":"story-first | myth-buster | guided discovery | compare and contrast | build from scratch | analogy-first | mistake-driven | numbers-first",
+                              "visualIdea":"what the viewer mostly sees",
+                              "whyItWorks":"one sentence"}]}
+                """;
+    }
+
+    public static String conceptsUserPrompt(String topic, String language, String duration, String difficulty, String audience,
+                                            String outcome, String tone, String trackNotes) {
+        StringBuilder sb = new StringBuilder("Topic: ").append(topic).append("\nLength: ").append(duration).append("\nLevel: ").append(difficulty);
+        sb.append("\nNarration language: ").append(language).append(" (on-screen text will be English)");
+        if (audience != null && !audience.isBlank()) sb.append("\nAudience: ").append(audience);
+        if (outcome != null && !outcome.isBlank()) sb.append("\nAfter watching they should: ").append(outcome);
+        if (tone != null && !tone.isBlank()) sb.append("\nTone: ").append(tone);
+        if (trackNotes != null && !trackNotes.isBlank()) sb.append("\n").append(trackNotes);
+        return sb.toString();
+    }
+
+    // ------------------------------------------------------------------ script doctor: rewrite flagged scenes
+
+    public static String doctorSystemPrompt() {
+        return """
+                You are a script doctor for short spoken videos. You receive scenes (their narration sentences) and a list of problems per scene.
+                Rewrite ONLY the scenes you are given. Rules:
+                - keep EXACTLY the same number of sentences in each scene, in the same order;
+                - keep the meaning, the names, the facts and the narration language; add no new facts;
+                - write for the ear: short sentences, contractions are fine;
+                - fix every listed problem: "weak-hook" -> open with a surprising claim, a question or a problem; "and-then" -> link with but / therefore;
+                  "verify-number" -> replace the exact figure with "about"/"roughly" wording or drop it unless it is common knowledge;
+                  "long-sentence" / "long-hook" -> shorten without losing the point; "repetitive" -> vary the openings;
+                  "too-long" -> cut filler and repetition, keep every key idea; "not-direct" / "no-questions" -> talk to the child ("you", "let's") and ask a question.
+                Return JSON only: {"scenes":[{"scene":N,"narration":["sentence 1","sentence 2"]}]}
+                """;
+    }
+
+    public static String doctorUserPrompt(String scenesJson, int shrinkWords) {
+        return "Language of the narration: keep it. Scenes to fix:\n" + scenesJson
+                + (shrinkWords > 0 ? "\nThe whole script is about " + shrinkWords + " words too long: make these scenes shorter, about " + shrinkWords + " words in total." : "");
     }
 }
