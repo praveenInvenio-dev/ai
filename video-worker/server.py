@@ -566,6 +566,69 @@ def api_beats():
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 500
 
+
+# ---------------------------------------------------------------------------
+# Depth-aware animated text (video editor): text is composited between the
+# original background and the estimated foreground alpha matte.
+# ---------------------------------------------------------------------------
+@app.post("/api/depth-text")
+def api_depth_text():
+    """Render a single behind-person text overlay on a shared-volume video.
+
+    Body: {source, output, text, start, duration, x, y, fontSize, color,
+           animation, model?}. Source/output must remain under configured shared
+    media roots. The endpoint is intended for the internal Docker network.
+    """
+    from types import SimpleNamespace
+    from pathlib import Path
+    from foreground_text_compositor import composite
+
+    body = request.get_json(force=True, silent=True) or {}
+    allowed_roots = [os.path.realpath(p) for p in ("/data/video-editor", "/data/projects")]
+    def safe_media_path(value):
+        if not isinstance(value, str) or not value:
+            raise ValueError("source and output paths are required")
+        resolved = os.path.realpath(value)
+        if not any(resolved == root or resolved.startswith(root + os.sep) for root in allowed_roots):
+            raise ValueError("media path must be inside a configured shared media volume")
+        return resolved
+
+    try:
+        source = safe_media_path(body.get("source"))
+        output = safe_media_path(body.get("output"))
+        if not os.path.isfile(source):
+            return jsonify({"error": "Source media file does not exist."}), 404
+        if source == output:
+            return jsonify({"error": "Output path must differ from source path."}), 400
+        text = str(body.get("text") or "").strip()
+        if not text:
+            return jsonify({"error": "Text cannot be empty."}), 400
+        if len(text) > 140:
+            text = text[:140]
+        animation = str(body.get("animation") or "float")
+        if animation not in {"fade", "none", "slide_up", "slide_left", "float", "pop", "pulse"}:
+            animation = "float"
+        args = SimpleNamespace(
+            input=source, output=output, text=text,
+            start=max(0.0, min(36000.0, float(body.get("start", 0)))),
+            duration=max(0.2, min(3600.0, float(body.get("duration", 3)))),
+            x=max(0.0, min(100.0, float(body.get("x", 50)))),
+            y=max(0.0, min(100.0, float(body.get("y", 45)))),
+            font_size=max(12, min(240, int(body.get("fontSize", 72)))),
+            color=str(body.get("color") or "255,214,10"),
+            animation=animation,
+            model=str(body.get("model") or os.environ.get("STUDIO_REMBG_MODEL", "u2net")),
+            ffmpeg="ffmpeg", preset="medium", crf=20, timeout=7200,
+        )
+        frames = composite(args)
+        return jsonify({"status": "completed", "output": output, "framesProcessed": frames})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("Depth-aware text rendering failed")
+        return jsonify({"error": str(exc)}), 500
+
+
 if __name__ == "__main__":
     cv2.setNumThreads(ANALYSIS_THREADS)
     app.run(host="0.0.0.0", port=5010)

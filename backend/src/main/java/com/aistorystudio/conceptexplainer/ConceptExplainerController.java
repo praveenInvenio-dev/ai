@@ -38,7 +38,7 @@ public class ConceptExplainerController {
                 r.motion() != null ? r.motion() : r.animationMode(), r.model(), r.track(), r.subject(), Boolean.TRUE.equals(r.examFocus()), r.voice());
         job.setStyle(r.style());
         job.setFormat(r.format());                 // TUTORIAL (default, reference-video teaching) | CLASSIC
-        job.setTeachingStyle(r.teachingStyle());   // ENGAGING_TECH_TUTOR (default) | STORYTELLING_TEACHER | PROFESSIONAL_INSTRUCTOR | SIMPLE_BEGINNER
+        job.setTeachingStyle(r.teachingStyle());   // HUMOROUS_EXPLAINER | LOGIC_FIRST_ANALYST | STORY_DRIVEN_MENTOR | legacy styles remain supported
         job.setDestination(r.destination());       // SOCIAL (default, subscribe closing) | CLASSROOM
         // pre-production: the brief, the chosen concept, the creative dials and the "review the script first" gate
         job.setAudience(r.audience());

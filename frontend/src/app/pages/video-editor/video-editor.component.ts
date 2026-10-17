@@ -16,6 +16,10 @@ interface CategoryCard {
   intensityLabels: Record<string, string>;
 }
 interface TimelineDraft {
+  id: string;
+  sortOrder: number;
+  reason: string | null;
+  outputDurationSec: number;
   clipId: string;
   sourceStartSec: number;
   sourceEndSec: number;
@@ -121,7 +125,7 @@ interface TimelineDraft {
       </div>
 
       <div class="panel timeline-panel">
-        <div class="section-head"><h2>Timeline <span class="count">{{timeline.length}} shots · {{totalDuration()}}</span></h2><div class="timeline-actions"><button class="btn smallbtn" [disabled]="!timeline.length" (click)="undo()">Undo</button><button class="btn smallbtn" [disabled]="!redoStack.length" (click)="redo()">Redo</button><button class="btn smallbtn" [disabled]="!timeline.length" (click)="saveTimeline()">Save edit</button></div></div>
+        <div class="section-head"><h2>Timeline <span class="count">{{timeline.length}} shots · {{totalDuration()}}</span></h2><div class="timeline-actions"><span class="muted small" *ngIf="timelineDirty" role="status">Unsaved changes</span><span class="muted small" *ngIf="!timelineDirty && timeline.length" role="status">Saved</span><button class="btn smallbtn" [disabled]="!timeline.length" (click)="undo()">Undo</button><button class="btn smallbtn" [disabled]="!redoStack.length" (click)="redo()">Redo</button><button class="btn smallbtn" [disabled]="!timeline.length" (click)="saveTimeline()">Save edit</button></div></div>
         <div class="timeline-track" *ngIf="timeline.length" (dragover)="allowTimelineDrop($event)" (drop)="dropOnTimeline($event, timeline.length)">
           <ng-container *ngFor="let row of timeline; let i=index">
             <div class="drop-marker" [class.active]="dropIndex===i" (dragover)="allowTimelineDrop($event);setDropIndex($event,i)" (drop)="dropOnTimeline($event,i)"></div>
@@ -139,23 +143,23 @@ interface TimelineDraft {
           <div class="trim-head"><strong>Trim shot {{selectedRowIndex+1}}</strong><span>{{trimDuration()|number:'1.1-1'}}s output at {{timeline[selectedRowIndex].speed|number:'1.0-2'}}×</span></div>
           <div class="trim-range">
             <div class="trim-track"></div>
-            <input type="range" [min]="0" [max]="selectedClipMax" step="0.05" [(ngModel)]="timeline[selectedRowIndex].sourceStartSec" (input)="normalizeRow(timeline[selectedRowIndex])" (change)="markTimelineDirty()">
-            <input type="range" [min]="0" [max]="selectedClipMax" step="0.05" [(ngModel)]="timeline[selectedRowIndex].sourceEndSec" (input)="normalizeRow(timeline[selectedRowIndex])" (change)="markTimelineDirty()">
+            <input type="range" [min]="0" [max]="selectedClipMax" step="0.05" [(ngModel)]="timeline[selectedRowIndex].sourceStartSec" (focus)="beginRowEdit()" (input)="normalizeRow(timeline[selectedRowIndex])" (change)="finishRowEdit()">
+            <input type="range" [min]="0" [max]="selectedClipMax" step="0.05" [(ngModel)]="timeline[selectedRowIndex].sourceEndSec" (focus)="beginRowEdit()" (input)="normalizeRow(timeline[selectedRowIndex])" (change)="finishRowEdit()">
           </div>
           <div class="trim-values"><span>IN {{timeline[selectedRowIndex].sourceStartSec|number:'1.1-1'}}s</span><span>OUT {{timeline[selectedRowIndex].sourceEndSec|number:'1.1-1'}}s</span></div>
         </div>
 
         <div class="editor-grid" *ngIf="selectedRowIndex>=0">
           <div class="editor-title"><strong>Shot {{selectedRowIndex+1}}</strong><span>{{clipName(timeline[selectedRowIndex].clipId)}}</span></div>
-          <label>Start (s)<input type="number" min="0" step="0.1" [(ngModel)]="timeline[selectedRowIndex].sourceStartSec" (change)="normalizeRow(timeline[selectedRowIndex])"></label>
-          <label>End (s)<input type="number" min="0.1" step="0.1" [(ngModel)]="timeline[selectedRowIndex].sourceEndSec" (change)="normalizeRow(timeline[selectedRowIndex])"></label>
-          <label>Speed<select [(ngModel)]="timeline[selectedRowIndex].speed" (change)="normalizeRow(timeline[selectedRowIndex])"><option [ngValue]="0.5">0.5×</option><option [ngValue]="0.75">0.75×</option><option [ngValue]="1">1×</option><option [ngValue]="1.25">1.25×</option><option [ngValue]="1.5">1.5×</option><option [ngValue]="2">2×</option></select></label>
-          <label>Volume<input type="range" min="0" max="2" step="0.05" [(ngModel)]="timeline[selectedRowIndex].volume"><span>{{timeline[selectedRowIndex].volume|number:'1.0-2'}}</span></label>
-          <label class="check"><input type="checkbox" [(ngModel)]="timeline[selectedRowIndex].muted"> Mute shot</label>
-          <label class="check"><input type="checkbox" [(ngModel)]="timeline[selectedRowIndex].locked"> 🔒 Lock shot <span class="muted">(kept as-is on regenerate)</span></label>
-          <label>Transition in<select [(ngModel)]="timeline[selectedRowIndex].techniqueIn"><option [ngValue]="null">None</option><option *ngFor="let t of transitionOptions" [ngValue]="t">{{pretty(t)}}</option></select></label>
-          <label>Transition out<select [(ngModel)]="timeline[selectedRowIndex].techniqueOut"><option [ngValue]="null">Hard cut</option><option *ngFor="let t of transitionOptions" [ngValue]="t">{{pretty(t)}}</option></select></label>
-          <label *ngIf="timeline[selectedRowIndex].techniqueOut">Transition seconds<input type="number" min="0.05" max="2" step="0.05" [(ngModel)]="timeline[selectedRowIndex].transitionSec"></label>
+          <label>Start (s)<input type="number" min="0" step="0.1" [(ngModel)]="timeline[selectedRowIndex].sourceStartSec" (focus)="beginRowEdit()" (change)="normalizeRow(timeline[selectedRowIndex]);finishRowEdit()"></label>
+          <label>End (s)<input type="number" min="0.1" step="0.1" [(ngModel)]="timeline[selectedRowIndex].sourceEndSec" (focus)="beginRowEdit()" (change)="normalizeRow(timeline[selectedRowIndex]);finishRowEdit()"></label>
+          <label>Speed<select [(ngModel)]="timeline[selectedRowIndex].speed" (focus)="beginRowEdit()" (change)="normalizeRow(timeline[selectedRowIndex]);finishRowEdit()"><option [ngValue]="0.5">0.5×</option><option [ngValue]="0.75">0.75×</option><option [ngValue]="1">1×</option><option [ngValue]="1.25">1.25×</option><option [ngValue]="1.5">1.5×</option><option [ngValue]="2">2×</option></select></label>
+          <label>Volume<input type="range" min="0" max="2" step="0.05" [(ngModel)]="timeline[selectedRowIndex].volume" (focus)="beginRowEdit()" (ngModelChange)="timelineDirty=true" (change)="finishRowEdit()"><span>{{timeline[selectedRowIndex].volume|number:'1.0-2'}}</span></label>
+          <label class="check"><input type="checkbox" [(ngModel)]="timeline[selectedRowIndex].muted" (focus)="beginRowEdit()" (ngModelChange)="timelineDirty=true" (change)="finishRowEdit()"> Mute shot</label>
+          <label class="check"><input type="checkbox" [(ngModel)]="timeline[selectedRowIndex].locked" (focus)="beginRowEdit()" (ngModelChange)="timelineDirty=true" (change)="finishRowEdit()"> 🔒 Lock shot <span class="muted">(kept as-is on regenerate)</span></label>
+          <label>Transition in<select [(ngModel)]="timeline[selectedRowIndex].techniqueIn" (focus)="beginRowEdit()" (ngModelChange)="timelineDirty=true" (change)="finishRowEdit()"><option [ngValue]="null">None</option><option *ngFor="let t of transitionOptions" [ngValue]="t">{{pretty(t)}}</option></select></label>
+          <label>Transition out<select [(ngModel)]="timeline[selectedRowIndex].techniqueOut" (focus)="beginRowEdit()" (ngModelChange)="timelineDirty=true" (change)="finishRowEdit()"><option [ngValue]="null">Hard cut</option><option *ngFor="let t of transitionOptions" [ngValue]="t">{{pretty(t)}}</option></select></label>
+          <label *ngIf="timeline[selectedRowIndex].techniqueOut">Transition seconds<input type="number" min="0.05" max="2" step="0.05" [(ngModel)]="timeline[selectedRowIndex].transitionSec" (focus)="beginRowEdit()" (ngModelChange)="timelineDirty=true" (change)="finishRowEdit()"></label>
           <div class="row-actions"><button class="btn" (click)="duplicateSelected()">Duplicate</button><button class="btn" (click)="addClipToTimeline()">+ Add shot</button><button class="btn" (click)="resetSelectedTrim()">Reset trim</button><button class="btn danger-btn" (click)="deleteSelected()">Delete shot</button></div>
           <p class="reason" *ngIf="timeline[selectedRowIndex].reason">AI rationale: {{timeline[selectedRowIndex].reason}}</p>
         </div>
@@ -230,17 +234,21 @@ interface TimelineDraft {
 
       <h3 class="small-head">Overlays on the timeline</h3>
       <div class="settings">
-        <label>Type<select [(ngModel)]="newOv.type"><option value="text">Text / lower third</option><option value="zoom">Zoom moment</option><option value="sfx">Sound effect</option></select></label>
+        <label>Type<select [(ngModel)]="newOv.type"><option value="text">Text / lower third</option><option value="text_behind_person">Behind person (AI mask)</option><option value="zoom">Zoom moment</option><option value="sfx">Sound effect</option></select></label>
         <label>Start (s)<input type="number" min="0" step="0.5" [(ngModel)]="newOv.start"></label>
         <label *ngIf="newOv.type!=='sfx'">End (s)<input type="number" min="0" step="0.5" [(ngModel)]="newOv.end"></label>
-        <label *ngIf="newOv.type==='text'" class="grow">Text<input [(ngModel)]="newOv.text" maxlength="140" placeholder="e.g. Priya - Product designer"></label>
-        <label *ngIf="newOv.type==='text'">Style<select [(ngModel)]="newOv.style"><option value="title">Title</option><option value="lower_third">Lower third</option><option value="box">Boxed</option><option value="small">Small</option></select></label>
-        <label *ngIf="newOv.type==='text'&&newOv.style!=='lower_third'">Position<select [(ngModel)]="newOv.position"><option value="top">Top</option><option value="center">Centre</option><option value="bottom">Bottom</option></select></label>
-        <label *ngIf="newOv.type==='text'">Colour<select [(ngModel)]="newOv.color"><option *ngFor="let c of (caps?.overlayColors||['white','yellow'])" [value]="c">{{c}}</option></select></label>
+        <label *ngIf="(newOv.type==='text'||newOv.type==='text_behind_person')" class="grow">Text<input [(ngModel)]="newOv.text" maxlength="140" placeholder="e.g. Priya - Product designer"></label>
+        <label *ngIf="(newOv.type==='text'||newOv.type==='text_behind_person')">Style<select [(ngModel)]="newOv.style"><option value="title">Title</option><option value="lower_third">Lower third</option><option value="box">Boxed</option><option value="small">Small</option></select></label>
+        <label *ngIf="(newOv.type==='text'||newOv.type==='text_behind_person')&&newOv.style!=='lower_third'">Position<select [(ngModel)]="newOv.position"><option value="top">Top</option><option value="center">Centre</option><option value="bottom">Bottom</option><option value="custom">Custom position</option></select></label>
+        <label *ngIf="(newOv.type==='text'||newOv.type==='text_behind_person')">Motion<select [(ngModel)]="newOv.animation"><option value="fade">Fade in/out</option><option value="none">Static</option><option value="slide_up">Slide up</option><option value="slide_left">Slide from left</option><option value="float">Floating drift</option><option value="pop">Pop in</option><option value="pulse">Gentle pulse</option></select></label>
+        <label *ngIf="(newOv.type==='text'||newOv.type==='text_behind_person')&&newOv.position==='custom'">Horizontal position (%)<input type="number" min="0" max="100" step="1" [(ngModel)]="newOv.xPercent"></label>
+        <label *ngIf="(newOv.type==='text'||newOv.type==='text_behind_person')&&newOv.position==='custom'">Vertical position (%)<input type="number" min="0" max="100" step="1" [(ngModel)]="newOv.yPercent"></label>
+        <label *ngIf="(newOv.type==='text'||newOv.type==='text_behind_person')">Colour<select [(ngModel)]="newOv.color"><option *ngFor="let c of (caps?.overlayColors||['white','yellow'])" [value]="c">{{c}}</option></select></label>
         <label *ngIf="newOv.type==='zoom'">Zoom ×<input type="number" min="1.05" max="2" step="0.05" [(ngModel)]="newOv.amount"></label>
         <label *ngIf="newOv.type==='sfx'">Sound<select [(ngModel)]="newOv.sfx"><option *ngFor="let f of (caps?.soundEffects||['whoosh'])" [value]="f">{{f}}</option></select></label>
         <label>&nbsp;<button class="btn" (click)="addOverlayFromForm()">Add</button></label>
       </div>
+      <p class="muted small">Motion and custom placement are baked into the final render. Behind person uses AI foreground segmentation during final rendering. It can be slower than standard text and may need the segmentation model to download on first use.</p>
       <div class="version-list" *ngIf="finish.overlays.length">
         <div class="version-row" *ngFor="let o of finish.overlays;let i=index"><span>{{overlayLabel(o)}}</span><button class="btn smallbtn" (click)="removeOverlay(i)">Remove</button></div>
       </div>
@@ -341,7 +349,7 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
   // ---- finishing (Cardboard parity): look strength, overlays, transitions, voiceover, export. Kept apart from `form` and only
   // sent when changed, so saving other settings can never wipe overlays that were saved earlier.
   finish:any={lookIntensity:1,overlays:[] as any[],exportFormat:'',exportHeight:0,exportFps:0,loudness:'',voiceoverReplace:false}; finishDirty=false; platformSel=''; platformHint='';
-  newOv:any={type:'text',start:0,end:3,text:'',position:'bottom',style:'title',color:'white',amount:1.3,sfx:'whoosh'};
+  newOv:any={type:'text',start:0,end:3,text:'',position:'bottom',style:'title',color:'white',amount:1.3,sfx:'whoosh',animation:'fade',xPercent:50,yPercent:50};
   trSel=''; trSeconds:number|null=null;
   // dub the latest render into another language
   dubLang='Hindi'; dubBusy=false; dubMsg=''; dubPreview:string[]=[];
@@ -368,6 +376,7 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
   moments:VideoMoment[]=[];
   searchQuery=''; hits:VideoSpeechHit[]=[]; searchNote=''; transcriptStatus:{indexedClips:number;totalClips:number}|null=null;
   private stream?:EventSource; private history:TimelineDraft[][]=[]; redoStack:TimelineDraft[][]=[];
+  private editSnapshotPending=false;
   readonly transitionOptions=['cross_dissolve','whip_pan','dip_to_black','slide_left','hard_cut'];
   readonly optionList=[
     {key:'smartCuts',label:'Smart cuts',stage:'planning'},{key:'beatSync',label:'Beat sync (cuts land on the music beat — add music first)',stage:'planning'},
@@ -460,7 +469,7 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
   markTimelineDirty(){this.timelineDirty=true}
   resetSelectedTrim(){const r=this.timeline[this.selectedRowIndex];const c=r&&this.clips.find(x=>x.id===r.clipId);if(!r||c?.durationSec==null)return;this.commit(()=>{r.sourceStartSec=0;r.sourceEndSec=c.durationSec!;r.outputDurationSec=c.durationSec!/Math.max(.01,r.speed)});this.timelineDirty=true}
 
-  remove(c:VideoClip){if(!this.project)return;this.api.removeVideoClip(this.project.id,c.id).subscribe({next:()=>{this.clips=this.clips.filter(x=>x.id!==c.id);this.timeline=this.timeline.filter(x=>x.clipId!==c.id);if(this.selectedClipId===c.id){this.selectedClipId='';this.sourceUrl='';this.selectedRowIndex=-1}},error:err=>this.uploadError=err?.error?.error??'Could not remove clip.'});}
+  remove(c:VideoClip){if(!this.project)return;if(this.timelineDirty){this.uploadError='Save or undo unsaved timeline changes before removing a source clip.';return}this.uploadError='';this.api.removeVideoClip(this.project.id,c.id).subscribe({next:()=>{this.clips=this.clips.filter(x=>x.id!==c.id);if(this.selectedClipId===c.id){this.selectedClipId='';this.sourceUrl='';this.selectedRowIndex=-1}this.reload(true)},error:err=>this.uploadError=err?.error?.error??'Could not remove clip.'});}
   move(i:number,d:number){const t=i+d;if(!this.project||t<0||t>=this.clips.length)return;const n=[...this.clips];[n[i],n[t]]=[n[t],n[i]];this.clips=n;this.api.reorderVideoClips(this.project.id,n.map(x=>x.id)).subscribe({next:u=>this.clips=u,error:()=>this.reload()});}
   rename(c:VideoClip,name:string){if(!this.project||!name.trim()||name===c.displayName)return;this.api.renameVideoClip(this.project.id,c.id,name.trim()).subscribe({next:u=>c.displayName=u.displayName,error:()=>this.reload()});}
   saveSettings(){if(!this.project)return;this.api.updateVideoEditorProject(this.project.id,this.settingsPayload()).subscribe({next:p=>{this.project=p;this.finishDirty=false;this.finishFromProject();},error:e=>this.uploadError=e?.error?.error??'Could not save settings.'});}
@@ -472,7 +481,7 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
   private settingsPayload():any{return this.finishDirty?{...this.form,lookIntensity:this.finish.lookIntensity,overlays:JSON.stringify(this.finish.overlays),exportFormat:this.finish.exportFormat||'mp4',exportHeight:+this.finish.exportHeight||0,exportFps:+this.finish.exportFps||0,loudness:this.finish.loudness||'',voiceoverReplace:!!this.finish.voiceoverReplace}:this.form;}
   private finishFromProject(){const p:any=this.project;if(!p||this.finishDirty)return;let ov:any[]=[];try{ov=p.overlays?JSON.parse(p.overlays):[]}catch{ov=[]}this.finish={lookIntensity:p.lookIntensity??1,overlays:ov,exportFormat:p.exportFormat||'',exportHeight:p.exportHeight||0,exportFps:p.exportFps||0,loudness:p.loudness||'',voiceoverReplace:!!p.voiceoverReplace};}
   private saveSettingsThen(next:()=>void){if(!this.project){return}this.api.updateVideoEditorProject(this.project.id,this.settingsPayload()).subscribe({next:p=>{this.project=p;this.finishDirty=false;this.finishFromProject();if(this.form.autoCaptions){this.api.updateVideoCaptions(p.id,this.captionStyle,true).subscribe({next:()=>next(),error:()=>next()});return;}next()},error:e=>{this.busy=false;this.uploadError=e?.error?.error??'Could not save settings.'}})}
-  private reload(){if(!this.project)return;this.api.getVideoEditorProject(this.project.id).subscribe({next:d=>{this.project=d.project;this.finishFromProject();this.clips=d.clips;this.timeline=d.timeline;this.refreshTranscriptStatus()}})}
+  private reload(resetTimelineState=false){if(!this.project)return;const projectId=this.project.id;this.api.getVideoEditorProject(projectId).subscribe({next:d=>{if(this.project?.id!==projectId)return;this.project=d.project;this.finishFromProject();this.clips=d.clips;this.timeline=d.timeline;if(resetTimelineState){this.history=[];this.redoStack=[];this.editSnapshotPending=false;this.timelineDirty=false;this.selectedRowIndex=this.timeline.length?0:-1;if(this.selectedRowIndex>=0)this.selectRow(0);else{this.selectedClipId='';this.sourceUrl='';}}this.refreshTranscriptStatus()}})}
   analysisDone(){return this.clips.length>0&&this.clips.every(c=>c.analyzed)}
   /** One-click production flow: Analyse → AI Director → build timeline → final MP4.
    *  The user should not have to manually chain four buttons just to get the
@@ -548,8 +557,8 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
       error:e=>{this.busy=false;this.uploadError=e?.error?.error??'Could not restore that version.'}
     });
   }
-  preview(){if(!this.project||!this.timeline.length)return;this.saveSettingsThen(()=>this.saveTimelineThen(()=>this.run(()=>this.api.previewVideoProject(this.project!.id),id=>this.showResult(id,'PREVIEW'))))}
-  render(){if(!this.project||!this.timeline.length)return;this.saveSettingsThen(()=>this.saveTimelineThen(()=>this.run(()=>this.api.renderVideoProject(this.project!.id),id=>this.showResult(id,'FINAL'))))}
+  preview(){if(!this.project)return;if(!this.timeline.length){this.uploadError='There are no shots to preview. Run AI Edit or add a source clip to the timeline.';return}this.saveSettingsThen(()=>this.saveTimelineThen(()=>this.run(()=>this.api.previewVideoProject(this.project!.id),id=>this.showResult(id,'PREVIEW'))))}
+  render(){if(!this.project)return;if(!this.timeline.length){this.uploadError='There are no shots to render. Run AI Edit or add a source clip to the timeline.';return}this.saveSettingsThen(()=>this.saveTimelineThen(()=>this.run(()=>this.api.renderVideoProject(this.project!.id),id=>this.showResult(id,'FINAL'))))}
   private run(start:()=>any,done:(id:string)=>void){if(!this.project)return;this.busy=true;this.uploadError='';this.job={stage:'Starting',percent:0};start().subscribe({next:(r:any)=>this.follow(r.jobId,done),error:(e:any)=>{this.busy=false;this.job=undefined;this.uploadError=e?.error?.error??'Could not start that step.'}})}
   private follow(jobId:string,done:(id:string)=>void){
     this.closeStream();
@@ -608,12 +617,48 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
   private loadTimeline(){this.loadTimelineThen(()=>{});}
   private showResult(id:string,k:string){if(!this.project)return;this.resultKind=k;this.resultUrl=this.api.renderedVideoUrl(this.project.id,id);this.downloadUrl=this.api.renderedVideoDownloadUrl(this.project.id,id);}
   private timelinePayload(){return this.timeline.map(r=>({clipId:r.clipId,sourceStartSec:r.sourceStartSec,sourceEndSec:r.sourceEndSec,techniqueIn:r.techniqueIn,techniqueOut:r.techniqueOut,transitionSec:r.transitionSec,speed:r.speed,volume:r.volume,muted:r.muted,locked:r.locked}));}
-  private saveTimelineThen(done:()=>void){if(!this.project||!this.timeline.length){done();return}this.api.replaceVideoTimeline(this.project.id,this.timelinePayload()).subscribe({next:r=>{this.timeline=r;done()},error:e=>{this.busy=false;this.uploadError=e?.error?.error??'Could not save the timeline before rendering.'}})}
-  saveTimeline(){if(!this.project||!this.timeline.length)return;this.api.replaceVideoTimeline(this.project.id,this.timelinePayload()).subscribe({next:r=>{this.timeline=r;this.history=[];this.redoStack=[];this.timelineDirty=false;this.project!.state='PLAN_READY';if(this.showVersions)this.loadVersions();},error:e=>this.uploadError=e?.error?.error??'Could not save the timeline.'});}
-  private snapshot():TimelineDraft[]{return this.timeline.map(r=>({clipId:r.clipId,sourceStartSec:r.sourceStartSec,sourceEndSec:r.sourceEndSec,techniqueIn:r.techniqueIn,techniqueOut:r.techniqueOut,transitionSec:r.transitionSec,speed:r.speed,volume:r.volume,muted:r.muted,locked:r.locked}))}
-  private commit(mutator:()=>void){this.history.push(this.snapshot());if(this.history.length>50)this.history.shift();this.redoStack=[];mutator();this.recalcSelection()}
-  undo(){const prev=this.history.pop();if(!prev)return;this.redoStack.push(this.snapshot());this.timeline=prev.map((r,i)=>({...r,id:this.timeline[i]?.id??crypto.randomUUID(),sortOrder:i,reason:this.timeline[i]?.reason??null,outputDurationSec:(r.sourceEndSec-r.sourceStartSec)/Math.max(.01,r.speed)}));this.recalcSelection()}
-  redo(){const next=this.redoStack.pop();if(!next)return;this.history.push(this.snapshot());this.timeline=next.map((r,i)=>({...r,id:this.timeline[i]?.id??crypto.randomUUID(),sortOrder:i,reason:this.timeline[i]?.reason??null,outputDurationSec:(r.sourceEndSec-r.sourceStartSec)/Math.max(.01,r.speed)}));this.recalcSelection()}
+  private timelinePayloadKey(payload=this.timelinePayload()):string{return JSON.stringify(payload)}
+  private saveTimelineThen(done:()=>void){
+    if(!this.project){done();return}
+    if(!this.timeline.length){this.busy=false;this.uploadError='The timeline has no shots. Add a shot or run AI Edit before previewing/rendering.';return}
+    const projectId=this.project.id;
+    const payload=this.timelinePayload();
+    const submittedKey=this.timelinePayloadKey(payload);
+    this.api.replaceVideoTimeline(projectId,payload).subscribe({
+      next:r=>{
+        // Do not overwrite edits made while the save request was in flight.
+        if(this.project?.id!==projectId)return;
+        if(this.timelinePayloadKey()===submittedKey){this.timeline=r;this.timelineDirty=false;this.editSnapshotPending=false;this.project.state='PLAN_READY';}
+        else{this.timelineDirty=true;this.uploadError='The timeline changed while saving. Your newer edits are still in the editor; save again before rendering.';this.busy=false;return;}
+        done();
+      },
+      error:e=>{this.busy=false;this.uploadError=e?.error?.error??'Could not save the timeline before rendering.'}
+    });
+  }
+  saveTimeline(){
+    if(!this.project)return;
+    if(!this.timeline.length){this.uploadError='The timeline has no shots. Add a shot or run AI Edit before saving.';return}
+    const projectId=this.project.id;
+    const payload=this.timelinePayload();
+    const submittedKey=this.timelinePayloadKey(payload);
+    this.uploadError='';
+    this.api.replaceVideoTimeline(projectId,payload).subscribe({
+      next:r=>{
+        if(this.project?.id!==projectId)return;
+        if(this.timelinePayloadKey()===submittedKey){this.timeline=r;this.timelineDirty=false;this.editSnapshotPending=false;this.project.state='PLAN_READY';if(this.showVersions)this.loadVersions();}
+        else{this.timelineDirty=true;this.uploadError='The timeline changed while saving. Your newer edits are still in the editor; save again to persist them.';}
+      },
+      error:e=>this.uploadError=e?.error?.error??'Could not save the timeline.'
+    });
+  }
+  private snapshot():TimelineDraft[]{return this.timeline.map(r=>({id:r.id,sortOrder:r.sortOrder,reason:r.reason,outputDurationSec:r.outputDurationSec,clipId:r.clipId,sourceStartSec:r.sourceStartSec,sourceEndSec:r.sourceEndSec,techniqueIn:r.techniqueIn,techniqueOut:r.techniqueOut,transitionSec:r.transitionSec,speed:r.speed,volume:r.volume,muted:r.muted,locked:r.locked}))}
+  private pushHistory(snapshot=this.snapshot()){this.history.push(snapshot);if(this.history.length>50)this.history.shift();}
+  beginRowEdit(){if(this.editSnapshotPending)return;this.pushHistory();this.redoStack=[];this.editSnapshotPending=true;}
+  finishRowEdit(){this.editSnapshotPending=false;this.timelineDirty=true;}
+  private restoreDraft(draft:TimelineDraft[]){this.timeline=draft.map((r,i)=>({...r,sortOrder:i,outputDurationSec:(r.sourceEndSec-r.sourceStartSec)/Math.max(.01,r.speed)}));this.selectedRowIndex=Math.min(this.selectedRowIndex,this.timeline.length-1);this.timelineDirty=true;this.editSnapshotPending=false;this.recalcSelection()}
+  private commit(mutator:()=>void){this.pushHistory();this.redoStack=[];mutator();this.timelineDirty=true;this.editSnapshotPending=false;this.recalcSelection()}
+  undo(){const prev=this.history.pop();if(!prev)return;this.redoStack.push(this.snapshot());this.restoreDraft(prev)}
+  redo(){const next=this.redoStack.pop();if(!next)return;this.pushHistory();this.restoreDraft(next)}
   selectRow(i:number){this.selectedRowIndex=i;const r=this.timeline[i];if(r){this.selectedClipId=r.clipId;this.sourceUrl=this.sourceVideo(r.clipId);this.splitTime=r.sourceStartSec+(r.sourceEndSec-r.sourceStartSec)/2;}}
   get selectedRowDuration(){const r=this.timeline[this.selectedRowIndex];return r?Math.max(.1,r.sourceEndSec-r.sourceStartSec):0}
   get selectedClipMax(){const r=this.timeline[this.selectedRowIndex];const c=r?this.clips.find(x=>x.id===r.clipId):undefined;return Math.max(.05,c?.durationSec??r?.sourceEndSec??0.05)}
@@ -706,8 +751,9 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
   private clock(sec:number):string{const s=Math.round(sec);return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;}
   addOverlay(o:any){this.finish.overlays=[...this.finish.overlays,{...o}];this.finishDirty=true;}
   removeOverlay(i:number){this.finish.overlays=this.finish.overlays.filter((_:any,k:number)=>k!==i);this.finishDirty=true;}
-  addOverlayFromForm(){const o={...this.newOv};if(o.type==='text'&&!String(o.text).trim())return;if(o.type==='sfx')o.end=o.start;else if(+o.end<=+o.start)o.end=+o.start+(o.type==='zoom'?2:3);this.addOverlay(o);this.newOv={...this.newOv,text:''};}
-  overlayLabel(o:any):string{const t=this.clock(+o.start);return o.type==='text'?`${t}  “${o.text}”`:o.type==='zoom'?`${t}  zoom ×${o.amount}`:`${t}  sound: ${o.sfx}`;}
+  addOverlayFromForm(){const o={...this.newOv};if((o.type==='text'||o.type==='text_behind_person')&&!String(o.text).trim())return;if(o.type==='sfx')o.end=o.start;else if(+o.end<=+o.start)o.end=+o.start+(o.type==='zoom'?2:3);this.addOverlay(o);this.newOv={...this.newOv,text:''};}
+  overlayLabel(o:any):string{const t=this.clock(+o.start);return (o.type==='text'||o.type==='text_behind_person')?`${t}  “${o.text}” · ${this.overlayMotionLabel(o.animation)}${o.type==='text_behind_person'?' · behind person':''}`:o.type==='zoom'?`${t}  zoom ×${o.amount}`:`${t}  sound: ${o.sfx}`;}
+  overlayMotionLabel(animation:string):string{return ({fade:'fade',none:'static',slide_up:'slide up',slide_left:'slide from left',float:'floating drift',pop:'pop in',pulse:'pulse'} as Record<string,string>)[animation||'fade']||'fade';}
   /** Sets the transition after shot `afterShot` (1-based), or after every shot but the last when afterShot is 0. id '' clears. */
   applyTransition(id:string,afterShot:number,seconds?:number|null):number{
     let n=0;this.timeline.forEach((r:any,i:number)=>{if(i>=this.timeline.length-1)return;if(afterShot>0&&i!==afterShot-1)return;r.techniqueOut=id||null;r.transitionSec=id&&seconds?seconds:null;n++;});
@@ -747,10 +793,13 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
     if(/\b(keep|restore|bring back)\b.*\boriginal\b.*\b(voice|audio|sound|speech)\b/.test(text)){this.finish.voiceoverReplace=false;this.finishDirty=true;saved();return 'The original voice is kept; it is only ducked under the voiceover.';}
     // voiceover from a script
     if((m=raw.match(/^\s*(?:ai\s+)?(?:voice ?over|narrat(?:e|ion))\s*[:\-]\s*([\s\S]{3,})$/i))){this.voScript=m[1].trim();this.generateVoiceover();return 'Generating the voiceover from your script…';}
-    // text overlay / lower third at a time
-    if((m=raw.match(new RegExp('\\b(?:add|put|show)\\s+(?:a\\s+)?(lower third|text|label|callout)\\s*[:\\-]?\\s*["“\']?(.+?)["”\']?\\s+(?:at|from)\\s+'+TIME+'(?:\\s+(?:for|to)\\s+(\\d+(?:\\.\\d+)?)\\s*(?:s|sec|secs|seconds?)?)?\\s*$','i')))){
-      const start=this.toSec(m[3]),len=m[4]?+m[4]:3;this.addOverlay({type:'text',start,end:start+len,text:m[2].trim(),position:'bottom',style:/lower/i.test(m[1])?'lower_third':'title',color:'white'});saved();
-      return `Added “${m[2].trim()}” at ${this.clock(start)} for ${len} s.`;}
+    // text overlay / lower third / animated floating text at a time
+    if((m=raw.match(/\b(?:add|put|show)\s+(?:a\s+)?(floating text|animated text|lower third|text|label|callout)\s*[:\-]?\s*["“']?(.+?)["”']?\s+(?:at|from)\s+(\d+:\d{2}|\d+(?:\.\d+)?\s*(?:s|sec|secs|seconds?)?)(?:\s+(?:for|to)\s+(\d+(?:\.\d+)?)\s*(?:s|sec|secs|seconds?)?)?(?:\s+(?:with\s+)?(fade|slide up|slide left|floating|pop|pulse)(?:\s+animation)?)?(?:\s+(behind (?:the )?person))?\s*$/i))){
+      const start=this.toSec(m[3]),len=m[4]?+m[4]:3;
+      const motion=String(m[5]||(/floating/i.test(m[1])?'floating':/animated/i.test(m[1])?'pop':'fade')).toLowerCase();
+      const animation=motion==='floating'?'float':motion==='slide up'?'slide_up':motion==='slide left'?'slide_left':motion;
+      this.addOverlay({type:m[6]?'text_behind_person':'text',start,end:start+len,text:m[2].trim(),position:'bottom',style:/lower/i.test(m[1])?'lower_third':'title',color:'white',animation,xPercent:50,yPercent:50});saved();
+      return `Added “${m[2].trim()}” at ${this.clock(start)} for ${len} s with ${animation.replace('_',' ')} motion${m[6]?' behind the person':''}.`;}
     // sound effect at a time
     if((m=text.match(new RegExp('\\b(?:add|play|put|drop)\\s+(?:a\\s+|an\\s+|the\\s+)?(whoosh|sparkle|door|footstep|pop|click|tick|ding|success|error|swipe|riser|impact|typing|shutter|bubble|coin|notification|boing|tada)s?(?:\\s+sound(?:\\s+effect)?)?\\b.*?\\b(?:at|on)\\s+'+TIME)))){
       const start=this.toSec(m[2]);this.addOverlay({type:'sfx',start,end:start,sfx:m[1],gain:1});saved();return `Added a ${m[1]} sound at ${this.clock(start)}.`;}
@@ -760,7 +809,7 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
       return `Added a zoom moment at ${this.clock(start)} (×${amt}, 2 s).`;}
     if(/\b(remove|clear|delete|reset)\b.*\b(overlays?|text overlays?|zoom moments?|sound effects?)\b/.test(text)){
       const only=/sound effects?/.test(text)?'sfx':/zoom/.test(text)?'zoom':/text/.test(text)?'text':'';
-      this.finish.overlays=only?this.finish.overlays.filter((o:any)=>o.type!==only):[];this.finishDirty=true;saved();return only?`Removed the ${only==='sfx'?'sound effects':only==='zoom'?'zoom moments':'text overlays'}.`:'Removed all overlays.';}
+      this.finish.overlays=only?this.finish.overlays.filter((o:any)=>only==='text'?(o.type!=='text'&&o.type!=='text_behind_person'):o.type!==only):[];this.finishDirty=true;saved();return only?`Removed the ${only==='sfx'?'sound effects':only==='zoom'?'zoom moments':'text overlays'}.`:'Removed all overlays.';}
     // look strength
     if(/\b(look|filter|grade|colou?r)\b/.test(text)&&(m=text.match(/(\d{1,3})\s*%/)||(/\bhalf\b/.test(text)?['','50']:null))){
       const v=Math.max(0,Math.min(100,+m[1]));this.finish.lookIntensity=v/100;this.finishDirty=true;saved();return `Look strength set to ${v}%.`;}
@@ -967,13 +1016,20 @@ export class VideoEditorComponent implements OnInit, OnDestroy {
     if(i<0||i>=this.timeline.length){
       return `There's no shot ${oneBasedIndex} - the timeline currently has ${this.timeline.length} shot(s).`;
     }
+    // Some deterministic commands use commit()-based operations (which already
+    // record history); others update a row directly. Capture the pre-command
+    // state so both paths remain undoable without double-recording the former.
+    const before=this.snapshot();
+    const historyLength=this.history.length;
     run(i);
+    if(this.history.length===historyLength){this.pushHistory(before);this.redoStack=[];}
+    this.timelineDirty=true;
     return `Shot ${oneBasedIndex} ${verb}.`;
   }
   onMusicPicked(e:Event){const i=e.target as HTMLInputElement;const f=i.files?.[0];i.value='';if(!f||!this.project)return;this.api.uploadVideoMusic(this.project.id,f).subscribe({next:()=>this.musicName=f.name,error:er=>this.uploadError=er?.error?.error??'Could not add music.'})}
   clipName(id:string){return this.clips.find(c=>c.id===id)?.displayName??'clip'}
   totalDuration(){return this.formatDuration(this.timeline.reduce((s,r)=>s+r.outputDurationSec,0))}
   formatDuration(sec:number){const t=Math.round(sec),m=Math.floor(t/60),s=t%60;return `${m}:${s.toString().padStart(2,'0')}`}
-  onKeyDown(e:KeyboardEvent){if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target instanceof HTMLSelectElement)return;if(e.key==='Delete'){e.preventDefault();this.deleteSelected()}else if(e.key==='ArrowLeft'&&e.shiftKey){e.preventDefault();this.moveTimeline(-1)}else if(e.key==='ArrowRight'&&e.shiftKey){e.preventDefault();this.moveTimeline(1)}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();this.undo()}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();this.redo()}}
+  onKeyDown(e:KeyboardEvent){if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target instanceof HTMLSelectElement)return;if(e.key==='Delete'){e.preventDefault();this.deleteSelected()}else if(e.key==='ArrowLeft'&&e.shiftKey){e.preventDefault();this.moveTimeline(-1)}else if(e.key==='ArrowRight'&&e.shiftKey){e.preventDefault();this.moveTimeline(1)}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();if(e.shiftKey)this.redo();else this.undo()}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();this.redo()}}
   pretty(v:string){return v.replace(/_/g,' ').toLowerCase().replace(/^./,c=>c.toUpperCase())}
 }

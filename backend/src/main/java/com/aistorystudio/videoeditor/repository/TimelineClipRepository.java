@@ -9,4 +9,5 @@ import java.util.UUID;
 public interface TimelineClipRepository extends JpaRepository<TimelineClip, UUID> {
     List<TimelineClip> findByProjectIdOrderBySortOrderAsc(UUID projectId);
     void deleteByProjectId(UUID projectId);
+    void deleteByClipId(UUID clipId);
 }

@@ -194,3 +194,11 @@ See docs/history/.
 - Final scene timelines include a small post-speech end beat so the last syllables are never cut by the next scene.
 - Production pipeline re-synchronizes scene duration from the actual Rumik/H3 mixed audio immediately before FFmpeg assembly, protecting against stale database/story-engine duration values.
 - Existing image-based Classic Story architecture is unchanged; H3 remains the audio/soundscape engine and standalone H3 video generation remains separate.
+
+## 2026-10-17 — Video editor reliability increment 1
+- Hardened local timeline undo/redo snapshots to retain stable row IDs, ordering, rationale, and duration metadata.
+- Timeline mutations and undo/redo now mark the editor as dirty; the UI displays saved/unsaved status.
+- Saving the timeline no longer clears the in-memory undo/redo stacks, and dirty state is cleared only after a successful backend save.
+- Added Ctrl/Cmd+Shift+Z as an additional redo shortcut.
+- Added `docs/VIDEO_EDITOR_FEATURE_PARITY.md` as the ongoing evidence-based Cardboard-style parity tracker.
+- Verification pending: frontend dependency install/build, Maven tests (Maven unavailable in the initial environment), browser editing regression, and real-media end-to-end checks.

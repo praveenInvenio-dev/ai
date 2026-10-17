@@ -364,13 +364,26 @@ public class VideoEditorProjectService {
         }
         scenes.deleteByClipId(clipId);
         analyses.deleteByClipId(clipId);
-        clips.delete(clip);
 
-        // Any existing timeline referenced this clip, so it is now invalid.
-        // Dropping it is safer than leaving rows that point at a deleted file
-        // and failing at render time.
-        timeline.deleteByProjectId(projectId);
+        // Remove only the timeline rows that reference this source clip. The
+        // previous project-wide delete discarded every other shot whenever a
+        // user removed one source asset, which was unexpectedly destructive.
+        timeline.deleteByClipId(clipId);
+        clips.delete(clip);
         resequence(projectId);
+
+        // Re-save remaining rows through the normal validation/versioning path
+        // so sort order and the editing-plan snapshot stay consistent. An empty
+        // timeline is valid after source removal; the user can build a new edit.
+        List<TimelineClip> remainingRows = timeline.findByProjectIdOrderBySortOrderAsc(projectId);
+        if (!remainingRows.isEmpty()) {
+            List<TimelineEntry> remainingEntries = remainingRows.stream()
+                    .map(row -> new TimelineEntry(row.getClipId(), row.getSourceStartSec(), row.getSourceEndSec(),
+                            row.getTechniqueIn(), row.getTechniqueOut(), row.getTransitionSec(), row.getSpeed(),
+                            row.getVolume(), row.isMuted(), row.isLocked()))
+                    .toList();
+            replaceTimeline(projectId, remainingEntries);
+        }
     }
 
     @Transactional

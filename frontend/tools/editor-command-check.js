@@ -7,7 +7,8 @@ const src = fs.readFileSync(file, 'utf8');
 const a = src.indexOf('  private static readonly LOOK_WORDS'), b = src.indexOf('  exportUrl(fmt');
 const c0 = src.indexOf('  private commandOnRow('), c1 = src.indexOf('\n  onMusicPicked', c0);
 const cls = `class VideoEditorComponent {
-  calls=[]; form={}; timeline=[]; clips=[]; captionStyle='BOLD_REEL'; chatLog=[]; project={id:'p'};
+  calls=[]; form={}; timeline=[]; clips=[]; captionStyle='BOLD_REEL'; chatLog=[]; project={id:'p'}; history=[]; redoStack=[]; timelineDirty=false;
+  snapshot(){return this.timeline.map(r=>({...r}));} pushHistory(s){this.history.push(s);}
   api={videoEditorVersions:()=>({subscribe:(o)=>o.next([{},{}])})};
   analysisDone(){return true} regenerateWithInstruction(){this.calls.push('regen')} saveSettingsThen(f){this.calls.push('saveSettings')}
   saveTimeline(){this.calls.push('saveTL')} cleanupSpeech(){this.calls.push('cleanup')} findMoments(){this.calls.push('moments')} restoreVersion(){this.calls.push('restore')} searchSpeech(){this.calls.push('search')}
@@ -28,7 +29,8 @@ const cases = [
   ['convert to square', 'regen', f => f.aspectRatio === 'SQUARE_1_1'], ['warm look', 'saveSettings', f => f.look === 'warm'],
   ['make it black and white', 'saveSettings', f => f.look === 'bw'], ['make it warmer', 'saveSettings', f => f.look === 'warm'],
   ['no filter', 'saveSettings', f => f.look === 'none'], ['this looks great', null],
-  ['add title: My trip to Goa', 'saveSettings', f => f.titleText === 'My trip to Goa'], ['the title is great', null],
+  ['add title: My trip to Goa', 'saveSettings', f => f.titleText === 'My trip to Goa'],
+  ['add floating text JVM at 5 seconds behind person', 'saveSettings', (f,t) => t.finish.overlays.some(o => o.type === 'text_behind_person' && o.text === 'JVM')], ['the title is great', null],
   ['remove the title', 'saveSettings', f => f.titleText === ''], ['speed up shot 2', 'saveTL'], ['slow motion shot 3', 'saveTL'],
   ['trim shot 1 to 2 seconds', 'saveTL'], ['make the intro faster', 'saveTL'], ['tighten the pacing', 'saveTL'],
   ['remove the dead air', 'cleanup'], ['cut the ums and uhs', 'cleanup'], ['clean up the audio', 'saveSettings', f => f.audioEnhancement === true],
@@ -41,6 +43,8 @@ const cases = [
   // ---- finishing commands (batch 3)
   ['add text hello world at 0:05 for 4 seconds', 'saveSettings', (f,t) => t.finish.overlays.length === 1 && t.finish.overlays[0].start === 5 && t.finish.overlays[0].end === 9 && t.finish.overlays[0].text === 'hello world'],
   ['add lower third: Priya Raghunathan at 10s', 'saveSettings', (f,t) => t.finish.overlays[0].style === 'lower_third' && t.finish.overlays[0].start === 10 && t.finish.overlays[0].text === 'Priya Raghunathan'],
+  ['add floating text JVM at 5 seconds', 'saveSettings', (f,t) => t.finish.overlays[0].animation === 'float' && t.finish.overlays[0].text === 'JVM' && t.finish.overlays[0].start === 5],
+  ['add text Hello at 2 seconds with slide up', 'saveSettings', (f,t) => t.finish.overlays[0].animation === 'slide_up' && t.finish.overlays[0].text === 'Hello'],
   ['zoom in at 0:12', 'saveSettings', (f,t) => t.finish.overlays[0].type === 'zoom' && t.finish.overlays[0].start === 12],
   ['zoom in a lot on 8 seconds', 'saveSettings', (f,t) => t.finish.overlays[0].amount === 1.6 && t.finish.overlays[0].start === 8],
   ['add a whoosh at 3s', 'saveSettings', (f,t) => t.finish.overlays[0].sfx === 'whoosh' && t.finish.overlays[0].start === 3],
@@ -82,6 +86,7 @@ const cases = [
   ['turn off loudness normalisation', 'saveSettings', (f,t) => t.finish.loudness === ''],
   // must stay unchanged: these are not finishing commands
   ['add title: My trip to Goa', 'saveSettings', f => f.titleText === 'My trip to Goa'],
+  ['add floating text JVM at 5 seconds behind person', 'saveSettings', (f,t) => t.finish.overlays.some(o => o.type === 'text_behind_person' && o.text === 'JVM')],
   ['this transition is nice', null],
  ['remove shot 3', null]
 ];
@@ -94,5 +99,13 @@ for (const [p, call, check] of cases) {
   const ok = call === null ? r === null : (r !== null && t.calls.includes(call) && (!check || check(t.form, t)));
   if (!ok) { bad++; console.log('FAIL', JSON.stringify(p), '->', r, t.calls, JSON.stringify(t.form)); }
 }
-console.log(`${cases.length - bad}/${cases.length} editor commands behave as expected`);
+// Regression: direct row mutations routed through commandOnRow must keep a
+// pre-edit snapshot so Undo can restore them, even when the command doesn't use commit().
+const historyCase = new C();
+historyCase.timeline = [{ id:'row-1', sourceStartSec:0, sourceEndSec:5, speed:1, locked:false, clipId:'c' }];
+historyCase.clips = [{ id:'c', durationSec:30 }];
+historyCase.commandOnRow(1, 'locked', i => { historyCase.timeline[i].locked = true; });
+const historyOk = historyCase.history.length === 1 && historyCase.history[0][0].locked === false && historyCase.timeline[0].locked === true && historyCase.timelineDirty === true;
+if (!historyOk) { bad++; console.log('FAIL direct row command should record undo history and mark dirty', historyCase.history, historyCase.timeline, historyCase.timelineDirty); }
+console.log(`${cases.length - (bad - (historyOk ? 0 : 1))}/${cases.length} editor commands behave as expected; direct-mutation history ${historyOk ? 'PASS' : 'FAIL'}`);
 process.exit(bad ? 1 : 0);

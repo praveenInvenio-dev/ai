@@ -22,6 +22,7 @@ ENV U2NET_HOME=/models/rembg
 ENV HF_HOME=/models/hf
 ENV WHISPER_MODEL=small
 COPY server.py /app/server.py
+COPY foreground_text_compositor.py /app/foreground_text_compositor.py
 WORKDIR /app
 
 EXPOSE 5010

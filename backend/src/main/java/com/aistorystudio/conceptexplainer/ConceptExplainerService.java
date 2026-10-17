@@ -790,7 +790,36 @@ public class ConceptExplainerService {
     }
 
     private String trackInstruction(ConceptExplainerJob job) {
-        return trackInstructionBase(job) + subjectVisuals(job.getSubject()) + briefText(job) + "\n" + com.aistorystudio.conceptexplainer.tutorial.IconLibrary.catalog(iconProfile(job));
+        return trackInstructionBase(job) + narrationTrackInstruction(job) + universalVisualQualityInstruction(job)
+                + subjectVisuals(job.getSubject()) + briefText(job) + "\n" + com.aistorystudio.conceptexplainer.tutorial.IconLibrary.catalog(iconProfile(job));
+    }
+
+    /** Narration tracks are distinct teaching approaches, not merely different TTS voices. */
+    private String narrationTrackInstruction(ConceptExplainerJob job) {
+        TeachingStyle t = TeachingStyle.parse(job.getTeachingStyle());
+        String voiceDirection = switch (t) {
+            case HUMOROUS_EXPLAINER -> "VOICE PERFORMANCE: conversational Indian tutor, playful but clear; vary pace naturally, deliver a short comic beat then pause before the explanation. Prefer playful/energetic emotion and comedic or conversational delivery. At most one small joke per scene; never joke at a learner's expense.";
+            case LOGIC_FIRST_ANALYST -> "VOICE PERFORMANCE: composed, reasoning-led analyst; steady pace, crisp articulation, slower emphasis for definitions, equations and conclusions. Prefer calm/serious emotion and explanatory/emphatic delivery. No comic asides or exaggerated excitement.";
+            case STORY_DRIVEN_MENTOR -> "VOICE PERFORMANCE: warm storyteller-mentor; curious opening, varied pace, brief suspense before reveals, warm delivery for the lesson learned. Prefer curious/warm/dramatic emotion and storytelling delivery. Do not overact or let suspense delay the explanation.";
+            case PROFESSIONAL_INSTRUCTOR -> "VOICE PERFORMANCE: confident professional instructor; even pace, clean articulation, deliberate emphasis on key terms, minimal emotion and no jokes.";
+            case SIMPLE_BEGINNER -> "VOICE PERFORMANCE: patient and encouraging; short phrases, slightly slower pace for new terms, warm reassurance without sounding childish.";
+            case STORYTELLING_TEACHER -> "VOICE PERFORMANCE: warm and curious storyteller; natural narrative rhythm, gentle pauses, clear explanation after each story beat.";
+            default -> "VOICE PERFORMANCE: engaging tutor; conversational Indian-English-friendly cadence, natural emphasis, light energy and occasional topic-related humour without shouting.";
+        };
+        return "\nNARRATION TRACK (must affect the script, scene structure and per-scene voiceDirection): " + t.label() + ". " + t.promptFragment() + "\n" + voiceDirection
+                + "\nDo not use the same opening formula, analogy, punchline or CTA for every topic. Match pacing and vocabulary to the subject, learner age, selected language and duration.";
+    }
+
+    /** Shared visual brief appended to every lesson/story/reel/breakdown planning request. */
+    private String universalVisualQualityInstruction(ConceptExplainerJob job) {
+        String ratio = vertical(job) ? "vertical 9:16" : "widescreen 16:9";
+        return "\nUNIVERSAL VISUAL QUALITY BAR (applies to every subject and format): "
+                + "Design for a premium " + ratio + " video and phone-size readability. Each scene must have one clear visual purpose that directly proves, demonstrates, or emotionally supports its narration. "
+                + "Use subject-appropriate visual language: real objects and environments for everyday/history topics; accurate labelled diagrams, graphs and worked steps for science/math; readable code, UI and data-flow for software; expressive character action and varied shot sizes for stories/kids; evidence-led charts for business. "
+                + "Vary the visual device and composition across adjacent scenes (wide establishing shot, close-up, step flow, comparison, cutaway, timeline, graph, code/UI, physical demonstration, character reaction) while preserving a coherent art direction and recurring-character identity. "
+                + "Use meaningful foreground/midground/background depth, directional lighting, material detail, perspective, clear focal hierarchy, and deliberate negative space for captions/labels. Motion must communicate a state change or cause-and-effect, not be decorative. "
+                + "Never use a generic icon collage when a concrete demonstration would teach more. Never invent labels, data, formulas, UI text, or scientific structure. Generated artwork must contain no text/logos/watermarks; render typography separately and keep it short, high-contrast and inside safe margins. "
+                + "Avoid repeating the same composition, static full-screen slide, or stock visual in consecutive scenes. Include a real-world shot or visual analogy where it materially improves understanding, but do not add random cinematic filler.";
     }
 
     /** Which icon names the planner is shown: what a lesson about this needs, not all 800. */
@@ -1554,7 +1583,7 @@ public class ConceptExplainerService {
      * reuse it. A failed picture is simply dropped (the 3D room behind it is still drawn).
      */
     private void generatePhotos(ConceptExplainerJob job) {
-        int made = 0, cap = kids(job) ? 16 : 4;
+        int made = 0, cap = kids(job) ? 16 : isBreakdown(job) ? 5 : 6;
         String castRef = job.getCastReferencePath();   // kids: the first picture becomes the character reference for every later scene
         for (ConceptExplainerJob.Scene s : job.getScenes()) {
             try {
@@ -1748,19 +1777,23 @@ public class ConceptExplainerService {
         String look = ConceptSlideRenderer.style(job.getStyle()).illustrationStyle();
         String subjectBrief = blank(s.getIllustrationPrompt()) ? s.getVisualDescription() : s.getIllustrationPrompt();
         String visualBrief = blank(s.getVisualDescription()) ? subjectBrief : s.getVisualDescription();
-        String prompt = "Create a richly detailed educational illustration for a premium explainer video. Subject and action: "
-                + subjectBrief + ". Scene context: " + visualBrief + ". Narration context: " + safePromptText(s.getNarration(), 700)
+        String ratio = vertical(job) ? "portrait 9:16 composition" : "landscape 16:9 composition";
+        String prompt = "Create a premium, richly detailed scene-specific illustration for an educational or storytelling video in " + ratio + ". Subject and action: "
+                + subjectBrief + ". Scene context: " + visualBrief + ". Spoken narration context: " + safePromptText(s.getNarration(), 700)
                 + ". Art direction: " + look + ". "
-                + "Use a deliberate cinematic composition, multiple meaningful visual details, foreground/midground/background depth, "
-                + "material texture, directional lighting, realistic shadows, precise edges, and clear visual hierarchy. "
-                + "The image must help explain the actual concept, not merely symbolize it with a generic icon. "
-                + "Fill the composition with relevant subject detail while keeping a clean negative-space area for separately rendered labels. "
-                + "No text, no letters, no numbers, no words, no watermark, no logo, no border or decorative frame.";
+                + "Use a deliberate cinematic composition with a readable primary focal subject, purposeful supporting details, foreground/midground/background depth, "
+                + "material texture, directional motivated lighting, realistic contact shadows, atmospheric perspective where appropriate, and a clear eye path. "
+                + "Show a specific action, state, relationship, or change that helps explain this exact scene; avoid a generic symbolic icon or unrelated decoration. "
+                + "Respect the subject: scientific diagrams must be structurally accurate; code/software visuals must resemble plausible interfaces without legible generated text; children's scenes must be warm, expressive and age-appropriate; historical/everyday scenes must feel grounded. "
+                + "Keep an intentional clean negative-space region for separately rendered captions and labels, with the main subject away from the text-safe area. "
+                + "No text, letters, numbers, words, watermark, logo, UI text, border or decorative frame.";
         String negative = "text, letters, words, numbers, typography, watermark, logo, generic app icon, tiny icon, empty composition, "
                 + "unrelated objects, random symbols, clutter, blurry, low contrast, decorative frame, border, collage, grid, split panels";
         try {
+            int width = vertical(job) ? 768 : 1152;
+            int height = vertical(job) ? 1344 : 864;
             var result = gateway.generateImage(new ImageGenerationProvider.ImageGenerationRequest(
-                    prompt, negative, 1024, 1024, 28, 4.2, null, "qwen-image-2-1-16gb-t2i", null, null, null));
+                    prompt, negative, width, height, 30, 4.0, null, "qwen-image-2-1-16gb-t2i", null, null, null));
             Path p = storage.store(dir(job) + "/illustrations/scene-" + num(s) + "-v" + (s.getImageVersion() + 1) + ".png", result.imageBytes());
             s.setIllustrationPath(p.toString());
         } catch (Exception e) {

@@ -222,6 +222,8 @@ public final class TeachingPlanner {
                 + "Destination: " + r.destination().label() + (r.destination() == Destination.SOCIAL ? " (end with a short subscribe invitation)" : " (no subscribe request)") + "\\n"
                 + "Total spoken length: " + r.minWords() + "-" + r.maxWords() + " words across all scenes.\\n"
                 + "REFERENCE BENCHMARK: detailed, topic-led, connected teaching; deep explanation of mechanisms and relationships; scene-specific rich visuals; concrete end-to-end example; precise diagram/code flow synchronized to narration. Do not generate generic template narration or shallow bullet-point coverage.\\n"
+                + voiceTrackRule(r.style()) + "\\n"
+                + "VISUAL QUALITY: every scene needs a distinct teaching purpose and a concept-specific composition. Use correct diagrams, real objects, charts, code/UI or physical demonstrations according to the topic; vary composition and shot scale across scenes; use meaningful depth, motivated lighting and clean negative space; animate/reveal only changes that explain cause and effect. Keep text mobile-readable and never put generated text, logos or invented numbers in artwork.\\n"
                 + "Plan (follow its scene order, objectives and templates):\\n" + planJson;
     }
 
@@ -240,6 +242,18 @@ public final class TeachingPlanner {
         return "Your previous lesson had " + words + " spoken words in total. The target is " + r.minWords() + "-" + r.maxWords() + ". Return the COMPLETE lesson again in the same JSON format, "
                 + (words < r.minWords() ? "adding sentences/scenes with real teaching value" : "removing the least important sentences/scenes")
                 + ", keeping the opening line, the alignment rules and the recap. Previous lesson:\n" + previousJson;
+    }
+
+    private static String voiceTrackRule(TeachingStyle style) {
+        return switch (style) {
+            case HUMOROUS_EXPLAINER -> "VOICE DIRECTION: natural playful energy, light comic timing and short pauses after a joke; keep each joke subordinate to the teaching point, and do not joke about serious or risky topics. Set per-scene voiceDirection to playful/energetic and conversational/comedic only when appropriate.";
+            case LOGIC_FIRST_ANALYST -> "VOICE DIRECTION: measured, precise, reasoning-led; slower on definitions, assumptions and conclusions. Use calm/serious emotion and explanatory/emphatic delivery. No jokes or hype. The lesson must show claim, reason, mechanism/evidence, worked example and limitation where relevant.";
+            case STORY_DRIVEN_MENTOR -> "VOICE DIRECTION: warm and curious with varied narrative pacing; use brief suspense before a reveal, then explain the general rule. Set per-scene voiceDirection to curious/warm/dramatic and storytelling delivery when it fits. Keep every story beat educational.";
+            case PROFESSIONAL_INSTRUCTOR -> "VOICE DIRECTION: calm professional instructor, crisp articulation, steady pace and restrained emphasis; minimal humour.";
+            case SIMPLE_BEGINNER -> "VOICE DIRECTION: patient, encouraging, short phrases and a slightly slower pace for new vocabulary.";
+            case STORYTELLING_TEACHER -> "VOICE DIRECTION: warm storyteller, curious questions and natural pauses; explain the lesson clearly after each story beat.";
+            default -> "VOICE DIRECTION: engaging conversational tutor, natural emphasis, light energy and topic-related humour only where it helps memory.";
+        };
     }
 
     private static String nz(String v, String d) { return v == null || v.isBlank() ? d : v; }

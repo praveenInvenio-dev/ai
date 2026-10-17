@@ -285,14 +285,21 @@ interface LessonSummary { id: string; title: string; duration: string; language:
             </select>
           </div>
           <div>
-            <label>Teaching style</label>
+            <label>Narration track</label>
             <select [(ngModel)]="teachingStyle">
-              <option value="ENGAGING_TECH_TUTOR">Engaging tech tutor (friendly, light humour) — default</option>
-              <option value="STORYTELLING_TEACHER">Storytelling teacher</option>
-              <option value="PROFESSIONAL_INSTRUCTOR">Professional instructor</option>
-              <option value="SIMPLE_BEGINNER">Simple beginner-friendly</option>
+              <optgroup label="New narration tracks">
+                <option value="HUMOROUS_EXPLAINER">Humorous explainer — witty, energetic, memorable</option>
+                <option value="LOGIC_FIRST_ANALYST">Logic-first analyst — structured reasoning, evidence, trade-offs</option>
+                <option value="STORY_DRIVEN_MENTOR">Story-driven mentor — characters, challenge, reveal</option>
+              </optgroup>
+              <optgroup label="Classic styles">
+                <option value="ENGAGING_TECH_TUTOR">Engaging tutor — friendly, light humour</option>
+                <option value="STORYTELLING_TEACHER">Storytelling teacher</option>
+                <option value="PROFESSIONAL_INSTRUCTOR">Professional instructor</option>
+                <option value="SIMPLE_BEGINNER">Simple beginner-friendly</option>
+              </optgroup>
             </select>
-            <small class="sync-note">Changes tone and humour only; slides, pictures and voice always explain the same point at the same time.</small>
+            <small class="sync-note">The track changes script structure, examples, pacing and per-scene voice direction—not just the voice name. Emotion-aware voices express it more fully; simpler TTS engines use pace and pitch. Accuracy and visual/narration sync stay mandatory.</small>
           </div>
           <div class="wide pre-box">
             <h4>Brief &amp; story <small class="sync-note">optional - the more you say, the better the lesson fits</small></h4>
@@ -302,7 +309,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
               <div><label>Tone</label>
                 <select [(ngModel)]="tone"><option value="">Automatic</option><option>Warm and friendly</option><option>Playful and funny</option><option>Serious and clear</option><option>Curious and exciting</option><option>Calm and reassuring</option></select></div>
               <div><label>Visual variety</label>
-                <select [(ngModel)]="dVar"><option value="LOW">Low - one tight visual system</option><option value="MID">Medium</option><option value="HIGH">High - a new visual idea each beat</option></select></div>
+                <select [(ngModel)]="dVar"><option value="LOW">Low - one tight visual system</option><option value="MID">Medium</option><option value="HIGH">Rich - varied visual idea each beat</option></select></div>
               <div><label>Motion</label>
                 <select [(ngModel)]="dMotion"><option value="LOW">Calm - long soft fades</option><option value="MID">Medium</option><option value="HIGH">Energetic - quick changes</option></select></div>
               <div><label>Information on screen</label>
@@ -734,7 +741,7 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
     });
     input.value = '';
   }
-  audience = ''; outcome = ''; tone = ''; dVar = 'MID'; dMotion = 'MID'; dDensity = 'MID'; reviewScript = false;
+  audience = ''; outcome = ''; tone = ''; dVar = 'HIGH'; dMotion = 'MID'; dDensity = 'MID'; reviewScript = false;
   concepts: any[] = []; concept: any = null; conceptTopic = ''; conceptsBusy = false; conceptsError = '';
   reviewBusy = false;
 

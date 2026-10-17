@@ -9,13 +9,15 @@ package com.aistorystudio.pipeline.promptbuilder;
 public class StylePromptBuilder {
 
     private static final String SHARED_COMPOSITION =
-            "cinematic composition, clear subject hierarchy, clean silhouettes, "
-          + "foreground and background separation, coherent environment design, "
-          + "single frame from a finished animated film, high visual clarity";
+            "storytelling composition with a clear focal subject and readable action, intentional camera framing and shot scale, "
+          + "strong foreground midground background separation, layered environment depth, coherent scene geography, "
+          + "expressive pose and silhouette, visually distinct subject from background, clean caption-safe negative space, "
+          + "a single coherent frame from a finished film rather than a collage";
 
     private static final String SHARED_QUALITY =
-            "high detail, coherent anatomy, believable scale, sharp subject focus, "
-          + "intentional lighting, clean edges, polished final render";
+            "rich but controlled scene detail, believable anatomy and scale, material-specific texture, sharp subject focus, "
+          + "motivated cinematic lighting, natural contact shadows, atmospheric perspective where appropriate, clear color hierarchy, "
+          + "polished edges, production-ready final render, no decorative detail that distracts from the main action";
 
     public String build(String visualStyle, String colorPalette) {
         String style = normalize(visualStyle);

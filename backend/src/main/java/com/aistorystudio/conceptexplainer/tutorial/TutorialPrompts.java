@@ -79,6 +79,12 @@ public final class TutorialPrompts {
             - Use at least MIN_DEVICES different main devices across the lesson. Mix structure (steps, cycle, tree, layers),
               comparison (compare, venn, matrix, analogy), quantity (meter, pie, formula, plot/bars) and story (actors, chat, photo).
             - Vary the composition from scene to scene: centred hero, left-right split, top-to-bottom flow, grid of items.
+            - Add a real-world photo/illustration when the learner benefits from seeing the actual object, environment, person, organism,
+              historical place or physical setup. Use up to 5 photo moments in a full lesson, not as decoration and not in consecutive scenes.
+            - Give each scene a visible change: a request moves, a force vector appears, a value changes, a character reacts, a route advances,
+              a code line executes, or a comparison reveals a trade-off. Avoid a sequence of unchanged title cards.
+            - Maintain a consistent design system, but change shot scale and depth: establish the setting, move to a close-up of the important
+              detail, then return to the whole system. Keep all text large enough for a mobile screen and leave safe margins for captions.
             """;
 
     /** Teaching approaches; a different one is suggested for each lesson so lessons do not all follow the same arc. */
@@ -113,9 +119,11 @@ public final class TutorialPrompts {
     // ------------------------------------------------------------------ shared style rules
 
     private static final String VOICE = """
-            NARRATION STYLE (copy this voice exactly):
-            - A calm, confident senior instructor talking to ONE learner, like a good recorded course. Conversational, never salesy, no hype,
-              no jokes, no emojis, no "Hello friends", no "smash that subscribe". Start the first scene straight with the hook.
+            NARRATION STYLE:
+            - Follow the selected NARRATION TRACK included in the user prompt (humorous, logic-first, story-driven, professional, beginner-friendly,
+              or engaging tutor). That track controls the narrator's personality, rhythm, humour level and per-scene voiceDirection; do not force every
+              lesson into the same calm-instructor voice. If no track is supplied, use a calm, confident senior instructor talking to ONE learner.
+              Conversational, never salesy or shouty. No emojis in spoken narration. Start the first scene straight with the hook.
             - Plain words. Sentences of 8-20 words. Every technical term is explained in simple words the first time it appears.
             - Natural spoken connectors: "So", "Now", "Let's say", "Here's the thing", "Think about it", "That's where X comes in",
               "In other words", "Let's take a look", "Right?". Use an occasional rhetorical question, then answer it.
@@ -132,8 +140,11 @@ public final class TutorialPrompts {
             """;
 
     private static final String SCREEN = """
-            ON-SCREEN STYLE (copy this look exactly):
-            - Dark teal canvas, few elements, lots of empty space. Diagrams, never pictures. Text on screen is SHORT: labels of 1-5 words,
+            ON-SCREEN STYLE (copy this look exactly unless the selected visual style says otherwise):
+            - Default to a rich, layered visual rather than a bare slide: subject-specific diagram or concrete illustration, clear focal point,
+              deliberate depth, directional lighting for picture scenes, restrained accent colours and strong contrast. Do not clutter the frame.
+            - Dark teal canvas, few elements, lots of intentional empty space. Diagrams are preferred when relationships or mechanisms matter;
+              use real pictures when the object, place, body structure, experiment or human reaction is the lesson. Text on screen is SHORT: labels of 1-5 words,
               card bullets of 1-3 words, quotes only for a user's request. The narration carries the explanation, the screen anchors it.
             - Recurring characters: the learner/user (actor, icon "user"), an AI agent or service (actor, icon "agent", pink), systems as
               coloured tiles with a simple icon and a made-up name, actions as teal buttons, settings/preferences as an outlined card,
@@ -179,7 +190,7 @@ public final class TutorialPrompts {
             ear, eye, heart, lungs, tooth, bone, pill, syringe, stethoscope, virus, bacteria, cell, dna, drop, water, thermometer, hospital,
             plus, stomach, kidney, muscle, apple, food, leaf, sun, moon, wind, gauge, person, baby, family, home, car, bed, mask, microscope.
               photo     text = what to picture (an anatomy cross-section, a real object or place), style "framed", w/h in % - a generated
-                        illustration. Max 3 per lesson, only where a real picture explains more than a diagram.
+                        illustration. Use up to 5 per full lesson only where a real picture explains more than a diagram; never as filler.
             LAYOUT: 1920x1080 frame. Keep y >= 14 when there is a heading. Left column x 10-30, middle 40-60, right column x 75-90.
             Stack tiles/buttons with about 17-25 y between them. Never place two elements on the same spot. Max ~10 visible elements.
             - MATCH THE SUBJECT. Health / body / biology topics: use body-part and medical icons (ear, heart, lungs, pill, virus ...)
@@ -311,7 +322,8 @@ public final class TutorialPrompts {
             - One idea per scene, in this order: the question -> the setup/example -> how it works (2-4 scenes, each one
               step) -> the key difference or the payoff with a number -> one sentence that names the concept ("That loop is
               gradient descent.") -> scale it up to the real world in one line.
-            - Calm, clear, confident male explainer voice, about 140 words per minute.
+            - Narrator personality and emotional delivery follow the selected NARRATION TRACK in the user prompt. Keep the short-form pace clear and intelligible,
+              around 140-155 words per minute, and follow the selected narrator voice's gender and language; never force a male persona when a different voice is selected.
             - The final scene says "Follow the page to learn one concept a day." (in the narration language; English caption exactly that).
             - COMPLETENESS (the viewer must get it in one watch, never half-baked): say in plain words WHAT the concept is, show HOW it
               works step by step on the example (cause -> effect), show WHY it matters with a concrete before/after, NAME it, and give one
@@ -412,7 +424,8 @@ public final class TutorialPrompts {
               or rule when it makes it concrete. Mention the trade-off ("when clashes are rare, X; when certain, Y").
             - "The best part": one clever, lesser-known detail at the end that makes people say "wow".
             - Recap in one breath: step -> technique. End with a question that starts a debate in the comments.
-            - Second person, short spoken sentences (5-15 words), no filler, no greeting, no hype words, no emojis.
+            - Second person, short spoken sentences (5-15 words), no filler, no greeting, no hype words, no emojis. The selected NARRATION TRACK in the user prompt
+              controls humour, reasoning style, storytelling and per-scene voiceDirection; the breakdown structure must not flatten all tracks into one voice.
             """;
 
     private static final String BREAKDOWN_SCREEN = """

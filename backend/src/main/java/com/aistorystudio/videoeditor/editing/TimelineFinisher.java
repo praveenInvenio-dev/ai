@@ -30,7 +30,8 @@ public final class TimelineFinisher {
     private TimelineFinisher() { }
 
     public record Overlay(String type, double start, double end, String text, String position, String style,
-                          String color, double amount, String sfx, double gain) { }
+                          String color, double amount, String sfx, double gain,
+                          String animation, double xPercent, double yPercent) { }
 
     public record Export(String format, Integer height, Integer fps) {
         public String ext() {
@@ -66,16 +67,20 @@ public final class TimelineFinisher {
             var n = out.addObject();
             n.put("type", o.type());
             n.put("start", Math.round(Math.min(o.start(), 36000) * 100) / 100.0);
-            if (o.type().equals("text")) {
+            if (o.type().equals("text") || o.type().equals("text_behind_person")) {
                 String t = o.text().replaceAll("\\s+", " ").trim();
                 if (t.isEmpty()) { out.remove(out.size() - 1); continue; }
                 n.put("end", Math.round(Math.min(o.end(), 36000) * 100) / 100.0);
                 n.put("text", t.length() > 140 ? t.substring(0, 140) : t);
                 String pos = o.position().toLowerCase(Locale.ROOT);
-                n.put("position", List.of("top", "center", "middle", "bottom").contains(pos) ? pos : "bottom");
+                n.put("position", List.of("top", "center", "middle", "bottom", "custom").contains(pos) ? pos : "bottom");
                 String st = o.style().toLowerCase(Locale.ROOT);
                 n.put("style", st.contains("lower") ? "lower_third" : st.contains("small") ? "small" : st.contains("box") ? "box" : "title");
                 n.put("color", COLORS.containsKey(o.color().toLowerCase(Locale.ROOT)) ? o.color().toLowerCase(Locale.ROOT) : "white");
+                String animation = safeAnimation(o.animation());
+                n.put("animation", animation);
+                n.put("xPercent", Math.round(clamp(o.xPercent(), 0, 100) * 100) / 100.0);
+                n.put("yPercent", Math.round(clamp(o.yPercent(), 0, 100) * 100) / 100.0);
             } else if (o.type().equals("zoom")) {
                 n.put("end", Math.round(Math.min(o.end(), 36000) * 100) / 100.0);
                 n.put("amount", Math.round(o.amount() * 100) / 100.0);
@@ -87,6 +92,16 @@ public final class TimelineFinisher {
             }
         }
         return out.isEmpty() ? null : out.toString();
+    }
+
+    private static final List<String> ANIMATIONS = List.of("fade", "none", "slide_up", "slide_left", "float", "pop", "pulse");
+    private static String safeAnimation(String animation) {
+        String value = animation == null ? "fade" : animation.toLowerCase(Locale.ROOT).replace('-', '_').trim();
+        return ANIMATIONS.contains(value) ? value : "fade";
+    }
+    private static double clamp(double value, double min, double max) {
+        if (!Double.isFinite(value)) return min;
+        return Math.max(min, Math.min(max, value));
     }
 
     /**
@@ -121,14 +136,16 @@ public final class TimelineFinisher {
         try {
             for (JsonNode n : M.readTree(json)) {
                 String type = n.path("type").asText("").toLowerCase(Locale.ROOT);
-                if (!List.of("text", "zoom", "sfx").contains(type)) continue;
+                if (!List.of("text", "text_behind_person", "zoom", "sfx").contains(type)) continue;
                 double start = Math.max(0, n.path("start").asDouble(0));
                 double end = n.has("end") ? n.path("end").asDouble(start + 3) : start + (type.equals("zoom") ? 2 : type.equals("sfx") ? 0 : 3);
                 if (!type.equals("sfx") && end <= start + 0.2) end = start + 0.2;
                 out.add(new Overlay(type, start, end, n.path("text").asText(""), n.path("position").asText("bottom"),
                         n.path("style").asText("title"), n.path("color").asText("white"),
                         Math.max(1.05, Math.min(2.0, n.path("amount").asDouble(1.3))), n.path("sfx").asText(""),
-                        Math.max(0, Math.min(2, n.path("gain").asDouble(1.0)))));
+                        Math.max(0, Math.min(2, n.path("gain").asDouble(1.0))),
+                        safeAnimation(n.path("animation").asText("fade")),
+                        clamp(n.path("xPercent").asDouble(50), 0, 100), clamp(n.path("yPercent").asDouble(50), 0, 100)));
             }
         } catch (Exception ignored) { }
         return out;
@@ -194,12 +211,13 @@ public final class TimelineFinisher {
             size = fittedSize;
             String color = COLORS.getOrDefault(o.color().toLowerCase(Locale.ROOT), "white");
             String in = fmt(o.start()), outT = fmt(o.end());
-            String alpha = "if(lt(t," + fmt(o.start() + 0.3) + "),(t-" + in + ")/0.3,if(gt(t," + fmt(o.end() - 0.3) + "),(" + outT + "-t)/0.3,1))";
+            String fadeAlpha = "if(lt(t," + fmt(o.start() + 0.3) + "),(t-" + in + ")/0.3,if(gt(t," + fmt(o.end() - 0.3) + "),(" + outT + "-t)/0.3,1))";
             double lh = size * 1.22;
-            String block = lines.size() == 1 ? "" : "*" + lines.size();
-            String yBase = switch (lower ? "lower" : o.position().toLowerCase(Locale.ROOT)) {
+            String pos = o.position().toLowerCase(Locale.ROOT);
+            String yBase = switch (lower ? "lower" : pos) {
                 case "top" -> "h*0.08";
                 case "center", "middle" -> "(h-" + fmt(lh * lines.size()) + ")/2";
+                case "custom" -> "h*" + fmt(o.yPercent() / 100.0);
                 case "lower" -> "h*0.78";
                 default -> "h*0.82-" + fmt(lh * lines.size());
             };
@@ -207,11 +225,27 @@ public final class TimelineFinisher {
             for (int li = 0; li < lines.size(); li++) {
                 Path tf = textDir.resolve("overlay-" + (ti) + "-" + li + ".txt");
                 Files.writeString(tf, lines.get(li), StandardCharsets.UTF_8);
-                String x = lower ? "w*0.06" : "(w-text_w)/2";
+                String x = lower ? "w*0.06" : pos.equals("custom") ? "w*" + fmt(o.xPercent() / 100.0) : "(w-text_w)/2";
+                String y = yBase + "+" + fmt(lh * li);
+                String alpha = fadeAlpha;
+                // Motion is evaluated by FFmpeg per frame. Every animation is bounded to the overlay's time window.
+                String elapsed = "(t-" + in + ")";
+                String enter = "min(1,max(0," + elapsed + "/0.45))";
+                switch (safeAnimation(o.animation())) {
+                    case "none" -> alpha = "1";
+                    case "slide_up" -> y = "(" + y + ")+h*0.12*(1-" + enter + ")";
+                    case "slide_left" -> x = "(" + x + ")+w*0.18*(1-" + enter + ")";
+                    case "float" -> y = "(" + y + ")+sin(" + elapsed + "*2.4)*h*0.018";
+                    case "pop" -> { alpha = "(" + fadeAlpha + ")*min(1,max(0," + elapsed + "/0.18))"; y = "(" + y + ")+h*0.025*(1-" + enter + ")"; }
+                    case "pulse" -> { /* gentle position pulse avoids drawtext font reinitialization on every frame */
+                        x = "(" + x + ")+sin(" + elapsed + "*5)*w*0.006";
+                    }
+                    default -> { }
+                }
                 String label = "vt" + ti + "_" + li;
                 f.append('[').append(v).append("]drawtext=fontfile='").append(path(fontFile)).append("':textfile='").append(path(tf))
                         .append("':fontsize=").append(size).append(":fontcolor=").append(color)
-                        .append(":x=").append(x).append(":y=").append(yBase).append('+').append(fmt(lh * li))
+                        .append(":x=").append(x).append(":y=").append(y)
                         .append(box ? ":box=1:boxcolor=black@0.55:boxborderw=" + Math.max(8, size / 3) : ":borderw=" + Math.max(2, size / 16) + ":bordercolor=black@0.6")
                         .append(":alpha='").append(alpha).append("'")
                         .append(":enable='between(t,").append(in).append(',').append(outT).append(")'[").append(label).append("];");

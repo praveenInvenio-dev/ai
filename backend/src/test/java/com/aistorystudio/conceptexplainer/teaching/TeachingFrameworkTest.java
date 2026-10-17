@@ -83,6 +83,9 @@ class TeachingFrameworkTest {
         assertEquals(SectionType.RECAP, SectionType.parse("Summary"));
         assertNull(SectionType.parse("banana"));
         assertEquals(TeachingStyle.STORYTELLING_TEACHER, TeachingStyle.parse("storytelling"));
+        assertEquals(TeachingStyle.HUMOROUS_EXPLAINER, TeachingStyle.parse("humorous explainer"));
+        assertEquals(TeachingStyle.LOGIC_FIRST_ANALYST, TeachingStyle.parse("logic-first analyst"));
+        assertEquals(TeachingStyle.STORY_DRIVEN_MENTOR, TeachingStyle.parse("story-driven mentor"));
         assertEquals(TeachingStyle.ENGAGING_TECH_TUTOR, TeachingStyle.parse(null));
         assertEquals(Destination.CLASSROOM, Destination.parse("classroom"));
         assertEquals(Destination.SOCIAL, Destination.parse(""));
@@ -124,6 +127,12 @@ class TeachingFrameworkTest {
         assertTrue(social.contains("subscribe"));
         assertTrue(classroom.contains("no subscribe request"));
         assertTrue(classroom.contains("Professional Instructor") && social.contains("Engaging Tech Tutor"));
+        String funny = TeachingPlanner.writeUserPrompt(request("Load Balancing", "English", Destination.SOCIAL, TeachingStyle.HUMOROUS_EXPLAINER, "GENERAL"), "{}");
+        String logic = TeachingPlanner.writeUserPrompt(request("Load Balancing", "English", Destination.CLASSROOM, TeachingStyle.LOGIC_FIRST_ANALYST, "GENERAL"), "{}");
+        String story = TeachingPlanner.writeUserPrompt(request("Load Balancing", "English", Destination.SOCIAL, TeachingStyle.STORY_DRIVEN_MENTOR, "GENERAL"), "{}");
+        assertTrue(funny.contains("comic timing") && funny.contains("Humorous Explainer"));
+        assertTrue(logic.contains("reasoning-led") && logic.contains("No jokes or hype"));
+        assertTrue(story.contains("warm and curious") && story.contains("Story-Driven Mentor"));
         assertTrue(social.contains("What are we learning today? Kafka!"));
         String kn = TeachingPlanner.writeUserPrompt(request("Kafka", "Kannada", Destination.SOCIAL, TeachingStyle.ENGAGING_TECH_TUTOR, "GENERAL"), "{}");
         assertTrue(kn.contains("natural Kannada equivalent"));

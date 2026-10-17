@@ -16,7 +16,19 @@ public enum TeachingStyle {
                     + "(at most one light remark). Confident, never stiff."),
     SIMPLE_BEGINNER("Simple Beginner-Friendly", 1, "encouraging",
             "Patient guide for a complete beginner. Shortest possible sentences, one idea at a time, every new term explained in plain words "
-                    + "straight away, no jargon dumps, frequent gentle encouragement ('that is the whole idea!').");
+                    + "straight away, no jargon dumps, frequent gentle encouragement ('that is the whole idea!')."),
+    HUMOROUS_EXPLAINER("Humorous Explainer", 3, "playful",
+            "A witty, energetic Indian tutor who uses brief, topic-specific humour to make the idea memorable. Use a relatable setup, a small "
+                    + "comic contrast, then immediately land the correct explanation. Keep jokes kind, natural in the selected language, and sparse "
+                    + "enough that they never obscure facts. Serious, medical, safety, financial-risk and exam-critical content must remain respectful."),
+    LOGIC_FIRST_ANALYST("Logic-First Analyst", 0, "calm",
+            "A precise, reasoning-led instructor. Build every explanation as claim -> why it is true -> mechanism or evidence -> worked example -> "
+                    + "assumptions or limitations. Distinguish facts from simplifications, explain cause and effect, and use equations or code only "
+                    + "when they help. No jokes, hype, unsupported statistics, or hand-wavy claims."),
+    STORY_DRIVEN_MENTOR("Story-Driven Mentor", 1, "curious",
+            "A warm, cinematic storyteller-teacher. Follow one believable person, character, object, or system through a small challenge; reveal the "
+                    + "concept exactly when it solves a problem; show a setback or surprising consequence when useful; then connect the story back to "
+                    + "the general rule. Dialogue and suspense are brief, and every story detail must teach the actual topic.");
 
     private final String label;
     private final int humour;
@@ -40,6 +52,9 @@ public enum TeachingStyle {
         if (v == null || v.isBlank()) return ENGAGING_TECH_TUTOR;
         String k = v.trim().toUpperCase(Locale.ROOT).replace(' ', '_').replace('-', '_');
         for (TeachingStyle s : values()) if (s.name().equals(k)) return s;
+        if (k.contains("HUMOR") || k.contains("FUNNY") || k.contains("COMED")) return HUMOROUS_EXPLAINER;
+        if (k.contains("LOGIC") || k.contains("ANALYST") || k.contains("REASON")) return LOGIC_FIRST_ANALYST;
+        if (k.contains("STORY_DRIVEN") || k.contains("CINEMATIC_STORY")) return STORY_DRIVEN_MENTOR;
         if (k.contains("STORY")) return STORYTELLING_TEACHER;
         if (k.contains("PROFESSIONAL")) return PROFESSIONAL_INSTRUCTOR;
         if (k.contains("BEGINNER") || k.contains("SIMPLE")) return SIMPLE_BEGINNER;
