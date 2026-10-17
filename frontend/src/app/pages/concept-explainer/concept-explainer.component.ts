@@ -837,7 +837,7 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
       audience: this.audience, outcome: this.outcome, tone: this.tone,
       concept: this.concept && this.conceptTopic === this.topic.trim() ? JSON.stringify(this.concept) : undefined,
       reviewScript: this.reviewScript, visualVariance: this.dVar, motionIntensity: this.dMotion, density: this.dDensity,
-      useManim: this.useManim && this.manimAvailable
+      useManim: this.useManim
     }).subscribe({
       next: r => { this.loading = false; this.open(r.jobId); this.loadLessons(); },
       error: e => { this.loading = false; this.formError = e?.error?.message || e?.message || 'Could not start the concept explainer.'; }

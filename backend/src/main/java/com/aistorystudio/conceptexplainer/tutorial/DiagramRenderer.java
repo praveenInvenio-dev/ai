@@ -195,7 +195,7 @@ public final class DiagramRenderer {
                 if (jbMono != null) mono = jbMono;
             }
             case "reel" -> {   // both reference reels: near-black, monochrome UI cards, green / cyan / red accents
-                set(0x0B0B0C, 0x131417, 0xF4F4F5, 0x8B8B92, 0xF87171, 0xA78BFA, 0x38BDF8, 0x18181B, 0x3F3F46, 0xF4F4F5,
+                set(0x0B0B0C, 0x20242C, 0xF4F4F5, 0x8B8B92, 0xF87171, 0xA78BFA, 0x38BDF8, 0x18181B, 0x3F3F46, 0xF4F4F5,
                         0x4ADE80, 0x86EFAC, 0x38BDF8, 0x71717A, 0x18181B, 0xE4E4E7, 0xF4F4F5, 0xD4D4D8);
             }
             case "anime" -> {
@@ -315,7 +315,7 @@ public final class DiagramRenderer {
         setCanvas(vertical);
         applyTheme(styleId);
         int n = Math.max(1, scene.sentences());
-        Map<String, Rectangle2D> bounds = layout(scene.elements());
+        Map<String, Rectangle2D> bounds = layoutFor(scene);
         List<BufferedImage> out = new ArrayList<>();
         for (int k = 0; k < n; k++) out.add(frame(scene, bounds, k));
         return out;
@@ -334,7 +334,7 @@ public final class DiagramRenderer {
         overlayOnly = true;
         try {
             int n = Math.max(1, scene.sentences());
-            Map<String, Rectangle2D> bounds = layout(scene.elements());
+            Map<String, Rectangle2D> bounds = layoutFor(scene);
             List<BufferedImage> out = new ArrayList<>();
             for (int k = 0; k < n; k++) out.add(frame(scene, bounds, k));
             return out;
@@ -361,6 +361,24 @@ public final class DiagramRenderer {
     // ------------------------------------------------------------------ layout
 
     /** Pixel bounds of every non-arrow element (needed before drawing so arrows can attach). */
+    /** True while a scene WITH a heading is laid out: its content must stay below the heading / label (the camera frames the same zone). */
+    private boolean reserveHeader;
+
+    private double headerBottom() { return portrait ? 330 : 130; }
+
+    /** Layout for a whole scene: content stays clear of the heading, except in illustrated scenes where overlays are placed on purpose. */
+    Map<String, Rectangle2D> layoutFor(Scene sc) {
+        boolean head = !nz(sc.heading()).isEmpty() || !nz(sc.label()).isEmpty();
+        boolean illustrated = false;
+        for (Element e : sc.elements()) if (underlay(e)) { illustrated = true; break; }
+        reserveHeader = head && !illustrated;
+        try {
+            return layout(sc.elements());
+        } finally {
+            reserveHeader = false;
+        }
+    }
+
     Map<String, Rectangle2D> layout(List<Element> els) {
         Map<String, Rectangle2D> b = new HashMap<>();
         int auto = 0;
@@ -377,7 +395,9 @@ public final class DiagramRenderer {
             // inside the frame (0-100 %): keep it fully on screen as before. Beyond 100 %: the element lives
             // outside the first view and the camera pulls back to show it (overview shot, see camera()).
             double x = e.x() > 100 ? cx - sz[0] / 2 : clamp(cx - sz[0] / 2, 30, W - 30 - sz[0]);
-            double y = e.y() > 100 ? cy - sz[1] / 2 : clamp(cy - sz[1] / 2, 30, (full(e) ? H - 30 : contentBottom()) - sz[1]);
+            double minY = reserveHeader && !full(e) && !backdrop(e) ? headerBottom() : 30;
+            double maxY = (full(e) ? H - 30 : contentBottom()) - sz[1];
+            double y = e.y() > 100 ? cy - sz[1] / 2 : clamp(cy - sz[1] / 2, minY, Math.max(minY, maxY));
             if (e.type().equals("photo") && !nz(e.style()).toLowerCase(Locale.ROOT).contains("framed")) { x = 0; y = 0; sz = new double[]{W, H}; }
             else if (backdrop(e) && e.w() <= 0) { x = 0; y = 0; }     // full-bleed picture
             if (e.type().equals("journey")) { x = 60; y = portrait ? 175 : 110; sz = new double[]{W - 120, 80}; }   // HUD: always at the top
@@ -554,7 +574,9 @@ public final class DiagramRenderer {
             case "particles" -> { return new double[]{w > 0 ? w : W - 80, h > 0 ? h : 520}; }
             case "sql" -> { int n = Math.max(1, lines(e.extra()).size()); return new double[]{w > 0 ? w : W - 160, h > 0 ? h : 70 + n * 42 + (nz(e.title()).isEmpty() ? 0 : 36)}; }
             case "photo" -> { return new double[]{w > 0 ? w : W, h > 0 ? h : H}; }
-            case "timeline" -> { return new double[]{w > 0 ? w : W * 0.86, h > 0 ? h : 230}; }
+            case "timeline" -> { int n = Math.max(2, listOrEmpty(e).size());
+                if (portrait) return new double[]{w > 0 ? w : Math.min(W - 100, 900), h > 0 ? h : Math.min(1000, 90 + n * 170.0)};   // vertical: a tall frame
+                return new double[]{w > 0 ? w : W * 0.86, h > 0 ? h : 230}; }
             case "steps" -> {
                 int n = Math.max(1, listOrEmpty(e).size());
                 boolean vert = nz(e.style()).toLowerCase(Locale.ROOT).contains("vert") || portrait;
@@ -569,7 +591,7 @@ public final class DiagramRenderer {
             case "venn" -> { double d = w > 0 ? w : (portrait ? 860 : 720); return new double[]{d, h > 0 ? h : d * 0.72}; }
             case "meter" -> { double d = w > 0 ? w : 420; return new double[]{d, h > 0 ? h : d * 0.72}; }
             case "checklist" -> { int n = Math.max(1, listOrEmpty(e).size()); return new double[]{w > 0 ? w : Math.min(W - 120, 760), h > 0 ? h : 30 + n * 66 + (nz(e.title()).isEmpty() ? 0 : 56)}; }
-            case "analogy" -> { return new double[]{w > 0 ? w : Math.min(W - 80, portrait ? 960 : 1100), h > 0 ? h : 330}; }
+            case "analogy" -> { return new double[]{w > 0 ? w : Math.min(W - 80, portrait ? 920 : 1100), h > 0 ? h : portrait ? 760 : 330}; }
             case "matrix" -> { double d = w > 0 ? w : (portrait ? 880 : 700); return new double[]{d, h > 0 ? h : d * 0.8}; }
             case "formula" -> { int n = listOrEmpty(e).size(); return new double[]{w > 0 ? w : Math.min(W - 100, 1000), h > 0 ? h : 170 + n * 50}; }
             case "pie" -> { double d = w > 0 ? w : (portrait ? 820 : 760); return new double[]{d, h > 0 ? h : Math.max(d * 0.55, 60 + listOrEmpty(e).size() * 56)}; }
@@ -709,9 +731,9 @@ public final class DiagramRenderer {
     public synchronized List<BufferedImage> renderIntro(Scene prev, Scene scene, String styleId, int frames, boolean vertical) {
         setCanvas(vertical);
         applyTheme(styleId);
-        Map<String, Rectangle2D> b1 = layout(scene.elements());
+        Map<String, Rectangle2D> b1 = layoutFor(scene);
         double[] cam1 = camera(scene, b1);
-        Map<String, Rectangle2D> b0 = prev == null ? Map.of() : layout(prev.elements());
+        Map<String, Rectangle2D> b0 = prev == null ? Map.of() : layoutFor(prev);
         double[] cam0 = prev == null ? cam1 : camera(prev, b0);
         java.util.Set<String> now = new java.util.HashSet<>();
         for (Element e : scene.elements()) now.add(e.id());
@@ -2083,7 +2105,7 @@ public final class DiagramRenderer {
         applyTheme(styleId);
         double secs = typingSeconds(scene, k);
         if (!blueprint || k <= 0 || secs <= 0) return List.of();
-        Map<String, Rectangle2D> b = layout(scene.elements());
+        Map<String, Rectangle2D> b = layoutFor(scene);
         double[] cam = camera(scene, b);
         int frames = (int) Math.ceil(secs * fps) + 3;
         List<BufferedImage> out = new ArrayList<>();
@@ -2425,11 +2447,32 @@ public final class DiagramRenderer {
         text(g, x, (float) (cx - widthOf(x, f, size) / 2), (float) baseline, f, size, c);
     }
 
+    /** Events down a vertical line (portrait frames): the dot on the left, the title and its detail beside it. */
+    private void timelineVertical(Graphics2D g, List<String> ev, int hl, Rectangle2D r) {
+        double x0 = r.getX() + 46, y0 = r.getY() + 30, y1 = r.getMaxY() - 30;
+        g.setColor(MUTED); g.setStroke(new BasicStroke(4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.draw(new Line2D.Double(x0, y0 - 14, x0, y1 + 8));
+        arrowHead(g, x0, y1 - 24, x0, y1 + 14, MUTED);
+        double step = ev.size() == 1 ? 0 : (y1 - y0 - 50) / (ev.size() - 1);
+        double tw = r.getWidth() - 130;
+        for (int i = 0; i < ev.size(); i++) {
+            double cy = y0 + i * step;
+            boolean on = hl == i + 1;
+            Color c = on ? HL : series()[i % 3];
+            g.setColor(c);
+            g.fill(new Ellipse2D.Double(x0 - (on ? 17 : 12), cy - (on ? 17 : 12), on ? 34 : 24, on ? 34 : 24));
+            text(g, fit(part(ev.get(i), 0), sansBold, 38, (int) tw), (float) (x0 + 48), (float) (cy + 6), sansBold, 38, c);
+            List<String> det = wrap(part(ev.get(i), 1), sans, 28, (int) tw);
+            for (int k = 0; k < Math.min(2, det.size()); k++) text(g, det.get(k), (float) (x0 + 48), (float) (cy + 46 + k * 34), sans, 28, TEXT);
+        }
+    }
+
     /** Events on a line: "1990|Web begins". style = number of the highlighted event. */
     private void timeline(Graphics2D g, Element e, Rectangle2D r) {
         List<String> ev = listOrEmpty(e);
         if (ev.isEmpty()) return;
         int hl = (int) parseNum(nz(e.style()));
+        if (portrait) { timelineVertical(g, ev, hl, r); return; }
         double y = r.getCenterY(), x0 = r.getX() + 40, x1 = r.getMaxX() - 40;
         g.setColor(MUTED); g.setStroke(new BasicStroke(3f));
         g.draw(new Line2D.Double(x0, y, x1, y));
@@ -2632,6 +2675,11 @@ public final class DiagramRenderer {
     private void analogy(Graphics2D g, Element e, Rectangle2D r) {
         double cw = r.getWidth() * 0.38, ch = r.getHeight() - (listOrEmpty(e).isEmpty() ? 0 : 70);
         Rectangle2D a = new Rectangle2D.Double(r.getX(), r.getY(), cw, ch), b = new Rectangle2D.Double(r.getMaxX() - cw, r.getY(), cw, ch);
+        if (portrait) {          // a tall frame: the two sides are stacked with the "is like" sign between them
+            double gap = 120, bh = (ch - gap) / 2;
+            a = new Rectangle2D.Double(r.getX(), r.getY(), r.getWidth(), bh);
+            b = new Rectangle2D.Double(r.getX(), r.getY() + bh + gap, r.getWidth(), bh);
+        }
         String[][] side = {{nz(e.title()), nz(e.icon()), "THE IDEA"}, {nz(e.text()), nz(e.extra()), "IS LIKE"}};
         Rectangle2D[] boxes = {a, b};
         for (int i = 0; i < 2; i++) {
@@ -3287,11 +3335,28 @@ public final class DiagramRenderer {
             RoundRectangle2D card = new RoundRectangle2D.Double(x, r.getY(), w, h, 48, 48);
             g.setColor(ok ? new Color(mix(GREEN.getRed(), 255, 0.72), mix(GREEN.getGreen(), 255, 0.72), mix(GREEN.getBlue(), 255, 0.72)) : Color.WHITE); g.fill(card);   // opaque over pictures
             g.setColor(ok ? GREEN : new Color(0xD9D2C3)); g.setStroke(new BasicStroke(ok ? 9f : 5f)); g.draw(card);
-            String ic = part(ops.get(i), 1).isEmpty() ? "sparkle" : part(ops.get(i), 1);
-            icon(g, ic, x + w / 2, r.getY() + h * 0.42, Math.min(w, h) * 0.5, series()[i % series().length]);
-            centered(g, part(ops.get(i), 0), x + w / 2, r.getY() + h - 30, kidOr(sansBold), 40, TEXT, w - 20);
+            String label = part(ops.get(i), 0), second = part(ops.get(i), 1);
+            boolean glyph = label.codePointCount(0, label.length()) <= 2 && !label.isBlank() && (colourNamed(second, null) != null || !hasIcon(second));   // a letter, digit or emoji (second = a colour or nothing): draw IT, big
+            if (glyph) {
+                Color gc = colourNamed(second, series()[i % series().length]);
+                int fs = (int) Math.min(w, h) * 6 / 10;
+                centered(g, label, x + w / 2, r.getY() + h / 2 + fs * 0.36, kidOr(sansBold), fs, gc, w - 20);
+            } else {
+                String ic = second.isEmpty() ? "sparkle" : second;
+                icon(g, ic, x + w / 2, r.getY() + h * 0.42, Math.min(w, h) * 0.5, series()[i % series().length]);
+                centered(g, label, x + w / 2, r.getY() + h - 30, kidOr(sansBold), 40, TEXT, w - 20);
+            }
             if (ok) icon(g, "check", x + w - 40, r.getY() + 40, 60, GREEN);
         }
+    }
+
+    /** A colour word ("red", "blue" ...) as a colour, otherwise {@code fallback}. */
+    private static Color colourNamed(String name, Color fallback) {
+        return switch (name == null ? "" : name.trim().toLowerCase(Locale.ROOT)) {
+            case "red" -> new Color(0xE5484D); case "blue" -> new Color(0x2F80ED); case "green" -> new Color(0x2FB344); case "yellow" -> new Color(0xF5B700);
+            case "orange" -> new Color(0xF2711C); case "purple", "violet" -> new Color(0x8E5CF7); case "pink" -> new Color(0xFF5D8F); case "brown" -> new Color(0x8D5A2B);
+            default -> fallback;
+        };
     }
 
     /** Big and small (ages 2-5): lines = ["big label", "small label"], icon = the thing. */

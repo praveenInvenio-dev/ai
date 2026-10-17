@@ -210,7 +210,7 @@ public final class TutorialPrompts {
      */
     public static String languageRule(String language) {
         if (english(language)) return "Narration language: English. ALL on-screen text in English.";
-        return "Narration language: " + language + " - ONLY the \"narration\" sentences are in " + language + " (natural, spoken, native script)."
+        return NarrationScript.rule(language) + "\nNarration language: " + language + " - ONLY the \"narration\" sentences are in " + language + " (natural, spoken, native script)."
                 + "\nEVERYTHING ELSE IS ENGLISH: heading, label, title, every element's text/title/lines/content, code, numbers and units."
                 + "\nAlso give \"captions\": an English translation of the narration, the SAME number of sentences, one English sentence per narration"
                 + " sentence, in the same order (they are shown as subtitles while that sentence is spoken).";

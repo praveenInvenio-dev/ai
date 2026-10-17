@@ -15,6 +15,7 @@ import com.aistorystudio.conceptexplainer.teaching.VoiceDirection;
 import com.aistorystudio.conceptexplainer.tutorial.DiagramRenderer;
 import com.aistorystudio.conceptexplainer.tutorial.DiagramSpec;
 import com.aistorystudio.conceptexplainer.tutorial.ShortCaptions;
+import com.aistorystudio.conceptexplainer.tutorial.NarrationScript;
 import com.aistorystudio.conceptexplainer.tutorial.TutorialPrompts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -197,9 +198,14 @@ public class ConceptExplainerService {
             renderSlide(job, s);
             job.setStage(base + ": recording the narration");
             makeNarration(job, s);
+        }
+        checkVoiceClarity(job);
+        if (isShort(job)) fitToBudget(job);       // all narration lengths are known now: a 60-second short must not come out at 93
+        for (ConceptExplainerJob.Scene s : job.getScenes()) {
+            String base = "Scene " + s.getSceneNumber() + "/" + job.getScenes().size() + " - " + s.getTitle();
             if (manimSpec(s) != null && s.getBackdropPath() != null) {
                 job.setStage(base + ": animating the maths (Manim)");
-                renderManimAnimation(job, s);
+                renderManimAnimation(job, s);          // after the time-fit, so the animation matches the final narration length
             }
             job.setStage(base + ": syncing the slide to the voice");
             buildClip(job, s);
@@ -957,6 +963,8 @@ public class ConceptExplainerService {
         int craftSeconds = (int) Math.round((size.minWords() + size.maxWords()) / 2.0 * 60.0 / (bd ? 175.0 : 155.0));
         boolean manimOn = job.isUseManim() && manimAvailable();        // animated maths scenes only when the service is really there
         job.setManimActive(manimOn);
+        if (job.isUseManim() && !manimOn && mathPhysics(job))
+            job.getWarnings().add("Animated maths / physics scenes (Manim) were NOT used: the Manim service is not running. Start it with: docker compose --profile manim up -d --build manim - then make the lesson again.");
         String model = blankToNull(job.getModel());
         String topic = TeachingPlanner.cleanTopic(job.getTopic());
         job.setStage(reel ? "Planning the 60-second short" : bd ? "Planning the real-world breakdown" : "Planning the lesson and its running example");
@@ -1046,6 +1054,10 @@ public class ConceptExplainerService {
             }
         }
         if (reel) words += ensureShortBookends(job, outline, topic);
+        if (!job.isReviewScript()) shortenToBudget(job, model);        // nobody reads the draft in this mode: keep it inside its word budget
+        suggestManimScenes(job, model);
+        enforceNarrationScript(job, model);           // Indian-language narration must be in its own script, or no voice can read it
+        fixRomanizedOnScreenText(job, model);         // on-screen text is English; romanised Hindi there is translated
         ensureEnglishCaptions(job, model);
         if (job.getScenes().size() < 3) throw new IllegalStateException("The lesson came back with fewer than 3 usable scenes - try again or pick another model.");
         reportVariety(job, bd ? null : approach, reel ? 4 : bd ? 6 : size.maxScenes() >= 30 ? 9 : size.maxScenes() >= 15 ? 6 : 4);
@@ -1057,7 +1069,222 @@ public class ConceptExplainerService {
         }
     }
 
+    // =================================================================== word budget, automatically
+
+    /**
+     * Without the review step nobody reads the script, so a draft that is far over its word budget is shortened here: the longest
+     * scenes are asked to give up the excess (same number of sentences, same facts). Two rounds at most; the review step stays optional.
+     */
+    private void shortenToBudget(ConceptExplainerJob job, String model) {
+        TutorialPrompts.Size size = sizeFor(job);
+        for (int round = 0; round < 2; round++) {
+            int words = 0;
+            for (ConceptExplainerJob.Scene s : job.getScenes()) for (String l : s.getSentences()) words += l.trim().isEmpty() ? 0 : l.trim().split("\\s+").length;
+            int excess = words - size.maxWords();
+            if (excess <= size.maxWords() * 0.06) return;
+            job.setStage("The script is " + excess + " words over its budget - shortening the longest scenes");
+            List<ConceptExplainerJob.Scene> longest = new ArrayList<>(job.getScenes());
+            longest.sort((a, b) -> b.getNarration().length() - a.getNarration().length());
+            longest = longest.subList(0, Math.min(4, longest.size()));
+            ArrayNode arr = mapper.createArrayNode();
+            for (ConceptExplainerJob.Scene s : longest) {
+                ObjectNode o = arr.addObject();
+                o.put("scene", s.getSceneNumber());
+                o.putArray("problems").add("too-long: shorten this scene");
+                ArrayNode na = o.putArray("narration");
+                s.getSentences().forEach(na::add);
+            }
+            int changed = 0;
+            try {
+                JsonNode out = readJson(gateway.llm().generateStructured(TutorialPrompts.doctorSystemPrompt(), TutorialPrompts.doctorUserPrompt(arr.toString(), excess), model));
+                for (JsonNode sc : out.path("scenes")) {
+                    for (ConceptExplainerJob.Scene s : longest) {
+                        if (s.getSceneNumber() != sc.path("scene").asInt(-1)) continue;
+                        List<String> fixed = rawSentences(sc.path("narration"));
+                        if (fixed.size() == s.getSentences().size()) {
+                            s.setSentences(new ArrayList<>(fixed));
+                            s.setNarration(String.join(" ", fixed));
+                            s.setCaptions(new ArrayList<>());
+                            changed++;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Automatic shortening failed: {}", e.getMessage());
+            }
+            if (changed == 0) return;
+        }
+    }
+
+    // =================================================================== Indian-language script guard
+
+    /**
+     * Hindi (or Marathi, Kannada ...) narration must be written in its own script. A small local model often answers in Latin letters
+     * ("Ek cricket ball ke haath se ..."); a Hindi voice reads that as English-sounding gibberish. Scenes with romanised lines are rewritten
+     * by the model in the right script (two tries, same number of lines); anything that still fails is reported.
+     */
+    private void enforceNarrationScript(ConceptExplainerJob job, String model) {
+        String lang = job.getLanguage();
+        if (!NarrationScript.expectsNativeScript(lang)) return;
+        String script = NarrationScript.scriptName(lang);
+        for (int attempt = 0; attempt < 2; attempt++) {
+            List<ConceptExplainerJob.Scene> bad = new ArrayList<>();
+            for (ConceptExplainerJob.Scene sc : job.getScenes()) if (NarrationScript.countRomanized(lang, sc.getSentences()) > 0) bad.add(sc);
+            if (bad.isEmpty()) return;
+            job.setStage("Rewriting the " + lang + " narration in " + script + " script (" + bad.size() + " scene(s) were in Latin letters)");
+            for (int from = 0; from < bad.size(); from += 6) {
+                List<ConceptExplainerJob.Scene> batch = bad.subList(from, Math.min(bad.size(), from + 6));
+                ArrayNode arr = mapper.createArrayNode();
+                for (ConceptExplainerJob.Scene sc : batch) {
+                    ObjectNode o = arr.addObject();
+                    o.put("scene", sc.getSceneNumber());
+                    ArrayNode lines = o.putArray("lines");
+                    sc.getSentences().forEach(lines::add);
+                }
+                try {
+                    JsonNode out = readJson(gateway.llm().generateStructured(NarrationScript.repairSystemPrompt(lang), NarrationScript.repairUserPrompt(arr.toString()), model)).path("scenes");
+                    for (JsonNode n : out) {
+                        int no = n.path("scene").asInt(-1);
+                        for (ConceptExplainerJob.Scene sc : batch) {
+                            if (sc.getSceneNumber() != no) continue;
+                            List<String> lines = rawSentences(n.path("lines"));
+                            if (lines.size() == sc.getSentences().size() && NarrationScript.countRomanized(lang, lines) == 0) {
+                                sc.setSentences(new ArrayList<>(lines));
+                                sc.setNarration(String.join(" ", lines));
+                                sc.setCaptions(new ArrayList<>());
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Script repair for {} failed: {}", lang, e.getMessage());
+                }
+            }
+        }
+        long still = job.getScenes().stream().filter(sc -> NarrationScript.countRomanized(lang, sc.getSentences()) > 0).count();
+        if (still > 0) job.getWarnings().add(still + " scene(s) are still written in Latin letters instead of " + script + " - a " + lang + " voice cannot pronounce them properly. "
+                + "Use a larger language model, or edit those lines at the script review step.");
+    }
+
+    /** On-screen text is meant to be English; romanised Hindi / Marathi that slipped in (a hook callout quoting the narration) is translated. */
+    private void fixRomanizedOnScreenText(ConceptExplainerJob job, String model) {
+        if (TutorialPrompts.english(job.getLanguage())) return;
+        List<ConceptExplainerJob.Scene> owners = new ArrayList<>();
+        List<ObjectNode> roots = new ArrayList<>();
+        List<String> texts = new ArrayList<>();
+        List<java.util.function.Consumer<String>> setters = new ArrayList<>();
+        List<Integer> ownerIndex = new ArrayList<>();
+        try {
+            for (ConceptExplainerJob.Scene sc : job.getScenes()) {
+                if (sc.getPlanJson() == null) continue;
+                JsonNode parsed = mapper.readTree(sc.getPlanJson());
+                if (!(parsed instanceof ObjectNode root)) continue;
+                int oi = owners.size();
+                owners.add(sc);
+                roots.add(root);
+                for (String f : List.of("heading", "label")) {
+                    if (root.path(f).isTextual() && NarrationScript.looksRomanizedIndic(root.path(f).asText())) {
+                        texts.add(root.path(f).asText()); ownerIndex.add(oi);
+                        final String fld = f;
+                        setters.add(t -> root.put(fld, t));
+                    }
+                }
+                for (JsonNode el : root.path("elements")) {
+                    if (!(el instanceof ObjectNode eo)) continue;
+                    for (String f : List.of("text", "title", "label", "caption", "content")) {
+                        if (eo.path(f).isTextual() && NarrationScript.looksRomanizedIndic(eo.path(f).asText())) {
+                            texts.add(eo.path(f).asText()); ownerIndex.add(oi);
+                            final String fld = f;
+                            setters.add(t -> eo.put(fld, t));
+                        }
+                    }
+                    if (eo.path("lines").isArray()) {
+                        ArrayNode ln = (ArrayNode) eo.path("lines");
+                        for (int i = 0; i < ln.size(); i++) {
+                            if (ln.get(i).isTextual() && NarrationScript.looksRomanizedIndic(ln.get(i).asText())) {
+                                texts.add(ln.get(i).asText()); ownerIndex.add(oi);
+                                final int idx = i;
+                                setters.add(t -> ln.set(idx, t));
+                            }
+                        }
+                    }
+                }
+            }
+            if (texts.isEmpty()) return;
+            job.setStage("Translating on-screen text that was written in romanised " + job.getLanguage());
+            ArrayNode in = mapper.createArrayNode();
+            texts.forEach(in::add);
+            JsonNode out = readJson(gateway.llm().generateStructured(NarrationScript.translateOnScreenSystemPrompt(), "Texts:\n" + in, model)).path("texts");
+            int done = 0;
+            if (out.isArray() && out.size() == texts.size()) {
+                for (int i = 0; i < texts.size(); i++) {
+                    String t = out.get(i).asText("").trim();
+                    if (!t.isEmpty() && !NarrationScript.looksRomanizedIndic(t)) { setters.get(i).accept(t); done++; }
+                }
+            }
+            java.util.Set<Integer> touched = new java.util.HashSet<>(ownerIndex);
+            for (int oi : touched) owners.get(oi).setPlanJson(roots.get(oi).toString());
+            if (done < texts.size()) job.getWarnings().add((texts.size() - done) + " on-screen text(s) are still in romanised " + job.getLanguage() + " - they should be English.");
+        } catch (Exception e) {
+            log.warn("On-screen text repair failed: {}", e.getMessage());
+            job.getWarnings().add("Some on-screen text may be in romanised " + job.getLanguage() + " (the automatic English rewrite failed).");
+        }
+    }
+
     // =================================================================== animated maths / physics (Manim)
+
+    private static boolean mathPhysics(ConceptExplainerJob job) {
+        String subj = job.getSubject() == null ? "" : job.getSubject().toLowerCase(Locale.ROOT);
+        return subj.contains("physic") || subj.contains("math");
+    }
+
+    /**
+     * Physics and maths lessons should get real animations, but a small model rarely volunteers the optional "manim" object. When the
+     * service is up and the draft has none, ONE focused question picks the scenes (at most a quarter of them) and the template and numbers
+     * for each; every answer is validated against the service like any other, and a bad one is simply dropped.
+     */
+    private void suggestManimScenes(ConceptExplainerJob job, String model) {
+        if (!job.isManimActive() || !mathPhysics(job)) return;
+        for (ConceptExplainerJob.Scene s : job.getScenes()) if (manimSpec(s) != null) return;
+        int max = Math.max(1, job.getScenes().size() / 4);
+        job.setStage("Choosing the scenes that deserve an animated diagram");
+        try {
+            ArrayNode arr = mapper.createArrayNode();
+            for (ConceptExplainerJob.Scene s : job.getScenes()) {
+                ObjectNode o = arr.addObject();
+                o.put("scene", s.getSceneNumber());
+                o.put("title", s.getTitle() == null ? "" : s.getTitle());
+                o.put("section", s.getSectionType() == null ? "" : s.getSectionType());
+                String n = s.getNarration() == null ? "" : s.getNarration();
+                o.put("narration", n.length() > 260 ? n.substring(0, 260) : n);
+            }
+            String system = "You choose which scenes of a physics / maths video deserve a real animated diagram (Manim). Pick AT MOST " + max + " scene(s): the ones where a moving "
+                    + "graph, vectors, a trajectory, a wave or algebra steps teach the idea. Skip the hook, quiz, recap and purely verbal scenes. The numbers in the params must be "
+                    + "correct for what the narration says. Return JSON only: {\"manim\":[{\"scene\":N,\"template\":\"...\",\"params\":{...}}]}\n\n" + TutorialPrompts.manimBlock();
+            JsonNode out = readJson(gateway.llm().generateStructured(system, "Scenes:\n" + arr, model)).path("manim");
+            int added = 0;
+            for (JsonNode sug : out) {
+                if (added >= max) break;
+                int no = sug.path("scene").asInt(-1);
+                if (no < 1 || no > job.getScenes().size()) continue;
+                ObjectNode wrap = mapper.createObjectNode();
+                ObjectNode m = wrap.putObject("manim");
+                m.put("template", sug.path("template").asText(""));
+                m.set("params", sug.path("params"));
+                ObjectNode mz = manimFor(job, wrap, no);                     // validated by the service; a bad formula is dropped with a note
+                if (mz == null) continue;
+                ConceptExplainerJob.Scene sc = job.getScenes().get(no - 1);
+                JsonNode parsed = mapper.readTree(sc.getPlanJson() == null ? "{}" : sc.getPlanJson());
+                if (!(parsed instanceof ObjectNode root)) continue;
+                root.set("manim", mz);
+                root.putArray("elements");                                    // the animation fills the frame; the heading titles it
+                sc.setPlanJson(root.toString());
+                added++;
+            }
+            if (added > 0) job.getWarnings().add(added + " scene(s) were turned into animated diagrams (Manim).");
+        } catch (Exception e) {
+            log.warn("Manim suggestions failed: {}", e.getMessage());
+        }
+    }
 
     /** The scene's "manim" request, checked against the sidecar NOW (a bad formula is dropped with a note, before any render time). */
     private ObjectNode manimFor(ConceptExplainerJob job, JsonNode sc, int sceneNo) {
@@ -1147,11 +1374,85 @@ public class ConceptExplainerService {
         }
     }
 
+    /** A note when the finished narration is still dull (the polish step already lifts a dull voice; this catches what it could not fix). */
+    private void checkVoiceClarity(ConceptExplainerJob job) {
+        List<Double> ratios = new ArrayList<>();
+        for (ConceptExplainerJob.Scene s : job.getScenes()) {
+            try {
+                if (s.getAudioPath() == null) continue;
+                double r = com.aistorystudio.qa.VoiceQa.highRatioDb(Files.readAllBytes(Path.of(s.getAudioPath())));
+                if (!Double.isNaN(r)) ratios.add(r);
+            } catch (Exception ignored) { }
+        }
+        if (ratios.size() < 2) return;
+        java.util.Collections.sort(ratios);
+        double median = ratios.get(ratios.size() / 2);
+        if (median < com.aistorystudio.qa.VoiceQa.MUFFLED_BELOW_DB)
+            job.getWarnings().add(String.format(Locale.ROOT, "The narration sounds muffled (%.0f dB of 4-8 kHz against the voice body; a clear voice is about -15 to -20). Voice requested: %s. "
+                    + "A different voice (for Hindi and other Indian languages the Edge voices Madhur / Swara are the clearest) usually fixes it.", median, job.getVoice() == null ? "default" : job.getVoice()));
+    }
+
+    private static final double SHORT_BUDGET_SECONDS = 62;
+
+    /**
+     * A reel is meant to be about a minute. The word budget alone cannot promise that (gaps, cards, the voice's real pace), so once every
+     * scene's narration is recorded the total is measured; if it is clearly over, every scene's audio is sped up by the same factor
+     * (pitch preserved, at most 1.3x) and its timings rescaled.
+     */
+    private void fitToBudget(ConceptExplainerJob job) {
+        double total = 0;
+        for (ConceptExplainerJob.Scene s : job.getScenes()) total += s.getDurationSeconds();
+        total -= Math.max(0, job.getScenes().size() - 1) * fade(job);          // the cross-fades overlap
+        if (total <= SHORT_BUDGET_SECONDS * 1.06) return;
+        double factor = Math.min(1.3, total / SHORT_BUDGET_SECONDS);
+        job.setStage(String.format(Locale.ROOT, "Fitting the short to about a minute (it was %.0f s): narration %.0f%% faster", total, (factor - 1) * 100));
+        int failed = 0;
+        for (ConceptExplainerJob.Scene s : job.getScenes()) {
+            try { retimeScene(job, s, factor); } catch (Exception e) { failed++; log.warn("Retiming scene {} failed: {}", s.getSceneNumber(), e.getMessage()); }
+        }
+        double after = 0;
+        for (ConceptExplainerJob.Scene s : job.getScenes()) after += s.getDurationSeconds();
+        after -= Math.max(0, job.getScenes().size() - 1) * fade(job);
+        job.getWarnings().add(String.format(Locale.ROOT, "The short was %.0f s, so the narration was sped up %.0f%% to bring it to about %.0f s.%s", total, (factor - 1) * 100, after,
+                failed > 0 ? " (" + failed + " scene(s) could not be sped up.)" : ""));
+    }
+
+    /** Speeds one scene's recorded audio up by {@code factor} (pitch preserved) and rescales its sentence timings and slide steps. */
+    private void retimeScene(ConceptExplainerJob job, ConceptExplainerJob.Scene s, double factor) throws IOException, InterruptedException {
+        if (s.getAudioPath() == null || factor <= 1.005) return;
+        Path tmp = Files.createTempFile("retime-", ".wav");
+        try {
+            String[] filters = {String.format(Locale.ROOT, "rubberband=tempo=%.4f:formant=preserved:pitchq=quality:transients=smooth", factor), String.format(Locale.ROOT, "atempo=%.4f", factor)};
+            boolean ok = false;
+            for (String f : filters) {
+                try {
+                    ffmpeg(new ArrayList<>(List.of("ffmpeg", "-nostdin", "-y", "-i", s.getAudioPath(), "-af", f, "-ar", "48000", "-ac", "2", tmp.toString())));
+                    if (Files.size(tmp) > 1000) { ok = true; break; }
+                } catch (IOException e) { /* rubberband missing in this ffmpeg build: try atempo */ }
+            }
+            if (!ok) throw new IOException("no time-stretch filter worked");
+            s.bumpAudioVersion();
+            Path out = storage.store(dir(job) + "/audio/scene-" + num(s) + "-v" + s.getAudioVersion() + ".wav", Files.readAllBytes(tmp));
+            s.setAudioPath(out.toString());
+            double speech = media.probeDurationSeconds(out);
+            List<Double> starts = new ArrayList<>(), lengths = new ArrayList<>();
+            for (double v : s.getSentenceStarts()) starts.add(v / factor);
+            for (double v : s.getSentenceLengths()) lengths.add(v / factor);
+            double fallback = (starts.isEmpty() ? 0 : starts.get(starts.size() - 1) + lengths.get(lengths.size() - 1));
+            s.setDurationSeconds((speech > 0 ? speech : fallback) + tail(job));
+            s.setSentenceTiming(starts, lengths);
+            s.setStepTimes(stepTimes(starts, s.getStepPaths().size(), speech > 0 ? speech : fallback, job));
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
+    }
+
     /** Pause after sentence i: the larger of the format's normal gap and the planned silence beat (a beat never shortens a gap). */
     private double gapAt(ConceptExplainerJob job, ConceptExplainerJob.Scene s, int i) {
         double base = gap(job, s.getSentences().get(i));
         List<Double> p = s.getPauseAfter();
-        return Math.max(base, i < p.size() ? p.get(i) : 0.0);
+        double planned = i < p.size() ? p.get(i) : 0.0;
+        return Math.max(base, isShort(job) ? planned * 0.3 : planned);       // a 60-second short cannot afford the reveal pauses of a lesson
     }
 
     /** The planned stress words that actually occur in this sentence. */

@@ -251,6 +251,32 @@ def audio_rms_db(wav_bytes: bytes) -> float:
         return -120.0
 
 
+def apply_tempo(wav_bytes: bytes, speed: float) -> bytes:
+    """
+    Pitch-preserving speed change (speed 0.86 = 14 % slower, 1.1 = 10 % faster). The lessons ask for it (calm toddler pace, brisk reels),
+    but this engine has no speed control of its own, so without this step the request was silently ignored.
+    rubberband keeps the voice's formants (it still sounds like the same person); atempo is the fallback when ffmpeg lacks rubberband.
+    The unchanged audio is returned on any failure: a voice at the wrong speed is better than no voice.
+    """
+    import subprocess
+    try:
+        speed = float(speed)
+    except (TypeError, ValueError):
+        return wav_bytes
+    speed = max(0.6, min(1.6, speed))
+    if abs(speed - 1.0) < 0.015:
+        return wav_bytes
+    for flt in ("rubberband=tempo=%.4f:formant=preserved:pitchq=quality:transients=smooth" % speed, "atempo=%.4f" % speed):
+        try:
+            p = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", "pipe:0", "-af", flt, "-f", "wav", "pipe:1"],
+                               input=wav_bytes, capture_output=True, timeout=90)
+            if p.returncode == 0 and len(p.stdout) > 1000:
+                return p.stdout
+        except Exception:  # noqa: BLE001
+            pass
+    return wav_bytes
+
+
 def shift_pitch(wav_bytes: bytes, pitch: float) -> bytes:
     """Same approach as tts/server.py's shift_pitch: post-process with a
     resample trick rather than a model-native pitch parameter, since
@@ -446,6 +472,7 @@ def synthesize():
     if rms_db < -48.0:
         log.error("Rejecting effectively silent Chatterbox output: %.1f dBFS", rms_db)
         return jsonify({"error": f"Chatterbox generated effectively silent audio ({rms_db:.1f} dBFS). The voice reference/model generation failed; no silent sample was returned."}), 502
+    wav_bytes = apply_tempo(wav_bytes, speed)       # the request's speed was parsed above but never used before
     if abs(pitch - 1.0) > 0.01:
         wav_bytes = shift_pitch(wav_bytes, pitch)
     return Response(wav_bytes, mimetype="audio/wav", headers={"Content-Disposition": 'inline; filename="voice.wav"'})

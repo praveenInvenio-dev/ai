@@ -1707,10 +1707,16 @@ public class FFmpegProcessor implements MediaProcessor {
             args.add("-i");
             args.add(in.toAbsolutePath().toString());
             args.add("-af");
+            // A dull voice (a vocoder that stopped near 4 kHz, a muffled clone) gets a treble shelf sized to its measured deficit; a clear voice is left alone.
+            double hiRatio = com.aistorystudio.qa.VoiceQa.highRatioDb(wavBytes);
+            double clarity = com.aistorystudio.qa.VoiceQa.correctionDb(hiRatio);
+            if (clarity > 0.05) log.info("Voice is dull ({} dB of 4-8 kHz vs the body): adding a +{} dB treble shelf", String.format(java.util.Locale.ROOT, "%.1f", hiRatio), String.format(java.util.Locale.ROOT, "%.1f", clarity));
+            String clarityFilter = clarity > 0.05 ? String.format(java.util.Locale.ROOT, "treble=g=%.2f:f=4000,", clarity) : "";
             args.add("aresample=48000,aformat=channel_layouts=stereo,"
                     + "highpass=f=75,"
                     + "equalizer=f=250:t=q:w=1:g=-1.5,"
                     + "equalizer=f=3300:t=q:w=1:g=1.5,"
+                    + clarityFilter
                     + "acompressor=threshold=-20dB:ratio=2.5:attack=15:release=140:makeup=1.5,"
                     + "deesser=i=0.35:m=0.5:f=0.5:s=o,"
                     + "loudnorm=I=-16:TP=-1.0:LRA=7,alimiter=limit=0.97");

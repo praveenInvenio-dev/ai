@@ -265,7 +265,33 @@ def synthesize():
 
     buffer = io.BytesIO()
     sf.write(buffer, audio, samplerate=SAMPLE_RATE, format="WAV", subtype="PCM_16")
-    return Response(buffer.getvalue(), mimetype="audio/wav")
+    return Response(apply_tempo(buffer.getvalue(), body.get("speed")), mimetype="audio/wav")   # IndicF5 has no speed control of its own
+
+
+def apply_tempo(wav_bytes: bytes, speed: float) -> bytes:
+    """
+    Pitch-preserving speed change (speed 0.86 = 14 % slower, 1.1 = 10 % faster). The lessons ask for it (calm toddler pace, brisk reels),
+    but this engine has no speed control of its own, so without this step the request was silently ignored.
+    rubberband keeps the voice's formants (it still sounds like the same person); atempo is the fallback when ffmpeg lacks rubberband.
+    The unchanged audio is returned on any failure: a voice at the wrong speed is better than no voice.
+    """
+    import subprocess
+    try:
+        speed = float(speed)
+    except (TypeError, ValueError):
+        return wav_bytes
+    speed = max(0.6, min(1.6, speed))
+    if abs(speed - 1.0) < 0.015:
+        return wav_bytes
+    for flt in ("rubberband=tempo=%.4f:formant=preserved:pitchq=quality:transients=smooth" % speed, "atempo=%.4f" % speed):
+        try:
+            p = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", "pipe:0", "-af", flt, "-f", "wav", "pipe:1"],
+                               input=wav_bytes, capture_output=True, timeout=90)
+            if p.returncode == 0 and len(p.stdout) > 1000:
+                return p.stdout
+        except Exception:  # noqa: BLE001
+            pass
+    return wav_bytes
 
 
 def _fix_vocoder_weights(model, hf_token):
