@@ -417,9 +417,9 @@ services:
   # re-resolve them.
     networks:
       - ai-story-studio-net
-  # Server-side production renderer for Concept Explainer. Uses actual Three.js,
-  # Rive runtime, and Motion Canvas CLI; backend records the real renderer only
-  # after this service returns exported PNG frames successfully.
+  # Server-side renderer for Concept Explainer. Three.js and Rive can export frames.
+  # Motion Canvas headless export is currently disabled until a supported export harness
+  # is integrated; failures are reported so the backend can use its native fallback.
   visual-renderer:
     build:
       context: ./visual-renderer
