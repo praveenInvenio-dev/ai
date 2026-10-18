@@ -67,7 +67,7 @@ public class VideoSequenceService {
 
     private static final Logger log = LoggerFactory.getLogger(VideoSequenceService.class);
     private static final Set<String> ENGINES = Set.of("WAN_2_2", "WAN_2_2_14B", "MINIMAX_H3");
-    private static final int MAX_SCENES = 12;
+    private static final int MAX_SCENES = 72;
     private static final String ROOT = "video-sequences";
     private final ProviderGateway providerGateway;
     private final StorageProvider storage;
@@ -243,6 +243,14 @@ public class VideoSequenceService {
     public VideoSequence createFromEpisode(UUID episodeId, String engine, Double secondsPerScene, String orientation,
                                            Double crossfadeSeconds, String continuity, Boolean reviewKeyframes,
                                            String speechEngine) {
+        return createFromEpisode(episodeId, engine, secondsPerScene, orientation, crossfadeSeconds,
+                continuity, reviewKeyframes, speechEngine, null);
+    }
+
+    /** Optional uploaded/locked character references take precedence for identity consistency in this production. */
+    public VideoSequence createFromEpisode(UUID episodeId, String engine, Double secondsPerScene, String orientation,
+                                           Double crossfadeSeconds, String continuity, Boolean reviewKeyframes,
+                                           String speechEngine, List<UUID> referenceCharacterIds) {
         Episode ep = episodeRepository.findById(episodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Story not found: " + episodeId));
         List<Scene> dbScenes = sceneRepository.findByEpisodeIdOrderByOrderIndexAsc(episodeId);
@@ -272,8 +280,18 @@ public class VideoSequenceService {
         s.speechEngine = H3SceneRenderer.SpeechEngine.parse(speechEngine).name();
 
         List<Character> chars = new ArrayList<>();
-        if (ep.getUniverseId() != null) chars.addAll(characterRepository.findByUniverseId(ep.getUniverseId()));
-        else chars.addAll(characterRepository.findByEpisodeId(ep.getId()));
+        if (referenceCharacterIds != null && !referenceCharacterIds.isEmpty()) {
+            // Explicit uploaded reference is the identity anchor for this video.
+            // Avoid adding a generated same-role story character beside it, which can cause duplicate protagonists.
+            for (UUID characterId : referenceCharacterIds) {
+                Character c = characterRepository.findById(characterId).orElseThrow(
+                        () -> new IllegalArgumentException("Character reference not found: " + characterId));
+                if (chars.stream().noneMatch(existing -> existing.getId().equals(c.getId()))) chars.add(c);
+            }
+        } else {
+            if (ep.getUniverseId() != null) chars.addAll(characterRepository.findByUniverseId(ep.getUniverseId()));
+            else chars.addAll(characterRepository.findByEpisodeId(ep.getId()));
+        }
         s.characterIds.addAll(chars.stream().map(Character::getId).toList());
 
         int i = 0;

@@ -55,6 +55,12 @@ public class ConceptExplainerJob {
         private int imageVersion, audioVersion;
         // adaptive teaching framework: why this scene exists and how it should sound
         private String sectionType, learningObjective, visualDescription, voiceEmotion, voicePace, voiceDelivery;
+        /** Topic-aware visual routing: preferred engine and concise reason, shown in scene diagnostics. */
+        private String visualEngine = "MOTION_CANVAS", visualEngineReason = "Default 2D explanatory animation";
+        public String getVisualEngine() { return visualEngine; }
+        public void setVisualEngine(String v) { visualEngine = v == null ? "NATIVE_DIAGRAM" : v; }
+        public String getVisualEngineReason() { return visualEngineReason; }
+        public void setVisualEngineReason(String v) { visualEngineReason = v == null ? "" : v; }
 
         public String getSectionType() { return sectionType; }
         public void setSectionType(String v) { sectionType = v; }

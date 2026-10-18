@@ -1,7 +1,7 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ApiService, VideoGenerationStatus, VideoGenerationJob, CameraPreset } from '../../services/api.service';
+import { ApiService, VideoGenerationStatus, VideoGenerationJob, CameraPreset, SequenceView } from '../../services/api.service';
 import { ActivatedRoute } from '@angular/router';
 import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
 
@@ -20,10 +20,9 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
     <header class="page-head">
       <h1>Video generation</h1>
       <p class="muted">
-        Upload a still image and describe the motion (image to video), or describe a whole
-        scene from scratch (text to video). This calls the same
-        local AI video (Wan/ComfyUI) pipeline the story production pipeline uses -
-        it needs a real GPU with the Wan models installed to actually run.
+        Animate a still image, generate a single scene from text, or create a complete story.
+        Story mode reuses the Story Engine and MiniMax H3 pipeline to plan narration, dialogue,
+        camera directions, SFX and music, render scene clips, and merge the final video.
       </p>
     </header>
 
@@ -37,7 +36,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
     </section>
 
     <section class="panel" *ngIf="statusLoaded && status?.available">
-      <div class="field workflow-field">
+      <div class="field workflow-field" *ngIf="mode !== 'story'">
         <label for="workflow">Generation workflow</label>
         <select id="workflow" [(ngModel)]="workflow" (ngModelChange)="clampDuration()">
           <option value="WAN_2_2">Wan 2.2 (ComfyUI)</option>
@@ -52,8 +51,96 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
         <div class="mode-toggle">
           <button type="button" class="pill" [class.selected]="mode === 'i2v'" (click)="setMode('i2v')">Image to video</button>
           <button type="button" class="pill" [class.selected]="mode === 't2v'" (click)="setMode('t2v')">Text to video</button>
+          <button type="button" class="pill story-pill" [class.selected]="mode === 'story'" (click)="setMode('story')">Story to video · H3</button>
         </div>
       </div>
+
+      <section class="story-production" *ngIf="mode === 'story'">
+        <div class="story-production-head">
+          <strong>AI story production</strong>
+          <span class="muted small">Script → storyboard → character-consistent keyframes → H3 shots → final merge</span>
+        </div>
+        <p class="muted">
+          Reuses the existing Story Engine for pre-production. It creates narration, dialogue, scene visuals,
+          camera and lighting directions, ambience, sound effects and music cues. Each scene targets roughly
+          five seconds; H3 renders the scenes and the app merges them into one video.
+        </p>
+        <div class="story-options">
+          <div class="field">
+            <label for="storyDuration">Story length</label>
+            <select id="storyDuration" [(ngModel)]="storyDurationSeconds">
+              <option [ngValue]="30">30-second story · about 6 scenes</option>
+              <option [ngValue]="60">1-minute story · about 12 scenes</option>
+              <option [ngValue]="180">3-minute story · about 36 scenes</option>
+              <option [ngValue]="300">5-minute story · about 60 scenes</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="storyGenre">Story genre</label>
+            <select id="storyGenre" [(ngModel)]="storyGenre">
+              <option value="Cinematic adventure">Cinematic adventure</option>
+              <option value="Fantasy">Fantasy</option>
+              <option value="Comedy">Comedy</option>
+              <option value="Emotional drama">Emotional drama</option>
+              <option value="Action thriller">Action thriller</option>
+              <option value="Educational story">Educational story</option>
+              <option value="Children's adventure">Children's adventure</option>
+              <option value="Science fiction">Science fiction</option>
+              <option value="Folklore and mythology">Folklore and mythology</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="storyLanguage">Language</label>
+            <select id="storyLanguage" [(ngModel)]="storyLanguage">
+              <option value="English">English</option>
+              <option value="Indian English">Indian English</option>
+              <option value="Hindi">Hindi</option>
+              <option value="Kannada">Kannada</option>
+              <option value="Telugu">Telugu</option>
+              <option value="Tamil">Tamil</option>
+              <option value="Malayalam">Malayalam</option>
+              <option value="Marathi">Marathi</option>
+              <option value="Bengali">Bengali</option>
+              <option value="Hinglish">Hinglish</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="storyVisualStyle">Visual style</label>
+            <select id="storyVisualStyle" [(ngModel)]="storyVisualStyle">
+              <option value="cinematic 3D animation">Cinematic 3D animation</option>
+              <option value="photorealistic cinematic">Photorealistic cinematic</option>
+              <option value="stylized animated film">Stylized animated film</option>
+              <option value="anime cinematic">Anime cinematic</option>
+              <option value="storybook illustration">Storybook illustration</option>
+              <option value="grounded live-action film">Grounded live-action film</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="storyNarrationTrack">Narration style</label>
+            <select id="storyNarrationTrack" [(ngModel)]="storyNarrationTrack">
+              <option value="STORY_DRIVEN_MENTOR">Story-driven narrator · emotional and cinematic</option>
+              <option value="HUMOROUS_EXPLAINER">Humorous narrator · playful, with tasteful humor</option>
+              <option value="LOGIC_FIRST_ANALYST">Logic-first narrator · clear cause and effect</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="storyOrientation">Video format</label>
+            <select id="storyOrientation" [(ngModel)]="storyOrientation">
+              <option value="vertical">Vertical · Reels / Shorts</option>
+              <option value="horizontal">Landscape · YouTube</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="characterReference">Upload main character reference (optional)</label>
+          <input id="characterReference" type="file" accept="image/png,image/jpeg,image/webp"
+                 (change)="onCharacterReferenceSelected($event)">
+          <img *ngIf="characterPreviewUrl" [src]="characterPreviewUrl" class="preview character-preview" alt="Uploaded character reference">
+          <label for="characterName">Character name</label>
+          <input id="characterName" type="text" [(ngModel)]="storyCharacterName" placeholder="e.g. Advik">
+          <p class="muted small">The image is saved as a locked character reference and reused for scene keyframes. Reference conditioning improves consistency, but cannot guarantee pixel-identical faces in every frame.</p>
+        </div>
+      </section>
 
       <div class="field" *ngIf="mode === 'i2v'">
         <label>Use an image from a story (optional)</label>
@@ -87,11 +174,14 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
       </div>
 
       <div class="field">
-        <label for="prompt">{{ mode === 't2v' ? 'Scene description' : 'Motion prompt' }}</label>
+        <label for="prompt">{{ mode === 'story' ? 'Story idea / premise' : mode === 't2v' ? 'Scene description' : 'Motion prompt' }}</label>
         <textarea id="prompt" rows="3" [(ngModel)]="prompt"
-                  [placeholder]="mode === 't2v'
-                    ? 'e.g. a small cartoon rabbit waving in a sunny forest clearing, butterflies drifting past'
-                    : 'e.g. the character waves and smiles, gentle camera push-in'"></textarea>
+                  [placeholder]="mode === 'story'
+                    ? 'Describe the characters, goal, conflict, setting and emotional ending. Example: Two siblings at a festival rescue a lost child with help from a mysterious guardian.'
+                    : mode === 't2v'
+                      ? 'e.g. a small cartoon rabbit waving in a sunny forest clearing, butterflies drifting past'
+                      : 'e.g. the character waves and smiles, gentle camera push-in'"></textarea>
+        <ng-container *ngIf="mode !== 'story'">
         <label for="cameraPreset" style="margin-top:.5rem">Camera preset <span class="muted small">(Motion &amp; effects studio)</span></label>
         <select id="cameraPreset" [(ngModel)]="cameraPresetId">
           <option value="">None - use only the prompt</option>
@@ -99,15 +189,16 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
             <option *ngFor="let p of presetsIn(cat)" [value]="p.id">{{ p.name }}</option>
           </optgroup>
         </select>
+        </ng-container>
       </div>
 
-      <div class="field">
+      <div class="field" *ngIf="mode !== 'story'">
         <label for="negative">Negative prompt (optional)</label>
         <input id="negative" type="text" [(ngModel)]="negativePrompt"
                placeholder="e.g. blurry, distorted, extra limbs">
       </div>
 
-      <div class="field">
+      <div class="field" *ngIf="mode !== 'story'">
         <label for="duration">
           Duration &mdash; {{ durationSeconds.toFixed(1) }}s
           (max {{ maxSeconds().toFixed(1) }}s for this engine)
@@ -117,7 +208,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
                step="0.5" [(ngModel)]="durationSeconds">
       </div>
 
-      <div class="field audio-panel" *ngIf="workflow === 'MINIMAX_H3'">
+      <div class="field audio-panel" *ngIf="workflow === 'MINIMAX_H3' && mode !== 'story'">
         <label>Native H3 speech &amp; sound</label>
         <label class="check" style="display:flex;gap:.5rem;align-items:flex-start">
           <input type="checkbox" [(ngModel)]="useIndicTts">
@@ -133,11 +224,11 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
         <textarea id="audioDirection" rows="4" [(ngModel)]="audioDirection" placeholder="Ambience: ...&#10;Sound effects: ...&#10;Music: mood, intensity 0.3"></textarea>
         <p class="muted small" *ngIf="loadedSceneId && !sceneAudioEdited">Using the scene's original line order (narration and dialogue interleaved).</p>
       </div>
-      <div class="field" *ngIf="workflow !== 'MINIMAX_H3'">
+      <div class="field" *ngIf="workflow !== 'MINIMAX_H3' && mode !== 'story'">
         <label for="narration">Narration (optional)</label>
         <textarea id="narration" rows="2" [(ngModel)]="narrationText" placeholder="Add a voiceover track to the generated video"></textarea>
       </div>
-      <div class="field" *ngIf="narrationText && workflow !== 'MINIMAX_H3'">
+      <div class="field" *ngIf="narrationText && workflow !== 'MINIMAX_H3' && mode !== 'story'">
         <label for="voice">Voice</label>
         <select id="voice" [(ngModel)]="voiceProfileId">
           <option value="">Default voice</option>
@@ -147,10 +238,25 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
 
       <button class="btn btn-primary" (click)="submit()"
               [disabled]="submitting || (mode === 'i2v' && !selectedFile) || !prompt.trim()">
-        {{ submitting ? 'Working...' : 'Generate video' }}
+        {{ submitting ? (mode === 'story' ? 'Starting story production…' : 'Working...') : (mode === 'story' ? 'Generate complete story video' : 'Generate video') }}
       </button>
 
       <p class="error" *ngIf="error">{{ error }}</p>
+
+      <div class="job story-job" *ngIf="storySequence">
+        <div class="story-progress-head">
+          <strong>{{ storySequence.title || 'Story video production' }}</strong>
+          <span class="pill">{{ storySequence.status }}</span>
+        </div>
+        <p class="muted">{{ storyStatusText }}</p>
+        <div class="progress-track"><div class="progress-fill" [style.width.%]="storyProgress"></div></div>
+        <p class="muted small">{{ storySequence.doneScenes }} / {{ storySequence.totalScenes }} scene clips complete · target {{ storyDurationSeconds }} seconds</p>
+        <p class="error" *ngIf="storySequence.error">{{ storySequence.error }}</p>
+        <ng-container *ngIf="storySequence.hasMerged && storyResultUrl">
+          <video [src]="storyResultUrl" controls autoplay></video>
+          <a class="btn" [href]="storyResultUrl" download="ai-story-studio-story.mp4">Download complete story video</a>
+        </ng-container>
+      </div>
 
       <div class="job" *ngIf="job">
         <p class="muted" *ngIf="job.status === 'QUEUED'">Queued - waiting for a free GPU slot...</p>
@@ -171,7 +277,16 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
     .panel { max-width: 760px; display: flex; flex-direction: column; gap: 1.2rem; }
     .workflow-field { padding: .9rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
     .field { display: flex; flex-direction: column; gap: 0.4em; }
-    .mode-toggle { display: flex; gap: 0.4rem; }
+    .mode-toggle { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .story-pill { border-color: rgba(73,201,189,.4); }
+    .story-production { display:flex; flex-direction:column; gap:.9rem; padding:1rem; border:1px solid rgba(73,201,189,.35); border-radius:14px; background:linear-gradient(135deg,rgba(73,201,189,.07),rgba(183,94,255,.05)); }
+    .story-production-head { display:flex; flex-direction:column; gap:.25rem; }
+    .story-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.85rem; }
+    .character-preview { max-height:260px; object-fit:contain; }
+    .story-progress-head { display:flex; align-items:center; justify-content:space-between; gap:.7rem; flex-wrap:wrap; }
+    .progress-track { height:8px; border-radius:999px; overflow:hidden; background:var(--surface); border:1px solid var(--border); }
+    .progress-fill { height:100%; background:var(--accent); transition:width .25s ease; }
+    @media(max-width:640px) { .story-options { grid-template-columns:1fr; } }
     .pill {
       cursor: pointer; font-size: 0.85rem; padding: 0.4rem 0.9rem; border-radius: 999px;
       background: var(--surface); color: inherit; border: 1px solid var(--border);
@@ -194,7 +309,7 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
 
   selectedFile?: File;
   previewUrl?: string;
-  mode: 'i2v' | 't2v' = 'i2v';
+  mode: 'i2v' | 't2v' | 'story' = 'i2v';
   workflow: 'WAN_2_2' | 'WAN_2_2_14B' | 'MINIMAX_H3' = 'WAN_2_2';
   prompt = '';
   negativePrompt = '';
@@ -227,6 +342,20 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   resultUrl = '';
 
   private pollHandle?: ReturnType<typeof setInterval>;
+  private storyPollHandle?: ReturnType<typeof setInterval>;
+  storyDurationSeconds = 60;
+  storyGenre = 'Cinematic adventure';
+  storyLanguage = 'English';
+  storyVisualStyle = 'cinematic 3D animation';
+  storyNarrationTrack: 'HUMOROUS_EXPLAINER' | 'LOGIC_FIRST_ANALYST' | 'STORY_DRIVEN_MENTOR' = 'STORY_DRIVEN_MENTOR';
+  storyOrientation: 'vertical' | 'horizontal' = 'vertical';
+  storyCharacterName = 'Main character';
+  selectedCharacterReference?: File;
+  characterPreviewUrl?: string;
+  storySequence?: SequenceView;
+  storyResultUrl = '';
+  storyStatusText = '';
+  storyProgress = 0;
 
   constructor(private api: ApiService, private route: ActivatedRoute) {}
 
@@ -283,6 +412,8 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.stopPolling();
+    this.stopStoryPolling();
+    if (this.characterPreviewUrl) { URL.revokeObjectURL(this.characterPreviewUrl); }
     if (this.previewUrl) { URL.revokeObjectURL(this.previewUrl); }
   }
 
@@ -294,6 +425,15 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     this.loadedSceneId = undefined; // a manual upload is no longer the story scene
     if (this.previewUrl) { URL.revokeObjectURL(this.previewUrl); }
     this.previewUrl = URL.createObjectURL(file);
+  }
+
+  onCharacterReferenceSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    this.selectedCharacterReference = file;
+    if (this.characterPreviewUrl) URL.revokeObjectURL(this.characterPreviewUrl);
+    this.characterPreviewUrl = URL.createObjectURL(file);
   }
 
   onProjectChange(): void {
@@ -450,21 +590,29 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     } catch { return ''; }
   }
 
-  setMode(mode: 'i2v' | 't2v'): void {
+  setMode(mode: 'i2v' | 't2v' | 'story'): void {
     this.mode = mode;
-    // Switching to text-to-video: drop any selected image rather than
-    // silently carrying it into a T2V submission where it would be ignored -
-    // clearer than a stale preview implying the image still matters.
-    if (mode === 't2v') {
+    if (mode !== 'i2v') {
       this.selectedFile = undefined;
       if (this.previewUrl) { URL.revokeObjectURL(this.previewUrl); }
       this.previewUrl = undefined;
+    }
+    if (mode === 'story') {
+      this.workflow = 'MINIMAX_H3';
+      this.durationSeconds = 5;
+      this.stopPolling();
+      this.job = undefined;
+      this.storyStatusText = '';
     }
   }
 
   submit(): void {
     if (this.mode === 'i2v' && !this.selectedFile) { return; }
     if (!this.prompt.trim()) { return; }
+    if (this.mode === 'story') {
+      this.submitStoryVideo();
+      return;
+    }
     this.submitting = true;
     this.error = '';
     this.job = undefined;
@@ -494,6 +642,152 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
           this.error = err?.error?.message || 'Could not start video generation.';
         }
       });
+  }
+
+  private submitStoryVideo(): void {
+    if (!this.status?.available) {
+      this.error = this.status?.reason || 'The local video-generation provider is not available.';
+      return;
+    }
+    if (this.status.h3MaxSeconds != null && this.status.h3MaxSeconds <= 0) {
+      this.error = 'MiniMax H3 is not available. Configure the H3 ComfyUI workflow before generating multi-scene stories.';
+      return;
+    }
+    this.submitting = true;
+    this.error = '';
+    this.job = undefined;
+    this.storySequence = undefined;
+    this.storyResultUrl = '';
+    this.storyProgress = 0;
+    this.storyStatusText = 'Preparing the story brief and character reference…';
+    this.stopStoryPolling();
+
+    this.api.createProject(
+      `AI Video Story - ${this.prompt.trim().slice(0, 48)}`,
+      `Generated ${this.storyDurationSeconds}-second ${this.storyGenre} story from Video Generation.`
+    ).subscribe({
+      next: project => this.uploadCharacterThenDraft(project.id),
+      error: err => {
+        this.submitting = false;
+        this.error = err?.error?.message || 'Could not create a story workspace.';
+      }
+    });
+  }
+
+  private uploadCharacterThenDraft(projectId: string): void {
+    const makeDraft = (characterIds: string[]) => {
+      const sceneCount = Math.max(6, Math.round(this.storyDurationSeconds / 5));
+      const trackBrief = this.storyNarrationTrack === 'HUMOROUS_EXPLAINER'
+        ? 'Narration style: humorous and playful with tasteful, character-appropriate humor, expressive timing, and clear emotional beats. Do not turn every line into a joke.'
+        : this.storyNarrationTrack === 'LOGIC_FIRST_ANALYST'
+          ? 'Narration style: precise and logic-first, clearly explaining cause and effect, motivations, and consequences while retaining a cinematic story.'
+          : 'Narration style: story-driven cinematic mentor, emotionally expressive, vivid but natural, with suspense, wonder, and a satisfying emotional payoff.';
+      const productionBrief = [
+        this.prompt.trim(),
+        '',
+        `PRODUCTION REQUIREMENTS: Create a coherent, high-quality ${this.storyDurationSeconds}-second ${this.storyGenre.toLowerCase()} story in ${this.storyLanguage}. Target about ${sceneCount} visual scenes of approximately 5 seconds each.`,
+        `Use a strong opening hook, clear character goals, escalating but understandable events, a meaningful climax, and a satisfying ending. Keep each scene's spoken narration/dialogue concise enough for a roughly 5-second shot; do not rush speech or cut words. ${trackBrief}`,
+        'For every scene, provide a concrete visual image prompt and a separate motion prompt understandable by MiniMax H3: explicit subject action, shot size, camera angle, camera movement, lens feel, lighting, atmosphere, depth, and transition intent. Keep the character appearance, costume, proportions, and art style consistent across scenes.',
+        'Provide ordered narration and character dialogue with emotion/acting direction. Specify sound design in structured audio cues: location ambience, timed SFX linked to visible actions, and a coherent background music mood/intensity that rises and resolves with the story. Dialogue and narration must not compete with loud SFX; music stays under speech.',
+        'Avoid vague prompts, repeated compositions, random extra characters, unwanted on-screen text, scene contradictions, and generic filler. Every shot must advance the plot or reveal character. Use cinematic visual variety while preserving continuity.'
+      ].join('\n');
+
+      this.storyStatusText = 'Writing the story, scene narration, dialogue and H3 production directions…';
+      this.api.createDraft({
+        projectId,
+        prompt: productionBrief,
+        durationSeconds: this.storyDurationSeconds,
+        targetAge: this.storyGenre === "Children's adventure" ? 'children and family' : 'general audience',
+        genre: this.storyGenre,
+        tone: trackBrief,
+        visualStyle: this.storyVisualStyle,
+        language: this.storyLanguage,
+        characterIds,
+        qualityProfile: 'QUALITY'
+      }).subscribe({
+        next: draft => {
+          this.storyStatusText = `Story drafted: ${draft.title}. Starting ${draft.scenes?.length || sceneCount} H3 scene clips…`;
+          this.api.produceEpisodeVideo(draft.episodeId, 'H3', this.storyOrientation, characterIds).subscribe({
+            next: sequence => {
+              this.storySequence = sequence;
+              this.submitting = false;
+              this.storyStatusText = 'Generating character-consistent keyframes, H3 video shots, narration and sound. The final merge will start automatically.';
+              this.updateStoryProgress(sequence);
+              this.startStoryPolling(sequence.id);
+            },
+            error: err => {
+              this.submitting = false;
+              this.error = err?.error?.message || 'The story was drafted, but H3 video production could not be started.';
+            }
+          });
+        },
+        error: err => {
+          this.submitting = false;
+          this.error = err?.error?.message || 'Could not generate the story draft.';
+        }
+      });
+    };
+
+    if (this.selectedCharacterReference) {
+      this.api.uploadCharacterLibrary(
+        this.selectedCharacterReference,
+        this.storyCharacterName.trim() || 'Main character',
+        `Locked visual identity for a ${this.storyVisualStyle} story. Preserve face, hairstyle, skin tone, age, outfit, silhouette and proportions across every scene.`
+      ).subscribe({
+        next: character => makeDraft([character.characterId]),
+        error: err => {
+          this.submitting = false;
+          this.error = err?.error?.message || 'Could not save the character reference image.';
+        }
+      });
+    } else {
+      makeDraft([]);
+    }
+  }
+
+  private startStoryPolling(sequenceId: string): void {
+    this.stopStoryPolling();
+    this.storyPollHandle = setInterval(() => {
+      this.api.getSequence(sequenceId).subscribe({
+        next: sequence => {
+          this.storySequence = sequence;
+          this.updateStoryProgress(sequence);
+          if (sequence.status === 'COMPLETED' || sequence.status === 'PARTIAL'
+              || sequence.status === 'FAILED' || sequence.status === 'CANCELLED') {
+            if (sequence.hasMerged) this.storyResultUrl = this.api.sequenceMergedUrl(sequence.id, sequence.mergedStamp);
+            this.storyStatusText = sequence.status === 'COMPLETED'
+              ? 'All scene clips are merged into the final video.'
+              : sequence.status === 'PARTIAL'
+                ? 'Some scenes failed. Review the error details before using the final video.'
+                : sequence.status === 'CANCELLED'
+                  ? 'Story video generation was cancelled.'
+                  : sequence.error || 'Story video generation failed.';
+            this.stopStoryPolling();
+          }
+        },
+        error: () => {
+          this.error = 'Lost track of story production. The sequence may still be running on the backend.';
+          this.stopStoryPolling();
+        }
+      });
+    }, 5000);
+  }
+
+  private updateStoryProgress(sequence: SequenceView): void {
+    this.storyProgress = sequence.totalScenes > 0
+      ? Math.round((sequence.doneScenes / sequence.totalScenes) * 100)
+      : 0;
+    if (sequence.status === 'KEYFRAMES_RUNNING') this.storyStatusText = 'Creating scene keyframes with character references…';
+    else if (sequence.status === 'VIDEOS_RUNNING') this.storyStatusText = `Rendering H3 shots and audio: ${sequence.doneScenes} of ${sequence.totalScenes} scenes complete…`;
+    else if (sequence.status === 'MERGING') this.storyStatusText = 'Merging all scene clips and normalizing the final video…';
+    else if (sequence.status === 'COMPLETED') this.storyStatusText = 'Final story video is ready.';
+  }
+
+  private stopStoryPolling(): void {
+    if (this.storyPollHandle) {
+      clearInterval(this.storyPollHandle);
+      this.storyPollHandle = undefined;
+    }
   }
 
   private startPolling(jobId: string): void {

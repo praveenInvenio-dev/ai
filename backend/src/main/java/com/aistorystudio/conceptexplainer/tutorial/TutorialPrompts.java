@@ -143,15 +143,23 @@ public final class TutorialPrompts {
             ON-SCREEN STYLE (copy this look exactly unless the selected visual style says otherwise):
             - Default to a rich, layered visual rather than a bare slide: subject-specific diagram or concrete illustration, clear focal point,
               deliberate depth, directional lighting for picture scenes, restrained accent colours and strong contrast. Do not clutter the frame.
-            - Dark teal canvas, few elements, lots of intentional empty space. Diagrams are preferred when relationships or mechanisms matter;
-              use real pictures when the object, place, body structure, experiment or human reaction is the lesson. Text on screen is SHORT: labels of 1-5 words,
-              card bullets of 1-3 words, quotes only for a user's request. The narration carries the explanation, the screen anchors it.
-            - Recurring characters: the learner/user (actor, icon "user"), an AI agent or service (actor, icon "agent", pink), systems as
-              coloured tiles with a simple icon and a made-up name, actions as teal buttons, settings/preferences as an outlined card,
-              decisions/benefits as a green note, protocols/layers as a tall violet container, data as terminal/browser/code windows.
-            - Arrows (curved dashed green connectors) show who talks to whom; put a short label like "Tool", "API", "request" on them.
-            - Build up: the scene starts with the context element(s) at sentence 0, then each following sentence adds or highlights
-              one thing. Later scenes KEEP the important elements of the previous scene (same id, same place) and extend them.
+            - Fill the usable frame intentionally: target 75-88% visual occupancy, with 12-25% negative space only where it improves readability.
+              Avoid a tiny diagram floating in the middle of a huge empty canvas. Scale the main diagram/real-world setup up, use a clear foreground,
+              supporting detail and a visible focal point. Keep a 6-8% outer safe margin and protect captions, but do not leave the whole left or right half unused.
+              Diagrams are preferred when relationships or mechanisms matter; use real pictures when an object, place, body structure, experiment or human reaction is the lesson.
+              Text on screen is SHORT: labels of 1-5 words, card bullets of 1-3 words, quotes only for a user's request. The narration carries the explanation.
+            - Every scene must have one dominant visual action or transformation: a request travels, a queue grows, a UI freezes then recovers, two values collide,
+              a lock closes and opens, a force changes a trajectory, a cell divides, or a before/after comparison changes visibly. Do not rely on static gauges or decorative particles
+              to imply motion. When an action is described, show its cause and result on screen in the same scene.
+            - Use a layered composition: a large central/hero object or diagram, one supporting detail panel, and small labels/callouts where needed. Use at least 2-4
+              meaningful visual elements for a simple scene and 4-7 for a system scene. Avoid both sparse single-icon frames and cluttered dashboards.
+            - Recurring characters: the learner/user (actor, icon "user"), an AI agent or service (actor, icon "agent", pink), systems as coloured tiles with a simple icon
+              and a made-up name, actions as teal buttons, settings/preferences as an outlined card, decisions/benefits as a green note, protocols/layers as a tall violet container,
+              data as terminal/browser/code windows. For real-world breakdowns, prefer a recognizable place or object plus animated overlays that demonstrate the mechanism.
+            - Arrows (curved dashed green connectors) show who talks to whom; put a short label like "Tool", "API", "request" on them. Animate the payload or highlight along the path.
+            - Build up: the scene starts with context at sentence 0, then each following sentence adds, moves, changes or highlights one thing.
+              Later scenes KEEP important elements from the previous scene (same id, same place) and extend them. Reuse an established layout only when the visual state changes;
+              otherwise change shot scale, angle or composition to avoid repeated static cards.
             """;
 
     private static final String SCHEMA = """
@@ -191,8 +199,9 @@ public final class TutorialPrompts {
             plus, stomach, kidney, muscle, apple, food, leaf, sun, moon, wind, gauge, person, baby, family, home, car, bed, mask, microscope.
               photo     text = what to picture (an anatomy cross-section, a real object or place), style "framed", w/h in % - a generated
                         illustration. Use up to 5 per full lesson only where a real picture explains more than a diagram; never as filler.
-            LAYOUT: 1920x1080 frame. Keep y >= 14 when there is a heading. Left column x 10-30, middle 40-60, right column x 75-90.
-            Stack tiles/buttons with about 17-25 y between them. Never place two elements on the same spot. Max ~10 visible elements.
+            LAYOUT: 1920x1080 frame. Keep y >= 14 when there is a heading. Use the whole canvas: left column x 8-32, middle x 35-65, right x 68-92.
+            Main hero/diagram should usually occupy 45-70% of the frame. Stack tiles/buttons with about 12-18 y between them; align edges and size related elements consistently.
+            Never place two elements on the same spot. Aim for 4-8 visible elements, max 12 only when the relationship genuinely needs them. No isolated tiny card surrounded by empty space.
             - MATCH THE SUBJECT. Health / body / biology topics: use body-part and medical icons (ear, heart, lungs, pill, virus ...)
               on tiles for organs and parts, people as actors, a photo for the anatomy; NEVER app tiles, servers, code or terminals.
               Money, food, travel, everyday topics: everyday icons (money, home, car, food, plane ...). Tech vocabulary only for tech topics.
@@ -206,6 +215,11 @@ public final class TutorialPrompts {
               new part BEYOND the frame - x 100-150 or y 100-150 - and keep the old part. The camera pulls back automatically so the
               whole system is visible at once. Use this 1-3 times per long lesson, at the moments the big picture matters.
             - Elements of the previous scene that are not kept fade out; new elements fade in.
+            - For real-world examples, storyboard visible actions as ordered states (before -> action -> after), not a poster about the concept.
+              Include the failure state first, then the intervention, then the corrected state. Use concrete counts, values or objects when possible.
+            - For concurrency / synchronization topics, show interleaving reads and writes, the shared resource, the race outcome, then the lock and corrected outcome.
+              For UI responsiveness, show the UI thread blocked/unblocked and a separate worker doing the waiting task. Never use a generic "100% CPU" gauge as a proxy for I/O wait.
+            - For software examples, include a compact correct code sample and show which line causes the visible state change. Do not invent benchmark timings.
             """;
 
     /** True when the narration is English (then captions = narration). */

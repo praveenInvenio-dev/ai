@@ -125,6 +125,7 @@ public class ConceptExplainerService {
             job.setStage("Writing the lesson plan");
             if (tutorial(job)) {
                 planTutorial(job);
+                assignVisualRoutes(job);
                 if (job.isReviewScript()) {   // pre-production gate: read, edit and have the script checked BEFORE any GPU time is spent
                     enterPlanReview(job);
                     return;
@@ -156,6 +157,7 @@ public class ConceptExplainerService {
 
             }
 
+            assignVisualRoutes(job);
             produce(job);
         } catch (Exception e) {
             log.warn("Concept explainer {} failed: {}", id, e.getMessage(), e);
@@ -1802,7 +1804,22 @@ public class ConceptExplainerService {
         }
     }
 
+    /** Select a visual engine per narration scene; renderers that do not yet expose a server-side export API
+     * deliberately fall back to the existing narration-synchronized diagram compositor. */
+    private void assignVisualRoutes(ConceptExplainerJob job) {
+        for (ConceptExplainerJob.Scene scene : job.getScenes()) applyVisualRoute(job, scene);
+        long routed = job.getScenes().stream().filter(s -> "MOTION_CANVAS".equals(s.getVisualEngine()) || "THREE_JS".equals(s.getVisualEngine())).count();
+        if (routed > 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Visual routing planned per scene."))) job.getWarnings().add("Visual routing planned per scene. Motion Canvas/Three.js previews are available; until their headless export adapters are enabled, production uses the synchronized native diagram renderer for those scenes. No scene timing or narration is lost.");
+    }
+
+    private void applyVisualRoute(ConceptExplainerJob job, ConceptExplainerJob.Scene scene) {
+        var route = com.aistorystudio.conceptexplainer.tutorial.VisualRendererRouter.route(job, scene, manimAvailable());
+        scene.setVisualEngine(route.engine());
+        scene.setVisualEngineReason(route.reason());
+    }
+
     private void renderSlide(ConceptExplainerJob job, ConceptExplainerJob.Scene s) throws IOException {
+        applyVisualRoute(job, s);
         if (tutorial(job)) {
             // one frame per narration sentence: frame k = everything that has appeared by sentence k
             DiagramRenderer.Scene scene = DiagramSpec.toScene(mapper.readTree(s.getPlanJson()), s.getSentences().size());
@@ -2224,9 +2241,11 @@ public class ConceptExplainerService {
                 o++;
             }
         }
-        // Camera: classic slides get the subtle push-in; breakdown reels a slow, steady dolly-in like the reference's
-        // 3D camera. Applied after every overlay so nothing jumps when an overlay ends. Lessons/shorts stay still.
-        double zoom = !moving ? 0 : isBreakdown(job) ? 0.045 * motionFactor(job) : !tutorial(job) ? subtleZoom : 0;
+        // Camera: real-world breakdowns get a stronger dolly-in; tutorial scenes get a restrained 1.2% push-in
+        // so the frame feels alive without making code/labels hard to read. Applied after overlays to prevent layers
+        // drifting apart. STATIC explicitly disables all camera movement.
+        double zoom = !moving ? 0 : isBreakdown(job) ? 0.045 * motionFactor(job)
+                : tutorial(job) ? 0.012 * motionFactor(job) : subtleZoom * motionFactor(job);
         int vw = vertical(job) ? 1080 : 1920, vh = vertical(job) ? 1920 : 1080;
         if (zoom > 0) {
             f.append(";[").append(cur).append("]scale=w='2*trunc(").append(vw).append("*(1+").append(fmt(zoom)).append("*t/").append(fmt(Math.max(1, total)))

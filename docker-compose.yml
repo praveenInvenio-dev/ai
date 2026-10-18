@@ -317,6 +317,22 @@ services:
       - ai-story-studio-net
     restart: unless-stopped
 
+  # Motion Canvas (MIT): source-controlled 2D animation project and preview UI.
+  # Optional authoring profile; production lesson video rendering continues through the existing synchronized pipeline.
+  # Start with: docker compose --profile motion-canvas up -d --build motion-canvas
+  motion-canvas:
+    profiles: ["motion-canvas"]
+    image: node:20-bookworm-slim
+    working_dir: /app
+    command: sh -lc "npm install && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - ./motion-canvas-render:/app
+    ports:
+      - "127.0.0.1:5173:5173"
+    networks:
+      - ai-story-studio-net
+    restart: unless-stopped
+
   tts-indic:
     profiles: ["indic"]
     build:

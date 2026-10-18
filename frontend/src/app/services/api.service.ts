@@ -460,6 +460,14 @@ export class ApiService {
   regenerateFunnySkitImage(jobId: string, scene: number, cascade = false): Observable<any> { return this.http.post(`${this.base}/funny-skits/jobs/${jobId}/images/${scene}/regenerate`, {}, { params: { cascade } }); }
   updateFunnySkitPart(jobId: string, scene: number, visualPrompt: string, dialogue: string): Observable<any> { return this.http.put(`${this.base}/funny-skits/jobs/${jobId}/parts/${scene}`, { visualPrompt, dialogue }); }
   rewriteFunnySkit(jobId: string, style?: string): Observable<any> { return this.http.post(`${this.base}/funny-skits/jobs/${jobId}/script/regenerate`, {}, { params: style ? { style } : {} }); }
+  uploadCharacterLibrary(image: File, name: string, description?: string): Observable<{ characterId: string; name: string; description: string; origin: string; referenceId: string; locked: boolean }> {
+    const form = new FormData();
+    form.append('image', image, image.name);
+    form.append('name', name);
+    if (description) form.append('description', description);
+    return this.http.post<any>(`${this.base}/character-library`, form);
+  }
+
   /** Every locked character from Create Story, Character Studio or saved uploads. */
   characterLibrary(includeUnlocked = false): Observable<{ characterId: string; name: string; description: string; origin: string; referenceId: string; locked: boolean }[]> {
     return this.http.get<any[]>(`${this.base}/character-library`, { params: { includeUnlocked } });
@@ -509,8 +517,10 @@ export class ApiService {
     return this.http.get<any>(`${this.base}/storyboard/classic-video-jobs/${jobId}`);
   }
   /** Storyboard / Story Approval: load the story into an H3 sequence and start it (H3 speech). */
-  produceEpisodeVideo(episodeId: string, speechEngine: SpeechEngine = 'H3', orientation: 'vertical' | 'horizontal' = 'vertical'): Observable<SequenceView> {
-    return this.http.post<SequenceView>(`${this.base}/video-sequences/produce-episode/${episodeId}`, {}, { params: { orientation, speechEngine } });
+  produceEpisodeVideo(episodeId: string, speechEngine: SpeechEngine = 'H3', orientation: 'vertical' | 'horizontal' = 'vertical', characterIds: string[] = []): Observable<SequenceView> {
+    const params: Record<string, string> = { orientation, speechEngine };
+    if (characterIds.length) params['characterIds'] = characterIds.join(',');
+    return this.http.post<SequenceView>(`${this.base}/video-sequences/produce-episode/${episodeId}`, {}, { params });
   }
   // ---- Motion & Effects Studio -------------------------------------------
   studioStatus(): Observable<StudioStatus> { return this.http.get<StudioStatus>(`${this.base}/studio/status`); }

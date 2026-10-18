@@ -442,30 +442,36 @@ public final class DiagramRenderer {
         for (Element e : els) {
             Rectangle2D r = b.get(e.id());
             if (r == null || e.type().equals("container") || backdrop(e)) continue;
-            for (int guard = 0; guard < 40; guard++) {
-                Rectangle2D hit = null;
-                for (Rectangle2D p : placed) {
-                    if (p.intersects(r.getX() + 4, r.getY() + 4, r.getWidth() - 8, r.getHeight() - 8)) { hit = p; break; }
-                }
+            // First preserve the author/LLM placement where possible, nudging down and then right.
+            for (int guard = 0; guard < 80 && overlapsAny(r, placed, 5); guard++) {
+                Rectangle2D hit = firstOverlap(r, placed, 5);
                 if (hit == null) break;
-                double ny = hit.getMaxY() + 18;
-                double bottom = r.getMaxY() > H ? 1.6 * H : H - 30;   // world elements may extend below the first view
-                if (ny + r.getHeight() <= bottom) r = new Rectangle2D.Double(r.getX(), ny, r.getWidth(), r.getHeight());
-                else {
+                double ny = hit.getMaxY() + 22;
+                double bottom = Math.max(H - 30, Math.min(1.8 * H, contentBottom()));
+                if (ny + r.getHeight() <= bottom) {
+                    r = new Rectangle2D.Double(r.getX(), ny, r.getWidth(), r.getHeight());
+                } else {
                     double nx = hit.getMaxX() + 24;
-                    if (nx + r.getWidth() > 1.6 * W) break;   // beyond the frame is fine: the camera pulls back to show it
-                    r = new Rectangle2D.Double(nx, r.getY(), r.getWidth(), r.getHeight());
+                    if (nx + r.getWidth() <= 1.8 * W) r = new Rectangle2D.Double(nx, r.getY(), r.getWidth(), r.getHeight());
+                    else break;
                 }
+            }
+            // A finite nudge loop can still leave a collision (e.g. several oversized cards).
+            // Deterministically search a roomy grid before accepting an overlap. The camera frames
+            // world-space layouts, so elements may sit beyond the initial viewport but not overlap.
+            if (overlapsAny(r, placed, 5)) {
+                Rectangle2D candidate = findFreePlacement(r, placed);
+                if (candidate != null) r = candidate;
             }
             b.put(e.id(), r);
             placed.add(r);
         }
-        // nothing may straddle a container's border: mostly inside -> fully inside, mostly outside -> fully outside
+        // Keep content wholly inside or outside a container instead of straddling its border.
         for (Element c : els) {
             if (!c.type().equals("container")) continue;
             Rectangle2D cr = b.get(c.id());
             if (cr == null) continue;
-            Rectangle2D inner = new Rectangle2D.Double(cr.getX() + 16, cr.getY() + 64, cr.getWidth() - 32, cr.getHeight() - 80);
+            Rectangle2D inner = new Rectangle2D.Double(cr.getX() + 16, cr.getY() + 64, Math.max(1, cr.getWidth() - 32), Math.max(1, cr.getHeight() - 80));
             for (Element e : els) {
                 if (e == c || e.type().equals("container") || e.type().equals("arrow") || backdrop(e)) continue;
                 Rectangle2D r = b.get(e.id());
@@ -485,6 +491,34 @@ public final class DiagramRenderer {
                 b.put(e.id(), new Rectangle2D.Double(x, y, r.getWidth(), r.getHeight()));
             }
         }
+    }
+
+    private Rectangle2D firstOverlap(Rectangle2D r, List<Rectangle2D> placed, double inset) {
+        for (Rectangle2D p : placed) {
+            double rw = Math.max(1, r.getWidth() - inset * 2), rh = Math.max(1, r.getHeight() - inset * 2);
+            if (p.intersects(r.getX() + inset, r.getY() + inset, rw, rh)) return p;
+        }
+        return null;
+    }
+
+    private boolean overlapsAny(Rectangle2D r, List<Rectangle2D> placed, double inset) {
+        return firstOverlap(r, placed, inset) != null;
+    }
+
+    private Rectangle2D findFreePlacement(Rectangle2D original, List<Rectangle2D> placed) {
+        double minY = reserveHeader ? headerBottom() : 30;
+        double maxX = Math.max(W * 1.65, original.getWidth() + 60);
+        double maxY = Math.max(H * 1.65, original.getHeight() + minY + 30);
+        double stepX = Math.max(36, Math.min(72, original.getWidth() / 5));
+        double stepY = Math.max(30, Math.min(64, original.getHeight() / 4));
+        // Search row-major positions close to the existing layout first, then expand to the right/down.
+        for (double y = minY; y + original.getHeight() <= maxY; y += stepY) {
+            for (double x = 30; x + original.getWidth() <= maxX; x += stepX) {
+                Rectangle2D candidate = new Rectangle2D.Double(x, y, original.getWidth(), original.getHeight());
+                if (!overlapsAny(candidate, placed, 5)) return candidate;
+            }
+        }
+        return null; // Preserve the source geometry rather than silently dropping an element.
     }
 
     /** Natural size of an element in pixels (w/h in % override). */
