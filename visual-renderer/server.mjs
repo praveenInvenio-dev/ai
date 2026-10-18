@@ -39,8 +39,16 @@ async function motionCanvasFrames(req,count){
   const lab=JSON.stringify(labels);const duration=Math.max(3,count*.65);
   const scene=`import {makeScene2D} from '@motion-canvas/2d';\nimport {all,createRef,waitFor} from '@motion-canvas/core';\nimport {Circle,Line,Rect,Txt} from '@motion-canvas/2d/lib/components';\nexport default makeScene2D(function*(view){\nconst title=createRef<Txt>();const nodes=[createRef<Rect>(),createRef<Rect>(),createRef<Rect>()];const links=[createRef<Line>(),createRef<Line>()];const packet=createRef<Circle>();const labels=${lab};view.add(<><Txt ref={title} text=${title} y={-360} fontSize={42} fontWeight={800} fill="#eaf4ff"/><Line ref={links[0]} points={[[-360,0],[-120,0]]} stroke="#67e8f9" lineWidth={7} endArrow end={0}/><Line ref={links[1]} points={[[120,0],[360,0]]} stroke="#67e8f9" lineWidth={7} endArrow end={0}/>{nodes.map((r,i)=><Rect ref={r} x={(i-1)*240} y={0} width={210} height={140} radius={24} fill={['#173657','#342c16','#153a31'][i]} stroke={['#60a5fa','#fbbf24','#34d399'][i]} lineWidth={4}><Txt text={labels[i]} fontSize={25} fill="#f8fafc"/></Rect>)}<Circle ref={packet} x={-360} y={0} size={26} fill="#ffffff" shadowColor="#67e8f9" shadowBlur={20}/><Txt text="Progressive animation synchronized to the lesson" y={260} fontSize={24} fill="#a9bdd8"/></>);yield* all(...links.map(x=>x().end(1,.6)),...nodes.map(x=>x().scale(1,.3)));yield* packet().position([0,0],1);yield* waitFor(.2);yield* packet().position([360,0],1);yield* waitFor(${Math.max(.5,duration-3).toFixed(2)});});`;
   await fs.writeFile(path.join(dir,'src/scenes/data-flow.tsx'),scene);await fs.writeFile(path.join(dir,'src/project.ts'),`import {makeProject} from '@motion-canvas/core';import scene from './scenes/data-flow?scene';export default makeProject({scenes:[scene]});`);
-  const out=path.join(dir,'scene.mp4');
-  try{await run('npx',['motion-canvas','render','src/project.ts','--output',out],{cwd:dir,timeout:undefined});await run('ffmpeg',['-y','-i',out,'-vf',`fps=1,scale=${req.width||1920}:${req.height||1080}:force_original_aspect_ratio=decrease,pad=${req.width||1920}:${req.height||1080}:(ow-iw)/2:(oh-ih)/2`,'-frames:v',String(count),path.join(dir,'frame-%03d.png')]);const frames=[];for(let i=1;i<=count;i++)frames.push((await fs.readFile(path.join(dir,`frame-${String(i).padStart(3,'0')}.png`))).toString('base64'));return frames;}finally{await fs.rm(dir,{recursive:true,force:true});}
+  // Do not invoke the nonexistent @motion-canvas/cli package. The official
+  // Motion Canvas v3 export flow is configured through Vite plugins/exporters;
+  // this service currently has no supported headless player/export harness.
+  // Fail explicitly so the backend records a renderer failure and can apply
+  // its configured fallback instead of falsely claiming Motion Canvas output.
+  try {
+    throw new Error('Motion Canvas headless export is not configured: @motion-canvas/cli is not a published package. Configure a supported Motion Canvas player/exporter before enabling this production route.');
+  } finally {
+    await fs.rm(dir,{recursive:true,force:true});
+  }
 }
 
 app.post('/render-frames',async(req,res)=>{const p=req.body||{};const engine=String(p.engine||'').toUpperCase();const count=Math.max(2,Math.min(8,Number(p.steps)||4));try{let frames;if(engine==='MOTION_CANVAS')frames=await motionCanvasFrames(p,count);else if(engine==='THREE_JS')frames=await threeFrames(p,path.join(os.tmpdir(),'unused'),count);else if(engine==='RIVE')frames=await riveFrames(p,count);else return res.status(400).json({error:'Unsupported renderer '+engine});res.json({engine,rendererStatus:'RENDERED',frames});}catch(e){res.status(503).json({error:String(e?.message||e),engine,rendererStatus:'FAILED'});}});
