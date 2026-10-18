@@ -60,7 +60,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
           <strong>AI story production</strong>
           <span class="muted small">Story draft → review full story → master character references → keyframes → H3 audiovisual shots</span>
         </div>
-        <p class="warning" *ngIf="!status?.available || (status?.h3MaxSeconds != null && status.h3MaxSeconds <= 0)">Story drafting and character-reference planning are available independently. H3 rendering will require the local video provider to be available after you review the story.</p>
+        <p class="warning" *ngIf="showStoryProviderWarning">Story drafting and character-reference planning are available independently. H3 rendering will require the local video provider to be available after you review the story.</p>
         <p class="muted">
           First generate the complete story: plot, scene-by-scene narration and dialogue, visual direction, camera movement, ambience, timed SFX and a continuous music arc. You then review the full story and create/regenerate a master reference for each character before approving images and starting H3 video rendering. Story generation does not start the GPU video job.
         </p>
@@ -300,6 +300,12 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
 export class VideoGenerationComponent implements OnInit, OnDestroy {
   status?: VideoGenerationStatus;
   statusLoaded = false;
+
+  /** Keep strict-template null checks in one TypeScript-narrowed expression. */
+  get showStoryProviderWarning(): boolean {
+    const status = this.status;
+    return !status?.available || (status?.h3MaxSeconds != null && status.h3MaxSeconds <= 0);
+  }
 
   selectedFile?: File;
   previewUrl?: string;
