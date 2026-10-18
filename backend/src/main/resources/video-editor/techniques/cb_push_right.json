@@ -1,0 +1,21 @@
+{
+  "id": "cb_push_right",
+  "name": "Push (right)",
+  "category": "TRANSITION",
+  "group": "Motion",
+  "purpose": "The next shot pushes the old one off screen, moving right.",
+  "minSourceDuration": 0.9,
+  "intensity": "dynamic",
+  "parameters": {
+    "durationSeconds": {
+      "min": 0.2,
+      "max": 1.0,
+      "default": 0.45
+    }
+  },
+  "render": {
+    "kind": "XFADE",
+    "xfadeTransition": "slideright",
+    "durationSeconds": "$durationSeconds"
+  }
+}

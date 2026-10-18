@@ -1,0 +1,11 @@
+{
+  "id": "kids-story",
+  "category": "KIDS_STORY",
+  "defaultAspectRatio": "VERTICAL_9_16",
+  "minShotSeconds": 2.0,
+  "maxShotSeconds": 6.0,
+  "preferredTechniques": ["cut_on_action", "j_cut", "l_cut", "slow_zoom", "cross_dissolve"],
+  "avoidTechniques": ["whip_pan", "punch_zoom", "speed_ramp"],
+  "colorGrade": "soft_kids",
+  "notes": "Flashing, spinning and hard speed ramps are unpleasant for young viewers and an accessibility concern, so they are excluded rather than merely deprioritised."
+}

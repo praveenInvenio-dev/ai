@@ -1,0 +1,21 @@
+{
+  "id": "cb_slide_right",
+  "name": "Slide (right)",
+  "category": "TRANSITION",
+  "group": "Motion",
+  "purpose": "The next shot slides in from the side with a soft edge, moving right.",
+  "minSourceDuration": 1.0,
+  "intensity": "balanced",
+  "parameters": {
+    "durationSeconds": {
+      "min": 0.2,
+      "max": 1.0,
+      "default": 0.5
+    }
+  },
+  "render": {
+    "kind": "XFADE",
+    "xfadeTransition": "smoothright",
+    "durationSeconds": "$durationSeconds"
+  }
+}

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "static",
+    "name": "Locked off",
+    "category": "Basic",
+    "prompt": "Locked-off tripod camera, no camera movement; only the subject moves."
+  },
+  {
+    "id": "slow-push",
+    "name": "Slow push-in",
+    "category": "Basic",
+    "prompt": "Slow, smooth dolly push-in toward the main character, gently increasing intimacy."
+  },
+  {
+    "id": "pull-back",
+    "name": "Pull-back reveal",
+    "category": "Basic",
+    "prompt": "Slow dolly pull-back that gradually reveals more of the environment around the character."
+  },
+  {
+    "id": "pan-left",
+    "name": "Pan left",
+    "category": "Basic",
+    "prompt": "Smooth horizontal pan from right to left following the action."
+  },
+  {
+    "id": "tilt-up",
+    "name": "Tilt-up reveal",
+    "category": "Basic",
+    "prompt": "Camera starts low and tilts up smoothly to reveal the character and the scene."
+  },
+  {
+    "id": "handheld",
+    "name": "Handheld",
+    "category": "Basic",
+    "prompt": "Subtle handheld camera with natural micro-shake, documentary feel, stays framed on the subject."
+  },
+  {
+    "id": "orbit",
+    "name": "360 orbit",
+    "category": "Cinematic",
+    "prompt": "Camera orbits smoothly around the character in a half circle while the character stays centered and in focus."
+  },
+  {
+    "id": "crane-up",
+    "name": "Crane up",
+    "category": "Cinematic",
+    "prompt": "Camera rises vertically like a crane shot, ending in a high wide view of the scene."
+  },
+  {
+    "id": "drone",
+    "name": "Drone flyover",
+    "category": "Cinematic",
+    "prompt": "Aerial drone shot gliding forward and slightly downward over the location toward the character."
+  },
+  {
+    "id": "dolly-zoom",
+    "name": "Dolly zoom (vertigo)",
+    "category": "Cinematic",
+    "prompt": "Vertigo dolly-zoom: the background stretches away while the character stays the same size, dramatic tension."
+  },
+  {
+    "id": "tracking",
+    "name": "Tracking side shot",
+    "category": "Cinematic",
+    "prompt": "Camera tracks alongside the walking/running character at the same speed, parallax background."
+  },
+  {
+    "id": "over-shoulder",
+    "name": "Over the shoulder",
+    "category": "Cinematic",
+    "prompt": "Over-the-shoulder framing from behind one character looking at the other, slight slow push."
+  },
+  {
+    "id": "crash-zoom",
+    "name": "Crash zoom",
+    "category": "Viral",
+    "prompt": "Sudden fast crash zoom onto the character's face for a comedic or dramatic reaction beat."
+  },
+  {
+    "id": "whip-pan",
+    "name": "Whip pan",
+    "category": "Viral",
+    "prompt": "Very fast whip pan with motion blur that snaps to the new subject."
+  },
+  {
+    "id": "speed-ramp",
+    "name": "Speed ramp",
+    "category": "Viral",
+    "prompt": "Action plays fast, then slows into dramatic slow motion at the key moment, then speeds back up."
+  },
+  {
+    "id": "bullet-time",
+    "name": "Bullet time",
+    "category": "Viral",
+    "prompt": "Frozen-moment bullet time: the action almost stops while the camera arcs quickly around the character."
+  },
+  {
+    "id": "snap-reaction",
+    "name": "Reaction close-up",
+    "category": "Viral",
+    "prompt": "Quick punch-in to an extreme close-up of the character's surprised expression, then hold."
+  },
+  {
+    "id": "kids-bounce",
+    "name": "Playful bounce",
+    "category": "Kids",
+    "prompt": "Gentle playful camera bob and slight zoom pulses in rhythm with the character's movement, cheerful cartoon energy."
+  },
+  {
+    "id": "storybook",
+    "name": "Storybook drift",
+    "category": "Kids",
+    "prompt": "Soft slow sideways drift with a slight zoom, like turning a page in an illustrated storybook, calm and warm."
+  },
+  {
+    "id": "magic-reveal",
+    "name": "Magic reveal",
+    "category": "Kids",
+    "prompt": "Camera slowly pushes in while sparkles and light swirl around the character, wonder and delight."
+  }
+]

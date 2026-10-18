@@ -1,0 +1,11 @@
+{
+  "id": "reel",
+  "category": "REEL",
+  "defaultAspectRatio": "VERTICAL_9_16",
+  "minShotSeconds": 0.8,
+  "maxShotSeconds": 3.0,
+  "preferredTechniques": ["hard_cut", "cut_on_action", "whip_pan", "punch_zoom", "slide_left"],
+  "avoidTechniques": ["dip_to_black"],
+  "colorGrade": "punchy_reel",
+  "notes": "Short shots, hard cuts. Dissolves read as slow here."
+}

@@ -1,0 +1,21 @@
+{
+  "id": "cb_glitch",
+  "name": "Glitch",
+  "category": "TRANSITION",
+  "group": "Creative",
+  "purpose": "A blocky digital glitch between shots.",
+  "minSourceDuration": 0.8,
+  "intensity": "dynamic",
+  "parameters": {
+    "durationSeconds": {
+      "min": 0.2,
+      "max": 0.8,
+      "default": 0.4
+    }
+  },
+  "render": {
+    "kind": "XFADE",
+    "xfadeTransition": "pixelize",
+    "durationSeconds": "$durationSeconds"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "j_cut",
+  "name": "J-cut",
+  "category": "AUDIO",
+  "purpose": "Next shot's audio starts before its picture, pulling the viewer forward into it.",
+  "minSourceDuration": 1.5,
+  "intensity": "subtle",
+  "requires": ["nextHasAudio"],
+  "incompatibleWith": ["whip_pan"],
+  "parameters": { "audioLeadSeconds": { "min": 0.2, "max": 1.2, "default": 0.5 } },
+  "render": { "kind": "AUDIO_LEAD", "audioLeadSeconds": "$audioLeadSeconds" }
+}

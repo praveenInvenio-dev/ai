@@ -1,0 +1,11 @@
+{
+  "id": "slow_zoom",
+  "name": "Slow zoom",
+  "category": "MOTION",
+  "purpose": "Gentle push in. Adds life to an otherwise static shot.",
+  "minSourceDuration": 1.5,
+  "intensity": "subtle",
+  "requires": ["currentIsStatic"],
+  "parameters": { "zoomAmount": { "min": 1.02, "max": 1.25, "default": 1.08 } },
+  "render": { "kind": "ZOOM", "zoomAmount": "$zoomAmount" }
+}

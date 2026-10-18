@@ -1,0 +1,10 @@
+{
+  "id": "slide_left",
+  "name": "Slide",
+  "category": "TRANSITION",
+  "purpose": "Pushes the outgoing shot aside. Reads as deliberate rather than dreamy.",
+  "minSourceDuration": 0.8,
+  "intensity": "dynamic",
+  "parameters": { "durationSeconds": { "min": 0.2, "max": 0.8, "default": 0.35 } },
+  "render": { "kind": "XFADE", "xfadeTransition": "slideleft", "durationSeconds": "$durationSeconds" }
+}
