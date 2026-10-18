@@ -517,8 +517,9 @@ export class ApiService {
     return this.http.get<any>(`${this.base}/storyboard/classic-video-jobs/${jobId}`);
   }
   /** Storyboard / Story Approval: load the story into an H3 sequence and start it (H3 speech). */
-  produceEpisodeVideo(episodeId: string, speechEngine: SpeechEngine = 'H3', orientation: 'vertical' | 'horizontal' = 'vertical', characterIds: string[] = []): Observable<SequenceView> {
-    const params: Record<string, string> = { orientation, speechEngine };
+  produceEpisodeVideo(episodeId: string, speechEngine: SpeechEngine = 'H3', orientation: 'vertical' | 'horizontal' = 'vertical', characterIds: string[] = [], secondsPerScene?: number, fixedFiveSecondShots = false): Observable<SequenceView> {
+    const params: Record<string, string> = { orientation, speechEngine, fixedFiveSecondShots: String(fixedFiveSecondShots) };
+    if (secondsPerScene != null) params['secondsPerScene'] = String(secondsPerScene);
     if (characterIds.length) params['characterIds'] = characterIds.join(',');
     return this.http.post<SequenceView>(`${this.base}/video-sequences/produce-episode/${episodeId}`, {}, { params });
   }

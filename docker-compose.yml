@@ -417,6 +417,29 @@ services:
   # re-resolve them.
     networks:
       - ai-story-studio-net
+  # Server-side production renderer for Concept Explainer. Uses actual Three.js,
+  # Rive runtime, and Motion Canvas CLI; backend records the real renderer only
+  # after this service returns exported PNG frames successfully.
+  visual-renderer:
+    build:
+      context: ./visual-renderer
+    environment:
+      PORT: 5020
+      NODE_OPTIONS: --max-old-space-size=3072
+    volumes:
+      - projects-data:/data/projects:ro
+    expose:
+      - "5020"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5020/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - ai-story-studio-net
+
   video-worker:
     build:
       context: ./video-worker
@@ -441,6 +464,7 @@ services:
       context: ./backend
     environment:
       <<: *app-env
+      STUDIO_VISUAL_RENDERER_BASE_URL: http://visual-renderer:5020
     volumes:
       - projects-data:/data/projects
       # Separate volume from the story pipeline's: uploaded source video is

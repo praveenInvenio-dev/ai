@@ -82,6 +82,8 @@ public final class SequenceModels {
         /** WAN_2_2 | WAN_2_2_14B | MINIMAX_H3 */
         public String engine;
         public double secondsPerScene;
+        /** Story-to-H3 one-click mode: keep each generated scene shot to the requested fixed duration. */
+        public boolean fixedFiveSecondShots;
         /** vertical | horizontal */
         public String orientation;
         public double crossfadeSeconds;

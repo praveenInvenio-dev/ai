@@ -251,6 +251,13 @@ public class VideoSequenceService {
     public VideoSequence createFromEpisode(UUID episodeId, String engine, Double secondsPerScene, String orientation,
                                            Double crossfadeSeconds, String continuity, Boolean reviewKeyframes,
                                            String speechEngine, List<UUID> referenceCharacterIds) {
+        return createFromEpisode(episodeId, engine, secondsPerScene, orientation, crossfadeSeconds, continuity,
+                reviewKeyframes, speechEngine, referenceCharacterIds, false);
+    }
+
+    public VideoSequence createFromEpisode(UUID episodeId, String engine, Double secondsPerScene, String orientation,
+                                           Double crossfadeSeconds, String continuity, Boolean reviewKeyframes,
+                                           String speechEngine, List<UUID> referenceCharacterIds, boolean fixedFiveSecondShots) {
         Episode ep = episodeRepository.findById(episodeId)
                 .orElseThrow(() -> new IllegalArgumentException("Story not found: " + episodeId));
         List<Scene> dbScenes = sceneRepository.findByEpisodeIdOrderByOrderIndexAsc(episodeId);
@@ -263,8 +270,8 @@ public class VideoSequenceService {
         // UI 5s value become the story scene duration. H3 is a visual-shot
         // limit; long narration is split into continuous <=8s shots later.
         double max = providerGateway.maxVideoDurationSecondsFor(workflowFor(normalizedEngine));
-        double wanted = secondsPerScene == null ? 8.0 : secondsPerScene;
-        if (dbScenes.stream().anyMatch(sc -> (sc.getNarrationSeconds() != null && sc.getNarrationSeconds() > 0)
+        double wanted = fixedFiveSecondShots ? 5.0 : (secondsPerScene == null ? 8.0 : secondsPerScene);
+        if (!fixedFiveSecondShots && dbScenes.stream().anyMatch(sc -> (sc.getNarrationSeconds() != null && sc.getNarrationSeconds() > 0)
                 || (sc.getImageDurationSeconds() != null && sc.getImageDurationSeconds() > 0))) {
             wanted = 8.0;
         }
@@ -273,6 +280,7 @@ public class VideoSequenceService {
         s.id = UUID.randomUUID(); s.projectId = ep.getProjectId(); s.episodeId = ep.getId();
         s.title = blankTo(ep.getTitle(), "Story sequence"); s.style = blankTo(ep.getVisualStyle(), ""); s.engine = normalizedEngine;
         s.secondsPerScene = Math.max(2.0, max > 0 ? Math.min(wanted, max) : wanted);
+        s.fixedFiveSecondShots = fixedFiveSecondShots;
         s.orientation = "horizontal".equalsIgnoreCase(orientation) ? "horizontal" : "vertical";
         s.crossfadeSeconds = Math.max(0, Math.min(1.5, crossfadeSeconds == null ? 0.4 : crossfadeSeconds));
         s.continuity = "CHAIN".equalsIgnoreCase(continuity) ? "CHAIN" : "KEYFRAMES";
@@ -306,7 +314,7 @@ public class VideoSequenceService {
             out.musicPreset = ep.getMusicPreset(); out.language = ep.getLanguage();
             // The story's measured TTS/narration duration is authoritative.
             // A 16s scene remains 16s; H3 divides the visual into <=8s shots.
-            out.requestedSeconds = storySceneDuration(sc);
+            out.requestedSeconds = fixedFiveSecondShots ? 5.0 : storySceneDuration(sc);
             snapshotAsset(s, sc, AssetType.IMAGE, String.format(Locale.ROOT, "source-image-%02d.png", out.index + 1), true, out);
             snapshotAsset(s, sc, AssetType.AUDIO_NARRATION, String.format(Locale.ROOT, "source-audio-%02d.wav", out.index + 1), false, out);
             s.scenes.add(out);
@@ -967,7 +975,8 @@ public class VideoSequenceService {
         if (s.chain() && sc.index > 0) motion = sc.visual.trim() + ". " + motion;
         String key = s.episodeId != null ? s.episodeId.toString() : s.id.toString();
         return new H3SceneRenderer.SceneSpec(motion, sc.location, sc.emotion, s.style, sc.language, lines,
-                sc.audioSpecJson, null, silentSeconds, key, H3SceneRenderer.SpeechEngine.parse(s.speechEngine));
+                sc.audioSpecJson, null, silentSeconds, key, H3SceneRenderer.SpeechEngine.parse(s.speechEngine),
+                s.fixedFiveSecondShots ? 5.0 : 0.0);
     }
 
     private String videoPrompt(VideoSequence s, SequenceScene sc) {

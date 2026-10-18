@@ -61,9 +61,12 @@ public class VideoSequenceController {
             @RequestParam(defaultValue = "vertical") String orientation,
             @RequestParam(required = false) Double crossfadeSeconds,
             @RequestParam(defaultValue = "H3") String speechEngine,
-            @RequestParam(value = "characterIds", required = false) List<UUID> characterIds) {
-        VideoSequence s = service.createFromEpisode(episodeId, "MINIMAX_H3", null, orientation,
-                crossfadeSeconds == null ? 0.3 : crossfadeSeconds, "KEYFRAMES", false, speechEngine, characterIds);
+            @RequestParam(value = "characterIds", required = false) List<UUID> characterIds,
+            @RequestParam(required = false) Double secondsPerScene,
+            @RequestParam(defaultValue = "false") boolean fixedFiveSecondShots) {
+        VideoSequence s = service.createFromEpisode(episodeId, "MINIMAX_H3", secondsPerScene, orientation,
+                crossfadeSeconds == null ? 0.3 : crossfadeSeconds, fixedFiveSecondShots ? "CHAIN" : "KEYFRAMES",
+                false, speechEngine, characterIds, fixedFiveSecondShots);
         service.startVideosAsync(s.id);
         return ResponseEntity.accepted().body(service.view(s.id));
     }

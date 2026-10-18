@@ -76,7 +76,14 @@ public class H3SceneRenderer {
 
     public record SceneSpec(String visualDirection, String location, String emotion, String visualStyle,
                             String language, List<Line> lines, String audioSpecJson, String audioDirection,
-                            double silentSeconds, String voiceSeedKey, SpeechEngine speechEngine) {
+                            double silentSeconds, String voiceSeedKey, SpeechEngine speechEngine,
+                            double maxShotSecondsOverride) {
+        public SceneSpec(String visualDirection, String location, String emotion, String visualStyle,
+                         String language, List<Line> lines, String audioSpecJson, String audioDirection,
+                         double silentSeconds, String voiceSeedKey, SpeechEngine speechEngine) {
+            this(visualDirection, location, emotion, visualStyle, language, lines, audioSpecJson, audioDirection,
+                    silentSeconds, voiceSeedKey, speechEngine, 0.0);
+        }
     }
 
     /**
@@ -103,7 +110,7 @@ public class H3SceneRenderer {
     /** Per-render state shared by every shot. */
     private record Run(H3ScenePrompts.SceneContext ctx, SpeechEngine engine, IndicSpeech.Language lang,
                        Map<String, String> voices, Path characterReference, long voiceSeed, Path work,
-                       List<String> warnings) {
+                       List<String> warnings, double maxShotSeconds) {
     }
 
     private final ProviderGateway providerGateway;
@@ -162,7 +169,8 @@ public class H3SceneRenderer {
             warnings.add("Story language '" + spec.language() + "' does not match the text script; speaking as " + lang.tag() + ".");
         }
 
-        double maxShot = maxShotSeconds();
+        double maxShot = spec.maxShotSecondsOverride() > 0
+                ? Math.min(maxShotSeconds(), spec.maxShotSecondsOverride()) : maxShotSeconds();
         double maxSpeech = Math.max(2.0, maxShot - speechTailSeconds);
         boolean[] flags = new boolean[2]; // digits, latin words
         List<Shot> plan = plan(spec, lang, maxShot, maxSpeech, flags, warnings);
@@ -182,7 +190,7 @@ public class H3SceneRenderer {
             warnings.add("H3 cannot speak " + lang.name() + " reliably - " + (IndicSpeech.isIndicSpeak(indicEngine) ? "Indic-Speak" : "IndicF5") + " " + lang.name() + " voice used, H3 lip-syncs to it.");
         }
         Map<String, String> voices = engine == SpeechEngine.INDIC_TTS ? assignIndicVoices(plan, lang) : Map.of();
-        Run run = new Run(ctx, engine, lang, voices, opt.characterReference(), voiceSeed, opt.workDir(), warnings);
+        Run run = new Run(ctx, engine, lang, voices, opt.characterReference(), voiceSeed, opt.workDir(), warnings, maxShot);
         log.info("H3 scene: speech engine {}{}", engine, voices.isEmpty() ? "" : " voices " + voices);
 
         List<Path> clips = new ArrayList<>();
@@ -385,7 +393,7 @@ public class H3SceneRenderer {
         List<H3ScenePrompts.Spoken> lines = spoken(shot, true);
         // Audio first: its real length decides the video length.
         Path audio = narrationAudio(ctx, lines, seconds, run.voiceSeed(), work.resolve(tag + "-vo"));
-        double maxShot = maxShotSeconds();
+        double maxShot = run.maxShotSeconds();
         if (voiceOverTailRetry && speechRunsToEnd(audio) && seconds + 1.0 <= maxShot + 0.01) {
             double longer = Math.min(maxShot, seconds + 1.5);
             run.warnings().add("Narration on shot " + (index + 1) + " was still speaking at the end; regenerated at " + fmt(longer) + "s.");
@@ -417,7 +425,7 @@ public class H3SceneRenderer {
         Path speech = ttsSpeech(run, shot, work.resolve(tag + "-tts.wav"));
         double speechSeconds = ClipMerger.probeDuration(speech);
         double total = Math.max(3.0, speechSeconds + speechTailSeconds);
-        double maxShot = maxShotSeconds();
+        double maxShot = run.maxShotSeconds();
         int parts = (int) Math.ceil(total / maxShot - 1e-6);
         double per = total / Math.max(1, parts);
         boolean dialogue = shot.kind() == ShotKind.DIALOGUE;

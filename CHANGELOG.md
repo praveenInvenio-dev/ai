@@ -202,3 +202,9 @@ See docs/history/.
 - Added Ctrl/Cmd+Shift+Z as an additional redo shortcut.
 - Added `docs/VIDEO_EDITOR_FEATURE_PARITY.md` as the ongoing evidence-based Cardboard-style parity tracker.
 - Verification pending: frontend dependency install/build, Maven tests (Maven unavailable in the initial environment), browser editing regression, and real-media end-to-end checks.
+
+## Increment 17 — Concept Explainer visual engine exports
+- Added an internal visual-renderer sidecar for Motion Canvas CLI, Three.js/WebGL and Rive canvas exports.
+- Backend now attempts the selected server-side renderer and records RENDERED only after receiving valid PNG frames; failed renders retain explicit native-diagram fallback diagnostics.
+- Scene routing no longer includes the whole lesson topic in keyword matching, so per-scene visual descriptions drive engine selection.
+- Added deployment/validation notes in `VISUAL_ENGINE_EXPORT_INCREMENT_17.md` and `visual-renderer/README.md`.

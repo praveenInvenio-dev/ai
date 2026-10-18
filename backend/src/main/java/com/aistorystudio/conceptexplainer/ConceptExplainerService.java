@@ -77,6 +77,8 @@ public class ConceptExplainerService {
     private final ConceptSlideRenderer renderer = new ConceptSlideRenderer();
     private final DiagramRenderer diagrams = new DiagramRenderer();
     private final ObjectMapper mapper = new ObjectMapper();
+    @org.springframework.beans.factory.annotation.Value("${studio.visual-renderer.base-url:}")
+    private String visualRendererBaseUrl;
     /** Slow push-in over a whole scene (0.015 = 1.5 %). 0 disables motion entirely. */
     @org.springframework.beans.factory.annotation.Value("${studio.concept-explainer.subtle-zoom:0.015}")
     private double subtleZoom = 0.015;
@@ -1809,22 +1811,72 @@ public class ConceptExplainerService {
     private void assignVisualRoutes(ConceptExplainerJob job) {
         for (ConceptExplainerJob.Scene scene : job.getScenes()) applyVisualRoute(job, scene);
         long routed = job.getScenes().stream().filter(s -> "MOTION_CANVAS".equals(s.getVisualEngine()) || "THREE_JS".equals(s.getVisualEngine()) || "RIVE".equals(s.getVisualEngine())).count();
-        if (routed > 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Visual routing planned per scene."))) job.getWarnings().add("Visual routing planned per scene. Planned engine and actual production renderer are reported separately. Scenes without an enabled server-side export adapter use the synchronized native diagram renderer; previews are not represented as final-video renders.");
+        if (routed > 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Visual routing planned per scene."))) job.getWarnings().add("Visual routing planned per scene. Planned engine and actual production renderer are reported separately. Each scene attempts its selected server-side export adapter; failed exports explicitly fall back to the synchronized native diagram renderer.");
     }
 
     private void applyVisualRoute(ConceptExplainerJob job, ConceptExplainerJob.Scene scene) {
         var route = com.aistorystudio.conceptexplainer.tutorial.VisualRendererRouter.route(job, scene, manimAvailable());
         scene.setVisualEngine(route.engine());
         scene.setVisualEngineReason(route.reason());
-        // These adapters are not currently connected to the production compositor in this build.
-        // Record the truthful render path until an adapter returns rendered frames successfully.
-        scene.setActualRenderer("NATIVE_DIAGRAM");
-        scene.setRendererStatus("FALLBACK");
-        scene.setRendererMessage("Planned " + route.engine() + "; production export adapter not enabled. Native synchronized diagram frames are used.");
+        scene.setActualRenderer("PENDING");
+        scene.setRendererStatus("PLANNED");
+        scene.setRendererMessage("Planned " + route.engine() + "; awaiting server-side production export.");
+    }
+
+    private boolean tryRenderWithVisualEngine(ConceptExplainerJob job, ConceptExplainerJob.Scene s) throws IOException {
+        String engine = s.getVisualEngine();
+        if (!List.of("MOTION_CANVAS", "THREE_JS", "RIVE").contains(engine)) return false;
+        Path riveAsset = null;
+        if ("RIVE".equals(engine)) {
+            try {
+                JsonNode p = mapper.readTree(s.getPlanJson() == null ? "{}" : s.getPlanJson());
+                String asset = text(p, "riveAsset", null);
+                if (!blank(asset)) {
+                    Path candidate = Path.of(asset);
+                    if (!candidate.isAbsolute()) candidate = storage.resolve(asset);
+                    if (Files.isRegularFile(candidate)) riveAsset = candidate;
+                }
+            } catch (Exception ignored) { }
+        }
+        try {
+            int width = vertical(job) ? 1080 : 1920, height = vertical(job) ? 1920 : 1080;
+            var client = new com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient(visualRendererBaseUrl);
+            List<byte[]> rendered = client.render(engine, s.getTitle(), s.getNarration(), s.getPlanJson(),
+                    Math.max(2, Math.min(8, s.getSentences().size())), width, height, riveAsset);
+            List<BufferedImage> frames = new ArrayList<>();
+            for (byte[] bytes : rendered) {
+                BufferedImage frame = ImageIO.read(new ByteArrayInputStream(bytes));
+                if (frame == null) throw new IOException("Renderer returned an invalid PNG frame.");
+                frames.add(frame);
+            }
+            writeSteps(job, s, frames);
+            if (!s.getStepPaths().isEmpty()) s.setPreviewPath(s.getStepPaths().get(s.getStepPaths().size() - 1));
+            s.setActualRenderer(engine);
+            s.setRendererStatus("RENDERED");
+            s.setRendererMessage(engine + " server-side export rendered " + frames.size() + " progressive frames.");
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            s.setActualRenderer("NATIVE_DIAGRAM"); s.setRendererStatus("FALLBACK");
+            s.setRendererMessage("Planned " + engine + "; export was interrupted, so native synchronized diagrams were used.");
+            job.getWarnings().add("Scene " + s.getSceneNumber() + ": " + engine + " export interrupted; native diagram fallback used.");
+            return false;
+        } catch (Exception e) {
+            s.setActualRenderer("NATIVE_DIAGRAM"); s.setRendererStatus("FALLBACK");
+            s.setRendererMessage("Planned " + engine + "; export failed (" + rootMessage(e) + "). Native synchronized diagrams were used.");
+            job.getWarnings().add("Scene " + s.getSceneNumber() + ": " + engine + " export failed (" + rootMessage(e) + "); native diagram fallback used.");
+            log.warn("Visual engine export failed for scene {} engine {}: {}", s.getSceneNumber(), engine, rootMessage(e));
+            return false;
+        }
     }
 
     private void renderSlide(ConceptExplainerJob job, ConceptExplainerJob.Scene s) throws IOException {
         applyVisualRoute(job, s);
+        if (tryRenderWithVisualEngine(job, s)) {
+            s.setIntroPattern(null);
+            s.setTypeOverlays(new ArrayList<>());
+            return;
+        }
         if (tutorial(job)) {
             // one frame per narration sentence: frame k = everything that has appeared by sentence k
             DiagramRenderer.Scene scene = DiagramSpec.toScene(mapper.readTree(s.getPlanJson()), s.getSentences().size());
