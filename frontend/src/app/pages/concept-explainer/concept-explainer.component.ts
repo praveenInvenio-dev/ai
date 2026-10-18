@@ -75,7 +75,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
         <div class="hero-badge"><span>✦</span> Neon slides + synced voice + 1080p</div>
       </div>
 
-      <app-visual-engine-preview></app-visual-engine-preview>
+      <app-visual-engine-preview (riveAssetUploaded)="onRiveAssetUploaded($event)"></app-visual-engine-preview>
 
       <section class="builder card">
         <div class="section-title"><div><h2>What do you want to learn?</h2><p>AI plans the teaching narrative and creates a dedicated visual for each scene. Diagrams, labels and code are rendered sharply over rich artwork, with progressive explanation beats.</p></div></div>
@@ -573,6 +573,7 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
   lessons: LessonSummary[] = [];
   job: ExplainerJob | null = null;
   loading = false;
+  selectedRiveAssetPath: string | null = null;
   formError = '';
   busyScene: number | null = null;
   busyKind = '';
@@ -841,6 +842,8 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
     this.http.get(this.job.scriptUrl, { responseType: 'text' }).subscribe({ next: text => navigator.clipboard?.writeText(text) });
   }
 
+  onRiveAssetUploaded(assetPath: string): void { this.selectedRiveAssetPath = assetPath; }
+
   generate(): void {
     if (!this.topic.trim() || this.loading) return;
     this.loading = true;
@@ -853,7 +856,7 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
       audience: this.audience, outcome: this.outcome, tone: this.tone,
       concept: this.concept && this.conceptTopic === this.topic.trim() ? JSON.stringify(this.concept) : undefined,
       reviewScript: this.reviewScript, visualVariance: this.dVar, motionIntensity: this.dMotion, density: this.dDensity,
-      useManim: this.useManim
+      useManim: this.useManim, riveAsset: this.selectedRiveAssetPath || undefined
     }).subscribe({
       next: r => { this.loading = false; this.open(r.jobId); this.loadLessons(); },
       error: e => { this.loading = false; this.formError = e?.error?.message || e?.message || 'Could not start the concept explainer.'; }

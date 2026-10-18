@@ -1,14 +1,16 @@
-import { AfterViewInit, Component, ElementRef, OnDestroy, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, EventEmitter, OnDestroy, Output, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import * as THREE from 'three';
 import { Rive } from '@rive-app/canvas';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../environments/environment';
 
 /** Optional interactive preview of the open-source visual engines. Production video timing remains backend-owned. */
 @Component({
   selector: 'app-visual-engine-preview', standalone: true, imports: [CommonModule],
   template: `
     <section class="engine-card">
-      <div class="engine-heading"><div><span class="eyebrow">OPEN-SOURCE VISUAL ENGINES</span><h2>Preview richer visuals</h2><p>Try a live 3D system scene or preview a Rive animation asset. Motion Canvas and Manim are available as render-worker options.</p></div></div>
+      <div class="engine-heading"><div><span class="eyebrow">OPEN-SOURCE VISUAL ENGINES</span><h2>Preview richer visuals</h2><p>Try a live 3D system scene or preview and upload a Rive asset for matching character/UI scenes in generated lessons. Motion Canvas export is currently unavailable.</p></div></div>
       <div class="engine-tabs">
         <button type="button" [class.active]="mode==='three'" (click)="select('three')">Three.js · 3D</button>
         <button type="button" [class.active]="mode==='rive'" (click)="select('rive')">Rive · character/UI</button>
@@ -31,10 +33,12 @@ import { Rive } from '@rive-app/canvas';
 export class VisualEnginePreviewComponent implements AfterViewInit, OnDestroy {
   @ViewChild('threeCanvas') private threeCanvas?: ElementRef<HTMLCanvasElement>;
   @ViewChild('riveCanvas') private riveCanvas?: ElementRef<HTMLCanvasElement>;
+  @Output() riveAssetUploaded = new EventEmitter<string>();
   mode: 'three'|'rive'|'motion' = 'three';
   riveStatus = 'Choose a .riv file to preview it locally.';
   private renderer?: THREE.WebGLRenderer; private scene?: THREE.Scene; private camera?: THREE.PerspectiveCamera;
   private frame = 0; private resizeObserver?: ResizeObserver; private rive?: Rive; private disposed = false;
+  constructor(private readonly http: HttpClient) {}
   ngAfterViewInit(): void { this.initThree(); }
   select(mode: 'three'|'rive'|'motion'): void { this.mode = mode; if (mode === 'three' && !this.renderer) setTimeout(() => this.initThree()); }
   private initThree(): void {
@@ -55,8 +59,15 @@ export class VisualEnginePreviewComponent implements AfterViewInit, OnDestroy {
   async loadRive(event: Event): Promise<void> {
     const file=(event.target as HTMLInputElement).files?.[0]; if(!file)return;
     if(!file.name.toLowerCase().endsWith('.riv')){this.riveStatus='Please choose a .riv file.';return;}
-    try { this.rive?.cleanup(); const buffer=await file.arrayBuffer(); const canvas=this.riveCanvas?.nativeElement; if(!canvas) return; this.rive=new Rive({buffer,canvas,autoplay:true, onLoad:()=>{this.riveStatus=`Playing ${file.name} locally.`;this.rive?.resizeDrawingSurfaceToCanvas();}, onLoadError:()=>{this.riveStatus='This .riv asset could not be loaded by the installed runtime.';}}); this.mode='rive'; }
-    catch {this.riveStatus='Could not load this Rive file.';}
+    try {
+      this.rive?.cleanup(); const buffer=await file.arrayBuffer(); const canvas=this.riveCanvas?.nativeElement; if(!canvas) return;
+      this.rive=new Rive({buffer,canvas,autoplay:true, onLoad:()=>{this.riveStatus=`Playing ${file.name} locally; uploading for lesson rendering…`;this.rive?.resizeDrawingSurfaceToCanvas();}, onLoadError:()=>{this.riveStatus='This .riv asset could not be loaded by the installed runtime.';}}); this.mode='rive';
+      const form = new FormData(); form.append('file', file, file.name);
+      this.http.post<{assetPath:string}>(`${environment.apiBaseUrl}/concept-explainer/rive-assets`, form).subscribe({
+        next: result => { this.riveAssetUploaded.emit(result.assetPath); this.riveStatus=`Playing ${file.name}; uploaded for matching lesson scenes.`; },
+        error: err => { this.riveStatus=err?.error?.error || 'Local preview works, but upload failed; production lessons will not use this asset.'; }
+      });
+    } catch {this.riveStatus='Could not load this Rive file.';}
   }
   ngOnDestroy(): void { this.disposed=true; cancelAnimationFrame(this.frame); this.resizeObserver?.disconnect(); this.rive?.cleanup(); this.renderer?.dispose(); this.scene?.clear(); }
 }

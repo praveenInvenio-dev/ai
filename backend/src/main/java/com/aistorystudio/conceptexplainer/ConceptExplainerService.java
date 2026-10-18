@@ -1811,7 +1811,7 @@ public class ConceptExplainerService {
     private void assignVisualRoutes(ConceptExplainerJob job) {
         for (ConceptExplainerJob.Scene scene : job.getScenes()) applyVisualRoute(job, scene);
         long routed = job.getScenes().stream().filter(s -> "MOTION_CANVAS".equals(s.getVisualEngine()) || "THREE_JS".equals(s.getVisualEngine()) || "RIVE".equals(s.getVisualEngine())).count();
-        if (routed > 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Visual routing planned per scene."))) job.getWarnings().add("Visual routing planned per scene. Planned engine and actual production renderer are reported separately. Each scene attempts its selected server-side export adapter; failed exports explicitly fall back to the synchronized native diagram renderer.");
+        if (routed > 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Visual routing planned per scene."))) job.getWarnings().add("Visual routing planned per scene. Planned engine and actual production renderer are reported separately. Scenes use capability-aware routing; failed server-side exports explicitly fall back to the synchronized native diagram renderer.");
     }
 
     private void applyVisualRoute(ConceptExplainerJob job, ConceptExplainerJob.Scene scene) {
@@ -1830,7 +1830,7 @@ public class ConceptExplainerService {
         if ("RIVE".equals(engine)) {
             try {
                 JsonNode p = mapper.readTree(s.getPlanJson() == null ? "{}" : s.getPlanJson());
-                String asset = text(p, "riveAsset", null);
+                String asset = text(p, "riveAsset", job.getRiveAssetPath());
                 if (!blank(asset)) {
                     Path candidate = Path.of(asset);
                     if (!candidate.isAbsolute()) candidate = storage.resolve(asset);

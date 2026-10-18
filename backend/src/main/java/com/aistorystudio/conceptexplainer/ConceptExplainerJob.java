@@ -22,6 +22,10 @@ public class ConceptExplainerJob {
     private volatile String title;
     private volatile String summary;
     private volatile String videoPath;
+    /** Optional uploaded Rive animation asset used for matching character/UI scenes. */
+    private volatile String riveAssetPath;
+    public String getRiveAssetPath() { return riveAssetPath; }
+    public void setRiveAssetPath(String path) { riveAssetPath = path == null || path.isBlank() ? null : path.trim(); }
     private volatile int videoVersion;
     private volatile double totalDurationSeconds;
     private volatile int wordCount;

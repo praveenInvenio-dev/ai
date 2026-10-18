@@ -5,6 +5,8 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import com.aistorystudio.provider.StorageProvider;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -18,10 +20,12 @@ public class ConceptExplainerController {
 
     private final ConceptExplainerService service;
     private final ConceptExplainerJobStore jobs;
+    private final StorageProvider storage;
 
-    public ConceptExplainerController(ConceptExplainerService service, ConceptExplainerJobStore jobs) {
+    public ConceptExplainerController(ConceptExplainerService service, ConceptExplainerJobStore jobs, StorageProvider storage) {
         this.service = service;
         this.jobs = jobs;
+        this.storage = storage;
     }
 
     /** motion: REVEAL (elements appear with the narration, default) or STATIC. animationMode kept for old clients. */
@@ -30,10 +34,18 @@ public class ConceptExplainerController {
                                 String track, String subject, Boolean examFocus, String voice, String style,
                                 String teachingStyle, String destination, String format,
                                 String audience, String outcome, String tone, String concept, Boolean reviewScript,
-                                String visualVariance, String motionIntensity, String density, Boolean useManim) {}
+                                String visualVariance, String motionIntensity, String density, Boolean useManim, String riveAsset) {}
 
     @PostMapping("/jobs")
-    public ResponseEntity<Map<String, UUID>> create(@RequestBody CreateRequest r) {
+    public ResponseEntity<?> create(@RequestBody CreateRequest r) {
+        String riveAsset = null;
+        if (r.riveAsset() != null && !r.riveAsset().isBlank()) {
+            riveAsset = r.riveAsset().replace("\\", "/");
+            if (riveAsset.startsWith("/") || riveAsset.contains("..") || !riveAsset.matches("rive-assets/[A-Za-z0-9-]+\\.riv")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "riveAsset must be a previously uploaded Rive asset path."));
+            }
+            if (!storage.exists(riveAsset)) return ResponseEntity.badRequest().body(Map.of("error", "The selected Rive asset was not found in storage."));
+        }
         ConceptExplainerJob job = service.create(r.topic(), r.instructions(), r.language(), r.duration(), r.difficulty(),
                 r.motion() != null ? r.motion() : r.animationMode(), r.model(), r.track(), r.subject(), Boolean.TRUE.equals(r.examFocus()), r.voice());
         job.setStyle(r.style());
@@ -48,8 +60,26 @@ public class ConceptExplainerController {
         job.setReviewScript(Boolean.TRUE.equals(r.reviewScript()));
         job.setDials(r.visualVariance(), r.motionIntensity(), r.density());
         job.setUseManim(r.useManim() == null || r.useManim());
+        if (riveAsset != null) job.setRiveAssetPath(riveAsset);
         service.generateAsync(job.getId());
         return ResponseEntity.accepted().body(Map.of("jobId", job.getId()));
+    }
+
+    /** Upload a Rive animation for use in production-rendered character/UI scenes. */
+    @PostMapping(value = "/rive-assets", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> uploadRiveAsset(@RequestPart("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) return ResponseEntity.badRequest().body(Map.of("error", "Choose a non-empty .riv file."));
+        String original = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
+        if (!original.toLowerCase(java.util.Locale.ROOT).endsWith(".riv"))
+            return ResponseEntity.badRequest().body(Map.of("error", "Only .riv animation files are accepted."));
+        if (file.getSize() > 25L * 1024 * 1024) return ResponseEntity.badRequest().body(Map.of("error", "Rive asset exceeds the 25 MB limit."));
+        try {
+            String relative = "rive-assets/" + UUID.randomUUID() + ".riv";
+            storage.store(relative, file.getBytes());
+            return ResponseEntity.ok(Map.of("assetPath", relative, "fileName", original, "sizeBytes", file.getSize()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", "Could not store the Rive asset."));
+        }
     }
 
     /** Whether animated maths / physics scenes are possible right now (the Manim service answers). */

@@ -12,7 +12,7 @@ const app = express(); app.use(express.json({limit:'40mb'}));
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const safe = v => String(v ?? '').replace(/[<>]/g,'').slice(0,1200);
 const run = (cmd,args,opts={}) => new Promise((resolve,reject)=>{ const p=spawn(cmd,args,{stdio:['ignore','pipe','pipe'],...opts});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',reject);p.on('close',c=>c===0?resolve({out,err}):reject(new Error(`${cmd} failed (${c}): ${err.slice(-1800)}`)));});
-app.get('/health',(_,res)=>res.json({status:'ok',engines:{MOTION_CANVAS:true,THREE_JS:true,RIVE:true},version:1}));
+app.get('/health',(_,res)=>res.json({status:'ok',engines:{MOTION_CANVAS:false,THREE_JS:true,RIVE:true},capabilities:{MOTION_CANVAS:{available:false,reason:'Server-side headless export is not configured'},THREE_JS:{available:true,reason:'Playwright Chromium and Three.js renderer are installed'},RIVE:{available:true,reason:'Requires a valid .riv asset per scene'}},version:2}));
 
 async function threeFrames(req, outDir, count) {
   const bundle = await esbuild.build({stdin:{contents:`import * as THREE from 'three'; window.THREE=THREE;`,resolveDir:ROOT,sourcefile:'three-entry.js',loader:'js'},bundle:true,format:'iife',write:false});
@@ -27,7 +27,21 @@ async function threeFrames(req, outDir, count) {
 async function riveFrames(req,count){
   if(!req.riveAssetBase64) throw new Error('Rive scene requires a valid .riv asset; upload or assign one before routing to Rive.');
   const bundle=await esbuild.build({stdin:{contents:`import {Rive} from '@rive-app/canvas'; window.Rive=Rive;`,resolveDir:ROOT,sourcefile:'rive-entry.js',loader:'js'},bundle:true,format:'iife',write:false});
-  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});try{const page=await browser.newPage({viewport:{width:req.width||1920,height:req.height||1080}});await page.setContent(`<body style="margin:0;background:#0b1323"><canvas id="c" width="1920" height="1080" style="width:100vw;height:100vh"></canvas><script>${bundle.outputFiles[0].text}</script>`);await page.evaluate(async b64=>{const raw=atob(b64),a=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)a[i]=raw.charCodeAt(i);window.riveInstance=new window.Rive({buffer:a.buffer,canvas:document.querySelector('#c'),autoplay:true,onLoad:()=>window.riveInstance.resizeDrawingSurfaceToCanvas()});},req.riveAssetBase64);await page.waitForTimeout(1200);const frames=[];for(let i=0;i<count;i++){await page.waitForTimeout(350);frames.push((await page.locator('body').screenshot({type:'png'})).toString('base64'));}return frames;}finally{await browser.close();}
+  const width=Math.max(320,Math.min(1920,Number(req.width)||1920));const height=Math.max(240,Math.min(1920,Number(req.height)||1080));
+  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  try {
+    const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
+    await page.setContent(`<body style="margin:0;background:#0b1323"><canvas id="c" width="${width}" height="${height}" style="width:100vw;height:100vh;display:block"></canvas><script>${bundle.outputFiles[0].text}</script>`);
+    await page.evaluate(async ({b64,width,height})=>new Promise((resolve,reject)=>{
+      const raw=atob(b64),a=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)a[i]=raw.charCodeAt(i);
+      let settled=false;const timer=setTimeout(()=>{if(!settled){settled=true;reject(new Error('Timed out waiting for Rive asset to load'));}},10000);
+      const canvas=document.querySelector('#c');
+      window.riveInstance=new window.Rive({buffer:a.buffer,canvas,autoplay:true,onLoad:()=>{if(settled)return;settled=true;clearTimeout(timer);try{window.riveInstance.resizeDrawingSurfaceToCanvas();resolve(true);}catch(e){reject(e);}},onLoadError:e=>{if(settled)return;settled=true;clearTimeout(timer);reject(new Error('Rive asset failed to load: '+String(e?.message||e)));}});
+    }),{b64:req.riveAssetBase64,width,height});
+    await page.waitForTimeout(300);
+    const frames=[];for(let i=0;i<count;i++){await page.waitForTimeout(350);frames.push((await page.locator('body').screenshot({type:'png'})).toString('base64'));}
+    return frames;
+  } finally {await browser.close();}
 }
 
 async function motionCanvasFrames(req,count){
