@@ -1804,18 +1804,23 @@ public class ConceptExplainerService {
         }
     }
 
-    /** Select a visual engine per narration scene; renderers that do not yet expose a server-side export API
-     * deliberately fall back to the existing narration-synchronized diagram compositor. */
+    /** Select a preferred visual engine and separately record the renderer that actually exports the scene.
+     * This prevents preview availability from being misreported as production export support. */
     private void assignVisualRoutes(ConceptExplainerJob job) {
         for (ConceptExplainerJob.Scene scene : job.getScenes()) applyVisualRoute(job, scene);
-        long routed = job.getScenes().stream().filter(s -> "MOTION_CANVAS".equals(s.getVisualEngine()) || "THREE_JS".equals(s.getVisualEngine())).count();
-        if (routed > 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Visual routing planned per scene."))) job.getWarnings().add("Visual routing planned per scene. Motion Canvas/Three.js previews are available; until their headless export adapters are enabled, production uses the synchronized native diagram renderer for those scenes. No scene timing or narration is lost.");
+        long routed = job.getScenes().stream().filter(s -> "MOTION_CANVAS".equals(s.getVisualEngine()) || "THREE_JS".equals(s.getVisualEngine()) || "RIVE".equals(s.getVisualEngine())).count();
+        if (routed > 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Visual routing planned per scene."))) job.getWarnings().add("Visual routing planned per scene. Planned engine and actual production renderer are reported separately. Scenes without an enabled server-side export adapter use the synchronized native diagram renderer; previews are not represented as final-video renders.");
     }
 
     private void applyVisualRoute(ConceptExplainerJob job, ConceptExplainerJob.Scene scene) {
         var route = com.aistorystudio.conceptexplainer.tutorial.VisualRendererRouter.route(job, scene, manimAvailable());
         scene.setVisualEngine(route.engine());
         scene.setVisualEngineReason(route.reason());
+        // These adapters are not currently connected to the production compositor in this build.
+        // Record the truthful render path until an adapter returns rendered frames successfully.
+        scene.setActualRenderer("NATIVE_DIAGRAM");
+        scene.setRendererStatus("FALLBACK");
+        scene.setRendererMessage("Planned " + route.engine() + "; production export adapter not enabled. Native synchronized diagram frames are used.");
     }
 
     private void renderSlide(ConceptExplainerJob job, ConceptExplainerJob.Scene s) throws IOException {

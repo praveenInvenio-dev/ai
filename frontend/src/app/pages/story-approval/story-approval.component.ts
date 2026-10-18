@@ -37,7 +37,7 @@ import { Episode, SceneDto, VoiceSegment } from '../../models/models';
       <section class="card character-builder" *ngIf="characters.length || characterLoading || characterError">
         <div class="section-head compact">
           <div><span class="eyebrow">CHARACTER BUILDING</span><h2>Master character references</h2>
-            <p class="muted">Each story character gets their own master prompt and optional reference image. Generate and review them here before scene generation; locking a reference makes it the preferred identity reference for future scenes.</p>
+            <p class="muted">Story first, character references second: every detected character gets a master reference prompt based on their canonical description. Edit it, generate or regenerate the reference, optionally upload a real photo for identity matching, then lock the chosen image before scene keyframes and H3 video are produced.</p>
           </div>
           <span class="library-badge" *ngIf="characters.length">{{ lockedCharacterCount }} / {{ characters.length }} locked</span>
         </div>
@@ -193,6 +193,7 @@ export class StoryApprovalComponent implements OnInit, OnDestroy {
   episode: Episode | null = null; scenes: SceneDto[] = []; fullNarration=''; logline=''; busy=false; error='';
   voices:any[]=[]; voiceMap: Record<string,string> = {}; customVoiceCount=0; imagesReady=false; imageJob=''; imageProgress=0; imageStatus=''; autoProducing=false; classicVideoReady=false;
   musicPreset: string | null = null; musicUploadName = '';
+  productionOrientation: 'vertical' | 'horizontal' = 'vertical';
   characters: Character[] = [];
   characterPrompts: Record<string,string> = {};
   characterReferences: Record<string,CharacterReference> = {};
@@ -207,7 +208,7 @@ export class StoryApprovalComponent implements OnInit, OnDestroy {
   imgVersion: Record<string, number> = {};
   private sub?: Subscription;
   constructor(public api: ApiService, private route: ActivatedRoute, private router: Router) {}
-  ngOnInit(){ this.api.listVoices().subscribe(v=>{this.voices=v.voices||[];this.customVoiceCount=this.voices.filter((x:any)=>String(x.id).startsWith('profile:')).length;this.initializeVoices();}); this.route.paramMap.subscribe(pm=>{ const id=pm.get('id'); if(id){ this.load(id); } }); }
+  ngOnInit(){ this.route.queryParamMap.subscribe(q=>{ this.productionOrientation = q.get('orientation') === 'horizontal' ? 'horizontal' : 'vertical'; }); this.api.listVoices().subscribe(v=>{this.voices=v.voices||[];this.customVoiceCount=this.voices.filter((x:any)=>String(x.id).startsWith('profile:')).length;this.initializeVoices();}); this.route.paramMap.subscribe(pm=>{ const id=pm.get('id'); if(id){ this.load(id); } }); }
   ngOnDestroy(){ this.sub?.unsubscribe(); }
   get stageLabel(){ return this.imagesReady ? 'Images ready — voice selection' : 'Draft — nothing rendered yet'; }
   get totalMinutes(){ return (this.scenes.reduce((sum,s)=>sum+(s.imageDurationSeconds||0),0)/60).toFixed(1); }
@@ -398,7 +399,7 @@ export class StoryApprovalComponent implements OnInit, OnDestroy {
   produceVideo(){
     if(!this.episode)return;
     this.busy=true; this.error='';
-    this.api.produceEpisodeVideo(this.episode.id, this.useIndicTts ? 'INDIC_TTS' : 'H3').subscribe({
+    this.api.produceEpisodeVideo(this.episode.id, this.useIndicTts ? 'INDIC_TTS' : 'H3', this.productionOrientation, this.characters.map(c => c.id)).subscribe({
       next: seq => { this.busy=false; this.router.navigate(['/video-sequence'], { queryParams: { id: seq.id } }); },
       error: e => { this.busy=false; this.error=e?.error?.message||'Could not start H3 story production.'; }
     });

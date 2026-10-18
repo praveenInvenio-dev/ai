@@ -222,7 +222,8 @@ public class ConceptExplainerController {
     public record SceneView(int sceneNumber, String template, String title, String narration, String code,
                             double durationSeconds, int steps, String imageUrl, String audioUrl, boolean canRedraw,
                             String sectionType, String learningObjective, String visualDescription, String voiceEmotion, String voicePace, String voiceDelivery,
-                            List<String> sentences, String pictureDescription, String visualEngine, String visualEngineReason) {}
+                            List<String> sentences, String pictureDescription, String visualEngine, String visualEngineReason,
+                            String actualRenderer, String rendererStatus, String rendererMessage) {}
 
     private static String pictureDescription(ConceptExplainerJob.Scene s) {
         try {
@@ -242,7 +243,8 @@ public class ConceptExplainerController {
                 s.getAudioPath() == null ? null : base + "/scenes/" + s.getSceneNumber() + "/audio?v=" + s.getAudioVersion(),
                 "analogy".equals(s.getTemplate()) || "analogy_code".equals(s.getTemplate()),
                 s.getSectionType(), s.getLearningObjective(), s.getVisualDescription(), s.getVoiceEmotion(), s.getVoicePace(), s.getVoiceDelivery(),
-                List.copyOf(s.getSentences()), pictureDescription(s), s.getVisualEngine(), s.getVisualEngineReason()
+                List.copyOf(s.getSentences()), pictureDescription(s), s.getVisualEngine(), s.getVisualEngineReason(),
+                s.getActualRenderer(), s.getRendererStatus(), s.getRendererMessage()
         )).toList();
         int estimate = job.isDeepDive() ? 15 : 6;
         return new JobView(job.getId(), job.getTopic(), job.getTitle(), job.getSummary(), job.getLanguage(), job.getDuration(),

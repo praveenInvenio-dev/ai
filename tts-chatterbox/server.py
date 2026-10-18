@@ -184,47 +184,44 @@ def voice_reference_path(voice: str):
 
 
 
-def bootstrap_reference_voices():
-    """Create safe, local reference clips from the project's own open-source Piper voices.
+def _bootstrap_reference_voice(name: str, source: str, attempts: int = 3) -> bool:
+    """Create one local conditioning clip. Can run at startup or lazily on first use."""
+    target = os.path.join(VOICES_DIR, f"{name}.wav")
+    marker = target + ".ref2"
+    if os.path.isfile(target) and os.path.getsize(target) > 10000 and (os.path.isfile(marker) or not name.startswith(("narrator-", "tutor-"))):
+        return True
+    for attempt in range(attempts):
+        try:
+            payload = json.dumps({
+                "text": "Every big idea starts small, so we will take it one clear step at a time, keep it practical, and enjoy it along the way.",
+                "voice": source, "speed": 0.98, "pitch": 1.0, "language": "en"
+            }).encode("utf-8")
+            req = urllib.request.Request(BOOTSTRAP_URL + "/api/tts", data=payload, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                wav = resp.read()
+            if len(wav) > 10000:
+                os.makedirs(VOICES_DIR, exist_ok=True)
+                tmp = target + ".part"
+                with open(tmp, "wb") as f: f.write(wav)
+                os.replace(tmp, target)
+                with open(marker, "w") as f: f.write("2")
+                log.info("Bootstrapped Chatterbox reference %s from %s", name, source)
+                return True
+            log.warning("Bootstrap returned a too-small WAV for %s", name)
+        except Exception as exc:
+            log.warning("Could not bootstrap Chatterbox reference %s (attempt %s/%s): %s", name, attempt + 1, attempts, exc)
+            if attempt + 1 < attempts:
+                time.sleep(3)
+    return False
 
-    This prevents the previous failure mode where Chatterbox had no narrator.wav and
-    the backend silently fell back to the default female Edge/Piper voice. The generated
-    reference is only a conditioning clip; users can replace it with their own 10-second
-    recording from the Voice Library at any time.
-    """
-    entries = []
+
+def bootstrap_reference_voices():
+    """Create safe local reference clips from the configured open-source/Edge voice set."""
     for item in BOOTSTRAP_VOICES.split(","):
         if ":" not in item:
             continue
         name, source = item.split(":", 1)
-        entries.append((name.strip(), source.strip()))
-    for name, source in entries:
-        target = os.path.join(VOICES_DIR, f"{name}.wav")
-        marker = target + ".ref2"  # reference text v2: v1 began with "Hello." and the cloned voice echoed it
-        if os.path.isfile(target) and os.path.getsize(target) > 10000 and (os.path.isfile(marker) or not name.startswith(("narrator-", "tutor-"))):
-            continue
-        for attempt in range(12):
-            try:
-                payload = json.dumps({
-                    "text": "Every big idea starts small, so we will take it one clear step at a time, keep it practical, and enjoy it along the way.",
-                    "voice": source, "speed": 0.98, "pitch": 1.0, "language": "en"
-                }).encode("utf-8")
-                req = urllib.request.Request(BOOTSTRAP_URL + "/api/tts", data=payload, headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=120) as resp:
-                    wav = resp.read()
-                if len(wav) > 10000:
-                    os.makedirs(VOICES_DIR, exist_ok=True)
-                    tmp = target + ".part"
-                    with open(tmp, "wb") as f: f.write(wav)
-                    os.replace(tmp, target)
-                    open(marker, "w").write("2")
-                    log.info("Bootstrapped Chatterbox reference %s from %s", name, source)
-                    break
-            except Exception as exc:
-                if attempt == 11:
-                    log.warning("Could not bootstrap Chatterbox reference %s: %s", name, exc)
-                else:
-                    time.sleep(5)
+        _bootstrap_reference_voice(name.strip(), source.strip(), attempts=12)
 
 
 def list_voices():
@@ -384,7 +381,19 @@ def synthesize():
 
     reference = voice_reference_path(voice)
     if reference is None:
-        return jsonify({"error": f"No reference audio found for voice '{voice}'. Expected {VOICE_PROFILES_DIR}/{voice}.wav or {VOICES_DIR}/{voice}.wav."}), 400
+        # Startup bootstrap is asynchronous. If a first request arrives before the
+        # narrator reference has been created, build that configured default lazily
+        # rather than failing the request and silently falling back to another voice.
+        for item in BOOTSTRAP_VOICES.split(","):
+            if ":" not in item:
+                continue
+            bootstrap_name, bootstrap_source = item.split(":", 1)
+            if bootstrap_name.strip() == str(voice).strip():
+                _bootstrap_reference_voice(bootstrap_name.strip(), bootstrap_source.strip(), attempts=3)
+                reference = voice_reference_path(voice)
+                break
+    if reference is None:
+        return jsonify({"error": f"No reference audio found for voice '{voice}'. Expected {VOICE_PROFILES_DIR}/{voice}.wav or {VOICES_DIR}/{voice}.wav. The voice was not substituted."}), 400
 
     # Chatterbox uses reference speech as the speaker/style prompt. Scene
     # emotion is mapped to exaggeration; supported paralinguistic events are

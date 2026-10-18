@@ -2,7 +2,7 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, VideoGenerationStatus, VideoGenerationJob, CameraPreset, SequenceView } from '../../services/api.service';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
 
 /**
@@ -35,7 +35,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
       </p>
     </section>
 
-    <section class="panel" *ngIf="statusLoaded && status?.available">
+    <section class="panel" *ngIf="statusLoaded">
       <div class="field workflow-field" *ngIf="mode !== 'story'">
         <label for="workflow">Generation workflow</label>
         <select id="workflow" [(ngModel)]="workflow" (ngModelChange)="clampDuration()">
@@ -58,12 +58,11 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
       <section class="story-production" *ngIf="mode === 'story'">
         <div class="story-production-head">
           <strong>AI story production</strong>
-          <span class="muted small">Script → storyboard → character-consistent keyframes → H3 shots → final merge</span>
+          <span class="muted small">Story draft → review full story → master character references → keyframes → H3 audiovisual shots</span>
         </div>
+        <p class="warning" *ngIf="!status?.available || (status?.h3MaxSeconds != null && status.h3MaxSeconds <= 0)">Story drafting and character-reference planning are available independently. H3 rendering will require the local video provider to be available after you review the story.</p>
         <p class="muted">
-          Reuses the existing Story Engine for pre-production. It creates narration, dialogue, scene visuals,
-          camera and lighting directions, ambience, sound effects and music cues. Each scene targets roughly
-          five seconds; H3 renders the scenes and the app merges them into one video.
+          First generate the complete story: plot, scene-by-scene narration and dialogue, visual direction, camera movement, ambience, timed SFX and a continuous music arc. You then review the full story and create/regenerate a master reference for each character before approving images and starting H3 video rendering. Story generation does not start the GPU video job.
         </p>
         <div class="story-options">
           <div class="field">
@@ -121,6 +120,9 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
               <option value="STORY_DRIVEN_MENTOR">Story-driven narrator · emotional and cinematic</option>
               <option value="HUMOROUS_EXPLAINER">Humorous narrator · playful, with tasteful humor</option>
               <option value="LOGIC_FIRST_ANALYST">Logic-first narrator · clear cause and effect</option>
+              <option value="PROFESSIONAL_INSTRUCTOR">Professional instructor · confident and concise</option>
+              <option value="SIMPLE_BEGINNER">Beginner-friendly · patient and simple</option>
+              <option value="STORYTELLING_TEACHER">Storytelling teacher · warm and curious</option>
             </select>
           </div>
           <div class="field">
@@ -130,15 +132,6 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
               <option value="horizontal">Landscape · YouTube</option>
             </select>
           </div>
-        </div>
-        <div class="field">
-          <label for="characterReference">Upload main character reference (optional)</label>
-          <input id="characterReference" type="file" accept="image/png,image/jpeg,image/webp"
-                 (change)="onCharacterReferenceSelected($event)">
-          <img *ngIf="characterPreviewUrl" [src]="characterPreviewUrl" class="preview character-preview" alt="Uploaded character reference">
-          <label for="characterName">Character name</label>
-          <input id="characterName" type="text" [(ngModel)]="storyCharacterName" placeholder="e.g. Advik">
-          <p class="muted small">The image is saved as a locked character reference and reused for scene keyframes. Reference conditioning improves consistency, but cannot guarantee pixel-identical faces in every frame.</p>
         </div>
       </section>
 
@@ -181,6 +174,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
                     : mode === 't2v'
                       ? 'e.g. a small cartoon rabbit waving in a sunny forest clearing, butterflies drifting past'
                       : 'e.g. the character waves and smiles, gentle camera push-in'"></textarea>
+        <p class="muted small" *ngIf="mode === 'story'">This box is only the story seed. The AI will expand it into a complete plot and scene-by-scene script, then open the full story for review. Character master prompts and photo uploads happen after the cast is generated, not before.</p>
         <ng-container *ngIf="mode !== 'story'">
         <label for="cameraPreset" style="margin-top:.5rem">Camera preset <span class="muted small">(Motion &amp; effects studio)</span></label>
         <select id="cameraPreset" [(ngModel)]="cameraPresetId">
@@ -237,8 +231,8 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
       </div>
 
       <button class="btn btn-primary" (click)="submit()"
-              [disabled]="submitting || (mode === 'i2v' && !selectedFile) || !prompt.trim()">
-        {{ submitting ? (mode === 'story' ? 'Starting story production…' : 'Working...') : (mode === 'story' ? 'Generate complete story video' : 'Generate video') }}
+              [disabled]="submitting || (mode !== 'story' && !status?.available) || (mode === 'i2v' && !selectedFile) || !prompt.trim()">
+        {{ submitting ? (mode === 'story' ? 'Writing complete story…' : 'Working...') : (mode === 'story' ? 'Generate complete story & review characters' : 'Generate video') }}
       </button>
 
       <p class="error" *ngIf="error">{{ error }}</p>
@@ -347,17 +341,14 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   storyGenre = 'Cinematic adventure';
   storyLanguage = 'English';
   storyVisualStyle = 'cinematic 3D animation';
-  storyNarrationTrack: 'HUMOROUS_EXPLAINER' | 'LOGIC_FIRST_ANALYST' | 'STORY_DRIVEN_MENTOR' = 'STORY_DRIVEN_MENTOR';
+  storyNarrationTrack: 'HUMOROUS_EXPLAINER' | 'LOGIC_FIRST_ANALYST' | 'STORY_DRIVEN_MENTOR' | 'PROFESSIONAL_INSTRUCTOR' | 'SIMPLE_BEGINNER' | 'STORYTELLING_TEACHER' = 'STORY_DRIVEN_MENTOR';
   storyOrientation: 'vertical' | 'horizontal' = 'vertical';
-  storyCharacterName = 'Main character';
-  selectedCharacterReference?: File;
-  characterPreviewUrl?: string;
   storySequence?: SequenceView;
   storyResultUrl = '';
   storyStatusText = '';
   storyProgress = 0;
 
-  constructor(private api: ApiService, private route: ActivatedRoute) {}
+  constructor(private api: ApiService, private route: ActivatedRoute, private router: Router) {}
 
   /** Longest clip the selected engine will render (H3 10 s, Wan 5 s). */
   maxSeconds(): number {
@@ -413,7 +404,6 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.stopPolling();
     this.stopStoryPolling();
-    if (this.characterPreviewUrl) { URL.revokeObjectURL(this.characterPreviewUrl); }
     if (this.previewUrl) { URL.revokeObjectURL(this.previewUrl); }
   }
 
@@ -427,14 +417,6 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     this.previewUrl = URL.createObjectURL(file);
   }
 
-  onCharacterReferenceSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
-    this.selectedCharacterReference = file;
-    if (this.characterPreviewUrl) URL.revokeObjectURL(this.characterPreviewUrl);
-    this.characterPreviewUrl = URL.createObjectURL(file);
-  }
 
   onProjectChange(): void {
     this.episodes = [];
@@ -645,28 +627,20 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   }
 
   private submitStoryVideo(): void {
-    if (!this.status?.available) {
-      this.error = this.status?.reason || 'The local video-generation provider is not available.';
-      return;
-    }
-    if (this.status.h3MaxSeconds != null && this.status.h3MaxSeconds <= 0) {
-      this.error = 'MiniMax H3 is not available. Configure the H3 ComfyUI workflow before generating multi-scene stories.';
-      return;
-    }
     this.submitting = true;
     this.error = '';
     this.job = undefined;
     this.storySequence = undefined;
     this.storyResultUrl = '';
     this.storyProgress = 0;
-    this.storyStatusText = 'Preparing the story brief and character reference…';
+    this.storyStatusText = 'Creating a complete story draft…';
     this.stopStoryPolling();
 
     this.api.createProject(
       `AI Video Story - ${this.prompt.trim().slice(0, 48)}`,
       `Generated ${this.storyDurationSeconds}-second ${this.storyGenre} story from Video Generation.`
     ).subscribe({
-      next: project => this.uploadCharacterThenDraft(project.id),
+      next: project => this.createCompleteStoryDraft(project.id),
       error: err => {
         this.submitting = false;
         this.error = err?.error?.message || 'Could not create a story workspace.';
@@ -674,75 +648,59 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     });
   }
 
-  private uploadCharacterThenDraft(projectId: string): void {
-    const makeDraft = (characterIds: string[]) => {
-      const sceneCount = Math.max(6, Math.round(this.storyDurationSeconds / 5));
-      const trackBrief = this.storyNarrationTrack === 'HUMOROUS_EXPLAINER'
-        ? 'Narration style: humorous and playful with tasteful, character-appropriate humor, expressive timing, and clear emotional beats. Do not turn every line into a joke.'
-        : this.storyNarrationTrack === 'LOGIC_FIRST_ANALYST'
-          ? 'Narration style: precise and logic-first, clearly explaining cause and effect, motivations, and consequences while retaining a cinematic story.'
-          : 'Narration style: story-driven cinematic mentor, emotionally expressive, vivid but natural, with suspense, wonder, and a satisfying emotional payoff.';
-      const productionBrief = [
-        this.prompt.trim(),
-        '',
-        `PRODUCTION REQUIREMENTS: Create a coherent, high-quality ${this.storyDurationSeconds}-second ${this.storyGenre.toLowerCase()} story in ${this.storyLanguage}. Target about ${sceneCount} visual scenes of approximately 5 seconds each.`,
-        `Use a strong opening hook, clear character goals, escalating but understandable events, a meaningful climax, and a satisfying ending. Keep each scene's spoken narration/dialogue concise enough for a roughly 5-second shot; do not rush speech or cut words. ${trackBrief}`,
-        'For every scene, provide a concrete visual image prompt and a separate motion prompt understandable by MiniMax H3: explicit subject action, shot size, camera angle, camera movement, lens feel, lighting, atmosphere, depth, and transition intent. Keep the character appearance, costume, proportions, and art style consistent across scenes.',
-        'Provide ordered narration and character dialogue with emotion/acting direction. Specify sound design in structured audio cues: location ambience, timed SFX linked to visible actions, and a coherent background music mood/intensity that rises and resolves with the story. Dialogue and narration must not compete with loud SFX; music stays under speech.',
-        'Avoid vague prompts, repeated compositions, random extra characters, unwanted on-screen text, scene contradictions, and generic filler. Every shot must advance the plot or reveal character. Use cinematic visual variety while preserving continuity.'
-      ].join('\n');
-
-      this.storyStatusText = 'Writing the story, scene narration, dialogue and H3 production directions…';
-      this.api.createDraft({
-        projectId,
-        prompt: productionBrief,
-        durationSeconds: this.storyDurationSeconds,
-        targetAge: this.storyGenre === "Children's adventure" ? 'children and family' : 'general audience',
-        genre: this.storyGenre,
-        tone: trackBrief,
-        visualStyle: this.storyVisualStyle,
-        language: this.storyLanguage,
-        characterIds,
-        qualityProfile: 'QUALITY'
-      }).subscribe({
-        next: draft => {
-          this.storyStatusText = `Story drafted: ${draft.title}. Starting ${draft.scenes?.length || sceneCount} H3 scene clips…`;
-          this.api.produceEpisodeVideo(draft.episodeId, 'H3', this.storyOrientation, characterIds).subscribe({
-            next: sequence => {
-              this.storySequence = sequence;
-              this.submitting = false;
-              this.storyStatusText = 'Generating character-consistent keyframes, H3 video shots, narration and sound. The final merge will start automatically.';
-              this.updateStoryProgress(sequence);
-              this.startStoryPolling(sequence.id);
-            },
-            error: err => {
-              this.submitting = false;
-              this.error = err?.error?.message || 'The story was drafted, but H3 video production could not be started.';
-            }
-          });
-        },
-        error: err => {
-          this.submitting = false;
-          this.error = err?.error?.message || 'Could not generate the story draft.';
-        }
-      });
+  /** Stage 1 only creates the complete editable story. Character references are intentionally
+   * collected on Story Approval after the model has established the full cast and descriptions. */
+  private createCompleteStoryDraft(projectId: string): void {
+    const sceneCount = Math.max(6, Math.round(this.storyDurationSeconds / 5));
+    const styleDirections: Record<string, string> = {
+      HUMOROUS_EXPLAINER: 'Narration style: humorous and playful with tasteful, character-appropriate humor, expressive timing and short pauses after comic beats. Use at most one small joke per scene; do not make every line a joke.',
+      LOGIC_FIRST_ANALYST: 'Narration style: logic-first and causally clear. Make character goals, obstacles, decisions, mechanisms and consequences explicit. Calm, precise delivery; no forced jokes or hype.',
+      STORY_DRIVEN_MENTOR: 'Narration style: cinematic story-driven mentor. Start with a compelling hook, establish emotional stakes, build suspense naturally, vary sentence rhythm and land a satisfying emotional payoff.',
+      PROFESSIONAL_INSTRUCTOR: 'Narration style: confident professional presenter. Use concise, polished sentences, clear transitions, precise vocabulary and controlled emotion. Avoid slang and forced jokes.',
+      SIMPLE_BEGINNER: 'Narration style: patient beginner-friendly guide. Use simple everyday words, explain unfamiliar terms naturally, short spoken sentences and reassuring transitions without sounding childish.',
+      STORYTELLING_TEACHER: 'Narration style: warm storytelling teacher. Use a curious opening, vivid concrete details, gentle suspense and a clear lesson or emotional insight after each major story beat.'
     };
+    const styleDirectionsForStory = styleDirections[this.storyNarrationTrack] || styleDirections.STORY_DRIVEN_MENTOR;
+    const productionBrief = [
+      `STORY IDEA (seed only; expand it into a complete original story): ${this.prompt.trim()}`,
+      '',
+      `STORY SPECIFICATION: Create a complete, coherent ${this.storyDurationSeconds}-second ${this.storyGenre.toLowerCase()} story in ${this.storyLanguage}. Visual style: ${this.storyVisualStyle}. Plan approximately ${sceneCount} scenes at roughly five seconds per visual beat; allow longer scenes when spoken lines need it.`,
+      'NARRATIVE STRUCTURE: Write a real beginning, middle and ending. Establish protagonist(s), concrete goal, setting, conflict, escalating complications, a meaningful climax, consequences and emotional resolution. Give each character a consistent name, age range, visual identity, personality, motivation and role. Avoid a list of disconnected moments or an outline masquerading as a story.',
+      styleDirectionsForStory,
+      'FOR EVERY SCENE produce: (1) purpose and story beat, (2) image/visual prompt describing the exact opening composition and character blocking, (3) motion prompt with subject actions and explicit camera shot size, angle, movement, speed and transition, (4) ordered narration/dialogue with speaker identity, language, emotion and acting/delivery direction, (5) structured ambience, timed sound effects tied to visible events, and (6) music mood, instrumentation, intensity and how it evolves across the story. Keep music continuous in style with scene-specific rises, drops and a resolved ending.',
+      'MINIMAX H3 AUDIOVISUAL PROMPTING: Write production directions in English even when spoken text is in another language. Each scene/shot should use H3-compatible structure: integrated_multimodal_description for timed visual action, camera movement and spoken dialogue; overall_soundscape for ambience and physical SFX; non_diegetic_music for audience-only score. Put spoken words in <d>[Language]exact spoken line</d> form when represented in H3 prompts. Keep dialogue/narration distinct from ambience and score. Specify what the camera does over time, not just a static shot description. Avoid contradictory camera directions.',
+      'AUDIO MIX: Narration/dialogue must be intelligible and in front. Music stays underneath speech; impactful SFX are timed to the corresponding action and never mask words. Include a deliberate sound bridge or transition where appropriate. No generic music-only cue in place of actual ambience/SFX.',
+      'CONTINUITY: Keep character appearance, outfit, proportions, age, props, location geography, time of day and visual style consistent. Every scene must advance plot or reveal character; vary shot sizes and compositions intentionally. Avoid repeated compositions, random extra characters, unwanted text/subtitles/watermarks and abrupt continuity resets.',
+      'SCRIPT QUALITY: Use natural spoken language and contractions where appropriate. Avoid repetitive exposition and filler. Keep each narration/dialogue segment short enough to speak clearly at a natural pace; do not cram long paragraphs into five seconds. The full narration should be complete and the final scene must resolve the central story question.'
+    ].join('\n');
 
-    if (this.selectedCharacterReference) {
-      this.api.uploadCharacterLibrary(
-        this.selectedCharacterReference,
-        this.storyCharacterName.trim() || 'Main character',
-        `Locked visual identity for a ${this.storyVisualStyle} story. Preserve face, hairstyle, skin tone, age, outfit, silhouette and proportions across every scene.`
-      ).subscribe({
-        next: character => makeDraft([character.characterId]),
-        error: err => {
-          this.submitting = false;
-          this.error = err?.error?.message || 'Could not save the character reference image.';
-        }
-      });
-    } else {
-      makeDraft([]);
-    }
+    this.storyStatusText = 'Writing the full plot, cast, narration, dialogue, camera plan and sound design…';
+    this.api.createDraft({
+      projectId,
+      prompt: productionBrief,
+      durationSeconds: this.storyDurationSeconds,
+      targetAge: this.storyGenre === "Children's adventure" ? 'children and family' : 'general audience',
+      genre: this.storyGenre,
+      tone: styleDirectionsForStory,
+      visualStyle: this.storyVisualStyle,
+      language: this.storyLanguage,
+      qualityProfile: 'QUALITY'
+    }).subscribe({
+      next: draft => {
+        this.submitting = false;
+        this.storyStatusText = `Story drafted: ${draft.title}. Opening the full story and character reference studio…`;
+        // Story Approval shows the complete narration and scene breakdown first, then the
+        // master-reference prompt / upload / generate / regenerate / lock tools for each character.
+        // The user explicitly approves scene images and starts H3 production afterwards.
+        this.router.navigate(['/episodes', draft.episodeId, 'approve'], {
+          queryParams: { from: 'story-to-video', engine: 'MINIMAX_H3', orientation: this.storyOrientation }
+        });
+      },
+      error: err => {
+        this.submitting = false;
+        this.error = err?.error?.message || 'Could not generate the complete story draft.';
+      }
+    });
   }
 
   private startStoryPolling(sequenceId: string): void {

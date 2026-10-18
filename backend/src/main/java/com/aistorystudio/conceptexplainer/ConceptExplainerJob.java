@@ -57,6 +57,14 @@ public class ConceptExplainerJob {
         private String sectionType, learningObjective, visualDescription, voiceEmotion, voicePace, voiceDelivery;
         /** Topic-aware visual routing: preferred engine and concise reason, shown in scene diagnostics. */
         private String visualEngine = "MOTION_CANVAS", visualEngineReason = "Default 2D explanatory animation";
+        /** Actual production renderer; never infer this from the planned engine. */
+        private String actualRenderer = "NATIVE_DIAGRAM", rendererStatus = "FALLBACK", rendererMessage = "Native synchronized diagram renderer";
+        public String getActualRenderer() { return actualRenderer; }
+        public void setActualRenderer(String v) { actualRenderer = v == null ? "NATIVE_DIAGRAM" : v; }
+        public String getRendererStatus() { return rendererStatus; }
+        public void setRendererStatus(String v) { rendererStatus = v == null ? "UNKNOWN" : v; }
+        public String getRendererMessage() { return rendererMessage; }
+        public void setRendererMessage(String v) { rendererMessage = v == null ? "" : v; }
         public String getVisualEngine() { return visualEngine; }
         public void setVisualEngine(String v) { visualEngine = v == null ? "NATIVE_DIAGRAM" : v; }
         public String getVisualEngineReason() { return visualEngineReason; }
