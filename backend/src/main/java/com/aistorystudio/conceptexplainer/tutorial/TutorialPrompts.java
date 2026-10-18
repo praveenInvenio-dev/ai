@@ -649,7 +649,8 @@ public final class TutorialPrompts {
                 Rewrite ONLY the scenes you are given. Rules:
                 - keep EXACTLY the same number of sentences in each scene, in the same order;
                 - keep the meaning, the names, the facts and the narration language; add no new facts;
-                - write for the ear: short sentences, contractions are fine;
+                - write for the ear: short sentences, contractions are fine; every sentence stays a complete, natural spoken sentence (at least five words, subject and verb), never a chain of fragments or semicolon lists;
+                - when cutting length, drop the least important detail or the repeated point; never squeeze every sentence into a headline, and never change what is true;
                 - fix every listed problem: "weak-hook" -> open with a surprising claim, a question or a problem; "and-then" -> link with but / therefore;
                   "verify-number" -> replace the exact figure with "about"/"roughly" wording or drop it unless it is common knowledge;
                   "filler-phrase" -> replace the empty phrase with the concrete fact it was standing in for; "long-sentence" / "long-hook" -> shorten without losing the point; "repetitive" -> vary the openings;

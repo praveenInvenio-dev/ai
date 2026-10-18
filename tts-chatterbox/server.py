@@ -184,6 +184,9 @@ def voice_reference_path(voice: str):
 
 
 
+BOOTSTRAP_ERRORS = {}   # voice name -> why its reference clip could not be created (returned to the caller, so the lesson warning says what is wrong)
+
+
 def _bootstrap_reference_voice(name: str, source: str, attempts: int = 3) -> bool:
     """Create one local conditioning clip. Can run at startup or lazily on first use."""
     target = os.path.join(VOICES_DIR, f"{name}.wav")
@@ -207,9 +210,16 @@ def _bootstrap_reference_voice(name: str, source: str, attempts: int = 3) -> boo
                 with open(marker, "w") as f: f.write("2")
                 log.info("Bootstrapped Chatterbox reference %s from %s", name, source)
                 return True
+            BOOTSTRAP_ERRORS[name] = f"the tts service ({BOOTSTRAP_URL}) returned only {len(wav)} bytes for voice '{source}'"
             log.warning("Bootstrap returned a too-small WAV for %s", name)
         except Exception as exc:
-            log.warning("Could not bootstrap Chatterbox reference %s (attempt %s/%s): %s", name, attempt + 1, attempts, exc)
+            detail = str(exc)
+            try:
+                if hasattr(exc, "read"): detail += ": " + exc.read().decode("utf-8", "replace")[:300]
+            except Exception:
+                pass
+            BOOTSTRAP_ERRORS[name] = f"calling {BOOTSTRAP_URL}/api/tts with voice '{source}' failed: {detail}"
+            log.warning("Could not bootstrap Chatterbox reference %s (attempt %s/%s): %s", name, attempt + 1, attempts, detail)
             if attempt + 1 < attempts:
                 time.sleep(3)
     return False
@@ -393,7 +403,7 @@ def synthesize():
                 reference = voice_reference_path(voice)
                 break
     if reference is None:
-        return jsonify({"error": f"No reference audio found for voice '{voice}'. Expected {VOICE_PROFILES_DIR}/{voice}.wav or {VOICES_DIR}/{voice}.wav. The voice was not substituted."}), 400
+        return jsonify({"error": f"No reference audio found for voice '{voice}'. Expected {VOICE_PROFILES_DIR}/{voice}.wav or {VOICES_DIR}/{voice}.wav. The voice was not substituted." + (f" Why the reference clip could not be created: {BOOTSTRAP_ERRORS[voice]}." if voice in BOOTSTRAP_ERRORS else " Fix: put a clean 10-20 s WAV of that voice at ./tts-chatterbox/voices/" + str(voice) + ".wav, or check that the tts service is running and can reach its voice source.")}), 400
 
     # Chatterbox uses reference speech as the speaker/style prompt. Scene
     # emotion is mapped to exaggeration; supported paralinguistic events are

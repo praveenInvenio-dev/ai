@@ -79,7 +79,8 @@ public final class EngineScorer {
             "queue", "loop", "variable", "compile", "http", "cache", "bug", "code");
     private static final Pattern COMPARE = words("versus", "compare", "comparison", "difference between", "pros and cons", "trade-off", "tradeoff", "myth", "mistake");
     /** Words that say something MOVES through ordered steps (a request travels, a task is handed on, step one then step two). */
-    private static final Pattern MOTION_FLOW = words("flows through", "moves through", "travels", "passes through", "handoff", "hand off", "hands off", "pipeline", "data flow", "step by step", "timeline", "strict sequence");
+    private static final Pattern MOTION_FLOW = words("flows through", "moves through", "travels", "passes through", "handoff", "hand off", "hands off", "pipeline", "data flow", "step by step", "timeline", "strict sequence",
+            "the flow", "workflow", "loop", "stages");
     /** Ordering markers: counted every time they occur ("first ... then ... finally" is a sequence worth animating). */
     private static final Pattern ORDER_MARKERS = Pattern.compile("(?<![\\p{L}\\p{N}])(?:first|then|next|after that|finally|step (?:one|two|three|four|five|\\d))(?![\\p{L}\\p{N}])", Pattern.CASE_INSENSITIVE);
     /** Devices that are the point of the scene and only the native renderer draws: no animation replaces them. */
@@ -130,6 +131,8 @@ public final class EngineScorer {
             double sc = Math.min(6.0, n * lx.weight() + inTitle * 1.0);
             if (sc > bestThree) { bestThree = sc; bestKind = lx.kind(); threeHits = found; }
         }
+        // the plan's own "layers" device is a stack (RAG pipeline, OSI, app/JVM/OS): the 3D layers template draws that very device with its labels
+        if (s.planTypes() != null && s.planTypes().contains("layers") && bestThree < 3.5 && s.kidsBand() == 0) { bestThree = 3.5; bestKind = "layers"; threeHits = new ArrayList<>(List.of("layers device")); }
         if (dom.contains("astronom") || dom.contains("space") || dom.contains("chemis") || dom.contains("geograph") || dom.contains("geometr")) bestThree += bestThree > 0 ? 1.0 : 0;
         if (s.kidsBand() > 0) bestThree *= 0.6;
         if (nativeType) bestThree -= 1.0;                                  // the plan chose a specialised 2D device on purpose

@@ -42,3 +42,11 @@ From reviewing two more generated videos (a 82 s vertical reel and a 136 s lesso
 - The Docker motion build step no longer breaks the whole image if it fails; the renderer then reports Motion Canvas OFF with the reason.
 - Rive still cannot appear without a .riv file (upload or rive-library/).
 - Variety floor: when Motion Canvas is available, a lesson of 5+ scenes uses it at least once if any scene fits it even weakly (score >= 2); never over code, formulas or charts.
+
+## Follow-up from a real lesson ("What is RAG", 9 scenes; all engines on, plan was Motion 1 / native 8)
+- Router: plain flow words ("the flow", "workflow", "loop", "stages") count for Motion Canvas; a plan "layers" device (a stack) is drawn by the 3D layers template with the
+  device's own labels. On that lesson (devices guessed): scene 5 "The RAG Workflow" -> Motion Canvas, last scene -> Three.js layers, definitions/comparisons/code stay native.
+- Chatterbox: the reference clip for `narrator-in-male` could not be created, so the voice fell back to Edge. The 400 error (and so the lesson warning) now says WHY the clip
+  could not be made (the tts service's own error), or how to fix it (put a WAV in tts-chatterbox/voices/). Rebuild `tts-chatterbox` to get this.
+- Script tightening: the prompt now requires complete natural sentences and says to drop the least important detail instead of turning every sentence into a headline.
+- Open question: a 140-180 word budget for 9 scenes is about 18 words per scene, which is why tightened scripts read as fragments.
