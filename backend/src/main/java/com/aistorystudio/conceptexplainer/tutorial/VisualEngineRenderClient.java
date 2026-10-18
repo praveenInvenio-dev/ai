@@ -61,15 +61,7 @@ public final class VisualEngineRenderClient {
         payload.put("width", width); payload.put("height", height);
         if (sceneKind != null && !sceneKind.isBlank()) payload.put("sceneKind", sceneKind);
         JsonNode plan; try { plan = M.readTree(planJson == null ? "{}" : planJson); } catch (Exception e) { plan = M.createObjectNode(); }
-        List<String> labels = new ArrayList<>();
-        for (String field : List.of("items", "nodes", "steps", "parts")) {
-            JsonNode arr = plan.path(field);
-            if (arr.isArray()) for (JsonNode n : arr) {
-                String label = n.isTextual() ? n.asText() : n.path("label").asText(n.path("title").asText(""));
-                if (!label.isBlank() && labels.size() < 6) labels.add(safe(label));
-            }
-            if (labels.size() >= 3) break;
-        }
+        List<String> labels = labelsFor(plan, sceneKind);
         payload.set("labels", M.valueToTree(labels));
         if ("RIVE".equalsIgnoreCase(engine)) {
             if (riveAsset == null || !Files.isRegularFile(riveAsset)) throw new IOException("Rive asset is missing or inaccessible; refusing to report a Rive render.");
@@ -88,6 +80,52 @@ public final class VisualEngineRenderClient {
         for (JsonNode frame : root.path("frames")) frames.add(Base64.getDecoder().decode(frame.asText()));
         if (frames.size() < 2) throw new IOException("Visual renderer returned fewer than two frames.");
         return frames;
+    }
+    /**
+     * The words the 3D scene should show, taken from the lesson's own plan: the layers device for a layered stack, the steps / cycle / tiles
+     * for parallel work, otherwise the first device with a list. Falls back to the old top-level lists. At most 6, in plan order.
+     */
+    static List<String> labelsFor(JsonNode plan, String sceneKind) {
+        List<String> prefer = switch (sceneKind == null ? "" : sceneKind) {
+            case "layers" -> List.of("layers", "steps", "tree", "cycle");
+            case "lanes" -> List.of("steps", "cycle", "sequence", "tile", "layers");
+            case "orbit", "molecule" -> List.of("cycle", "tree", "tile", "steps", "layers");
+            default -> List.of("steps", "layers", "cycle", "tree", "tile");
+        };
+        List<String> labels = new ArrayList<>();
+        JsonNode elements = plan.path("elements");
+        if (elements.isArray()) {
+            for (String type : prefer) {
+                for (JsonNode e : elements) {
+                    if (!type.equals(e.path("type").asText("").toLowerCase(java.util.Locale.ROOT))) continue;
+                    if (e.path("lines").isArray()) for (JsonNode ln : e.path("lines")) addLabel(labels, ln.asText(""));
+                    else addLabel(labels, e.path("text").asText(""));
+                }
+                if (labels.size() >= 3) return labels;
+                labels.clear();
+            }
+            // any device that carries a short list or a name
+            for (JsonNode e : elements) {
+                if (e.path("lines").isArray()) for (JsonNode ln : e.path("lines")) addLabel(labels, ln.asText(""));
+                if (labels.size() >= 3) return labels;
+            }
+            labels.clear();
+        }
+        for (String field : List.of("items", "nodes", "steps", "parts")) {
+            JsonNode arr = plan.path(field);
+            if (arr.isArray()) for (JsonNode n : arr) addLabel(labels, n.isTextual() ? n.asText() : n.path("label").asText(n.path("title").asText("")));
+            if (labels.size() >= 3) break;
+        }
+        return labels;
+    }
+
+    /** "Apps|what you use" and "Swallow: muscles open" keep only the name before the separator; long names are shortened. */
+    private static void addLabel(List<String> out, String raw) {
+        if (raw == null || out.size() >= 6) return;
+        String name = raw.split("[|:\u2014]", 2)[0].replaceAll("[\\p{Cntrl}<>]", " ").replaceAll("\\s+", " ").trim();
+        if (name.isBlank()) return;
+        if (name.length() > 22) name = name.substring(0, 21).trim() + "\u2026";
+        out.add(name);
     }
     private static String safe(String s) { return s == null ? "" : s.replaceAll("[\\p{Cntrl}]", " ").trim(); }
 }

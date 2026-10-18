@@ -127,6 +127,7 @@ public class ConceptExplainerService {
             job.setStage("Writing the lesson plan");
             if (tutorial(job)) {
                 planTutorial(job);
+                autoTightenScript(job);
                 assignVisualRoutes(job);
                 if (job.isReviewScript()) {   // pre-production gate: read, edit and have the script checked BEFORE any GPU time is spent
                     enterPlanReview(job);
@@ -308,6 +309,50 @@ public class ConceptExplainerService {
         ConceptExplainerJob job = jobs.get(id);
         if (job == null) return;
         try {
+            applyScriptFix(job);
+        } catch (Exception e) {
+            log.warn("Script fix failed for {}: {}", id, e.getMessage());
+            job.getWarnings().add("The automatic rewrite did not work (" + rootMessage(e) + ") - edit the flagged lines yourself.");
+        }
+        enterPlanReviewKeepReport(job);
+    }
+
+    private static int wordsOf(ConceptExplainerJob.Scene s) {
+        int n = 0;
+        for (String x : s.getSentences()) n += x.trim().isEmpty() ? 0 : x.trim().split("\\s+").length;
+        return n;
+    }
+
+    /** Per-scene word targets so the whole script lands on the length budget while every scene keeps its share. */
+    private java.util.Map<Integer, Integer> sceneWordTargets(ConceptExplainerJob job, int budget) {
+        int total = 0;
+        for (ConceptExplainerJob.Scene s : job.getScenes()) total += wordsOf(s);
+        java.util.Map<Integer, Integer> out = new java.util.HashMap<>();
+        for (ConceptExplainerJob.Scene s : job.getScenes())
+            out.put(s.getSceneNumber(), total <= 0 ? wordsOf(s) : Math.max(6, (int) Math.round(wordsOf(s) * (double) budget / total)));
+        return out;
+    }
+
+    /** The planner often ignores the word budget (406 words for a 140-180 target). One automatic pass pulls it back before anyone reads it. */
+    private void autoTightenScript(ConceptExplainerJob job) {
+        try {
+            var report = doctor(job);
+            int max = sizeFor(job).maxWords();
+            if (max <= 0 || report.words() <= max * 1.3) return;
+            job.setStage("The script has " + report.words() + " words (limit " + max + "): tightening it");
+            job.setScriptReport(report);
+            applyScriptFix(job);
+            var after = doctor(job);
+            job.setScriptReport(after);
+            job.getWarnings().add("Script tightened automatically: " + report.words() + " -> " + after.words() + " words (target " + sizeFor(job).minWords() + "-" + max + ").");
+        } catch (Exception e) {
+            log.warn("Automatic script tightening skipped: {}", e.getMessage());
+            job.getWarnings().add("The script is longer than planned and could not be tightened automatically (" + rootMessage(e) + ").");
+        }
+    }
+
+    /** Rewrites the flagged scenes through the script doctor (same sentence count per scene: the visuals are timed to it). */
+    private void applyScriptFix(ConceptExplainerJob job) throws Exception {
             var report = job.getScriptReport() == null ? doctor(job) : job.getScriptReport();
             java.util.Map<Integer, java.util.LinkedHashSet<String>> problems = new java.util.TreeMap<>();
             int shrink = 0;
@@ -317,11 +362,13 @@ public class ConceptExplainerService {
                 if (i.scene() > 0) problems.computeIfAbsent(i.scene(), k -> new java.util.LinkedHashSet<>()).add(i.code() + ": " + i.message());
                 else for (ConceptExplainerJob.Scene s : job.getScenes()) problems.computeIfAbsent(s.getSceneNumber(), k -> new java.util.LinkedHashSet<>()).add(i.code() + ": " + i.message());
             }
-            if (shrink > 0) {   // too long overall: ask the three longest scenes to give up the excess
-                job.getScenes().stream().sorted((x, y) -> y.getNarration().length() - x.getNarration().length()).limit(3)
-                        .forEach(s -> problems.computeIfAbsent(s.getSceneNumber(), k -> new java.util.LinkedHashSet<>()).add("too-long: shorten this scene"));
+            if (shrink > 0) {   // too long overall: EVERY scene gives up its share, with its own word target
+                var targets = sceneWordTargets(job, sizeFor(job).maxWords());
+                for (ConceptExplainerJob.Scene s : job.getScenes())
+                    problems.computeIfAbsent(s.getSceneNumber(), k -> new java.util.LinkedHashSet<>())
+                            .add("too-long: shorten this scene to about " + targets.get(s.getSceneNumber()) + " words (it has " + wordsOf(s) + ")");
             }
-            if (problems.isEmpty()) { job.setStatus(ConceptExplainerJob.Status.PLAN_REVIEW); return; }
+            if (problems.isEmpty()) return;
             com.fasterxml.jackson.databind.node.ArrayNode arr = mapper.createArrayNode();
             for (var e : problems.entrySet()) {
                 ConceptExplainerJob.Scene s = job.getScenes().get(e.getKey() - 1);
@@ -350,11 +397,6 @@ public class ConceptExplainerService {
             ensureEnglishCaptions(job, blankToNull(job.getModel()));
             job.setScriptReport(doctor(job));
             job.getWarnings().add("Script doctor rewrote " + changed + " scene(s)" + (skipped > 0 ? " (" + skipped + " answer(s) were ignored because the sentence count changed)" : "") + ".");
-        } catch (Exception e) {
-            log.warn("Script fix failed for {}: {}", id, e.getMessage());
-            job.getWarnings().add("The automatic rewrite did not work (" + rootMessage(e) + ") - edit the flagged lines yourself.");
-        }
-        enterPlanReviewKeepReport(job);
     }
 
     private void enterPlanReviewKeepReport(ConceptExplainerJob job) {
@@ -1442,8 +1484,9 @@ public class ConceptExplainerService {
         double total = 0;
         for (ConceptExplainerJob.Scene s : job.getScenes()) total += s.getDurationSeconds();
         total -= Math.max(0, job.getScenes().size() - 1) * fade(job);          // the cross-fades overlap
-        if (total <= SHORT_BUDGET_SECONDS * 1.06) return;
-        double factor = Math.min(1.3, total / SHORT_BUDGET_SECONDS);
+        // a reel may run to about 73 s; speeding narration up makes it hard to follow, so at most 6% (barely audible), never 30%
+        if (total <= SHORT_BUDGET_SECONDS * 1.18) return;
+        double factor = Math.min(1.06, total / SHORT_BUDGET_SECONDS);
         job.setStage(String.format(Locale.ROOT, "Fitting the short to about a minute (it was %.0f s): narration %.0f%% faster", total, (factor - 1) * 100));
         int failed = 0;
         for (ConceptExplainerJob.Scene s : job.getScenes()) {
@@ -1452,8 +1495,8 @@ public class ConceptExplainerService {
         double after = 0;
         for (ConceptExplainerJob.Scene s : job.getScenes()) after += s.getDurationSeconds();
         after -= Math.max(0, job.getScenes().size() - 1) * fade(job);
-        job.getWarnings().add(String.format(Locale.ROOT, "The short was %.0f s, so the narration was sped up %.0f%% to bring it to about %.0f s.%s", total, (factor - 1) * 100, after,
-                failed > 0 ? " (" + failed + " scene(s) could not be sped up.)" : ""));
+        job.getWarnings().add(String.format(Locale.ROOT, "The short was %.0f s; the narration was sped up only %.0f%% (a clear voice matters more than the exact minute) and now runs about %.0f s.%s%s", total, (factor - 1) * 100, after,
+                after > SHORT_BUDGET_SECONDS * 1.18 ? " It is still long: shorten the script for a tighter reel." : "", failed > 0 ? " (" + failed + " scene(s) could not be sped up.)" : ""));
     }
 
     /** Speeds one scene's recorded audio up by {@code factor} (pitch preserved) and rescales its sentence timings and slide steps. */
@@ -2125,9 +2168,9 @@ public class ConceptExplainerService {
             if (b == 3) return k.endsWith("?") ? 0.7 : 0.32;  // teens: rhetorical questions, normal pace
             return k.endsWith("?") ? 1.4 : 0.5;
         }
-        if (vertical(job)) {   // reels: tighter (measured 0.20-0.36 s between sentences)
+        if (vertical(job)) {   // reels: tighter (was 0.28 s: speech filled 88% of a real reel, so the pauses are a little longer)
             String y = sentence == null ? "" : sentence.trim();
-            return y.endsWith("?") ? 0.38 : 0.28;
+            return y.endsWith("?") ? 0.46 : 0.34;
         }
         // measured on the reference narration: median pause 0.34 s, questions a little longer
         String x = sentence == null ? "" : sentence.trim();

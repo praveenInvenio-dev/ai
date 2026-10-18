@@ -44,6 +44,10 @@ public final class ScriptDoctor {
     private static final Pattern GREETING_ANYWHERE = Pattern.compile(
             "\\b(?:welcome (?:back|to)|in this (?:video|lesson|short|reel|tutorial|clip)|today (?:we|i)(?:'ll| will| are| am|'re|'m)? (?:going to|gonna|will)|"
                     + "(?:hey|hello|hi) (?:guys|everyone|friends|folks)|smash that|like and subscribe|subscribe to)\\b", Pattern.CASE_INSENSITIVE);
+    /** Empty phrases that sound like teaching but say nothing ("that's where the real magic happens", "game changer", "a nightmare"). */
+    private static final Pattern FILLER = Pattern.compile(
+            "\\b(?:real magic|the magic (?:happens|is)|magic happens|game[- ]?changer|a nightmare|mind[- ]?blowing|supercharge|unlock the power|take (?:it|your \\w+) to the next level|"
+                    + "in today'?s fast[- ]paced world|seamlessly|revolutioni[sz]e|it'?s that simple)\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern AND_THEN = Pattern.compile("\\band then\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern NUMBER_CLAIM = Pattern.compile(
             "(?<![\\w.])(?:\\d[\\d,.]*\\s?(?:%|percent\\b|million\\b|billion\\b|trillion\\b|thousand\\b|crore\\b|lakh\\b|x\\b|times\\b|years?\\b|ms\\b|gb\\b|mb\\b|tb\\b|k\\b|b\\b)"
@@ -127,6 +131,9 @@ public final class ScriptDoctor {
                 if (textIsEnglish) {
                     Matcher a = AND_THEN.matcher(line);
                     while (a.find()) andThen++;
+                    Matcher f = FILLER.matcher(line);
+                    if (f.find()) out.add(new Issue(s.number(), Severity.WARN, "filler-phrase", "Scene " + s.number() + ", sentence " + (i + 1) + " uses the empty phrase “"
+                            + clip(f.group(), 30) + "”. Say the concrete thing instead (what happens, to what, and why it matters).", true));
                 }
                 Matcher n = NUMBER_CLAIM.matcher(line);
                 if (n.find()) {

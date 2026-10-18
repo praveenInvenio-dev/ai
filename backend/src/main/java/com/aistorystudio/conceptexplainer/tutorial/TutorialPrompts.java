@@ -140,6 +140,15 @@ public final class TutorialPrompts {
             - ONE running example for the whole lesson that fits the SUBJECT (tech: an app or system; health: a person and their body,
               e.g. a passenger whose ears pop on a flight; money: a family budget; science: an everyday object). Use made-up company and product names (like "Joyair", "DracAir", "AeroGo") instead of real brands.
               Each scene adds one piece to that same picture, so the learner watches the system being built.
+            - EXPLAIN, do not decorate. Each scene teaches ONE idea: the first sentence states it in plain words, the next ones show it on the running
+              example (cause, then effect), the last one gives the takeaway a beginner could repeat. Name the real thing that does the work: say
+              "the operating system's scheduler runs the threads on the CPU cores", never a vague "Java handles it" or "the JVM maps it onto cores".
+              If you are not sure how a mechanism works, say less rather than something blurry. No empty phrases ("the real magic happens", "game changer",
+              "a nightmare", "it's that simple"): say what actually happens and why it matters.
+            - Programming topics: show ONE small, correct, complete example on screen (prefer the recommended form, e.g. a Runnable over extending Thread),
+              point at the exact line that matters, and teach the one mistake beginners really make (e.g. calling run() instead of start()) and the one
+              danger the topic creates (e.g. shared data and race conditions) before the recap. Keep the analogy for the idea; switch to the real code and
+              real names when you explain how it works.
             - Accurate. If a detail is simplified, say "in simple terms" or "a simplified version". Never invent version numbers,
               statistics or quotes from real people.
             """;
@@ -643,14 +652,14 @@ public final class TutorialPrompts {
                 - write for the ear: short sentences, contractions are fine;
                 - fix every listed problem: "weak-hook" -> open with a surprising claim, a question or a problem; "and-then" -> link with but / therefore;
                   "verify-number" -> replace the exact figure with "about"/"roughly" wording or drop it unless it is common knowledge;
-                  "long-sentence" / "long-hook" -> shorten without losing the point; "repetitive" -> vary the openings;
-                  "too-long" -> cut filler and repetition, keep every key idea; "not-direct" / "no-questions" -> talk to the child ("you", "let's") and ask a question.
+                  "filler-phrase" -> replace the empty phrase with the concrete fact it was standing in for; "long-sentence" / "long-hook" -> shorten without losing the point; "repetitive" -> vary the openings;
+                  "too-long" -> cut filler and repetition, keep every key idea; meet the word target given for the scene; "not-direct" / "no-questions" -> talk to the child ("you", "let's") and ask a question.
                 Return JSON only: {"scenes":[{"scene":N,"narration":["sentence 1","sentence 2"]}]}
                 """;
     }
 
     public static String doctorUserPrompt(String scenesJson, int shrinkWords) {
         return "Language of the narration: keep it. Scenes to fix:\n" + scenesJson
-                + (shrinkWords > 0 ? "\nThe whole script is about " + shrinkWords + " words too long: make these scenes shorter, about " + shrinkWords + " words in total." : "");
+                + (shrinkWords > 0 ? "\nThe whole script is about " + shrinkWords + " words too long. Every scene lists its own word target in its problems: hit it (within 15 percent), keep the key idea, the example and the numbers, and cut filler, repeats and side remarks." : "");
     }
 }

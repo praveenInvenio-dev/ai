@@ -63,7 +63,10 @@ public final class EngineScorer {
     private static final List<Lex> THREE = List.of(
             new Lex("orbit", words("solar system", "orbit", "orbits", "orbiting", "planet", "planets", "satellite", "satellites", "galaxy", "eclipse", "revolves around", "revolve around"), 2.0),
             new Lex("molecule", words("molecule", "molecules", "atom", "atoms", "atomic structure", "crystal lattice", "crystal", "double helix", "dna helix", "electron shell", "nucleus", "chemical bond", "chemical bonds"), 2.0),
-            new Lex("layers", words("layers of the earth", "earth's layers", "atmosphere", "crust and mantle", "cross-section", "cross section", "depth layers", "stack of layers", "strata"), 2.0),
+            new Lex("layers", words("layers of the earth", "earth's layers", "atmosphere", "crust and mantle", "cross-section", "cross section", "depth layers", "stack of layers", "strata",
+                    "layered", "layers", "stack", "tiers", "sits on top", "on top of", "under the hood", "abstraction"), 2.0),
+            new Lex("lanes", words("in parallel", "parallel", "concurrently", "simultaneously", "multithreading", "multiple threads", "worker", "workers", "at the same time", "cores",
+                    "multi-core", "split the work", "one at a time", "in order", "one after another", "sequential", "sequentially", "single-threaded", "single threaded", "strict sequence"), 2.0),
             new Lex("axes", words("3d", "three-dimensional", "3d model", "3d scene", "coordinate system", "x y z", "xyz axes", "cube", "sphere", "cylinder", "pyramid", "rotation in space", "rotates in space", "camera orbit", "spatial layout", "in 3d"), 2.0));
 
     private static final Pattern PROCESS = words("race condition", "thread", "threads", "concurrency", "synchronized", "mutex", "request", "response", "api", "data flow", "workflow",
@@ -74,9 +77,12 @@ public final class EngineScorer {
     private static final Pattern RIVE_WORDS = words("character", "mascot", "avatar", "talking head", "user interface", "interface animation", "animated ui", "ui animation",
             "button animation", "rive animation", "loading animation", "toggle");
 
-    /** Plan element types the native diagram renderer draws very well (and Three.js cannot). */
-    private static final Set<String> NATIVE_TYPES = Set.of("flowchart", "sequence", "datastruct", "code", "terminal", "browser", "chat", "funnel", "compare", "matrix", "venn",
-            "steps", "cycle", "tree", "formula", "plot", "bars", "periodic", "energy", "lens", "meter", "pie", "timeline", "table", "photo", "illustration", "analogy", "quote");
+    /**
+     * Plan devices that only the native renderer can draw (a real flowchart, a sequence diagram, a data structure, code, a formula, a plot ...).
+     * Common devices such as photo, actor, analogy, compare, note, tile, button, layers and steps appear on almost every scene, so they must
+     * NOT push a scene to native: the first version counted them and every scene of a real lesson ended up native.
+     */
+    private static final Set<String> NATIVE_TYPES = Set.of("flowchart", "sequence", "datastruct", "code", "terminal", "browser", "formula", "plot", "bars", "periodic", "energy", "lens", "funnel", "table");
 
     private static final double THREE_MIN = 3.0;
     private static final double THREE_OVER_NATIVE = 0.5;
@@ -92,11 +98,11 @@ public final class EngineScorer {
         // ---- native: the default, with extra weight for the things only it draws well
         double nat = 1.0;
         int pc = count(PROCESS, join(text, s.code()), hits, "process");
-        nat += Math.min(4.5, pc * 1.5);
+        nat += Math.min(3.0, pc * 1.0);              // a tech word is a weak hint: lots of scenes mention "thread" without being about process
         int cc = count(COMPARE, text, hits, "compare");
         nat += Math.min(3.0, cc * 1.5);
         boolean nativeType = s.planTypes() != null && s.planTypes().stream().anyMatch(NATIVE_TYPES::contains);
-        if (nativeType) nat += 2.5;
+        if (nativeType) nat += 1.5;
         if (nz(s.code()).length() > 8) nat += 1.5;
         if (s.kidsBand() > 0) nat += 2.0;                                  // illustrated scenes for children
         String dom = (nz(s.domain()) + " " + nz(s.subject())).toLowerCase(Locale.ROOT);
@@ -114,7 +120,7 @@ public final class EngineScorer {
         }
         if (dom.contains("astronom") || dom.contains("space") || dom.contains("chemis") || dom.contains("geograph") || dom.contains("geometr")) bestThree += bestThree > 0 ? 1.0 : 0;
         if (s.kidsBand() > 0) bestThree *= 0.6;
-        if (nativeType) bestThree -= 1.0;                                  // the plan already chose a 2D device on purpose
+        if (nativeType) bestThree -= 1.0;                                  // the plan chose a specialised 2D device on purpose
         scores.put(Engine.THREE_JS, Math.max(0, bestThree));
 
         // ---- motion canvas (only ever chosen when the renderer says it can export it)
@@ -142,7 +148,7 @@ public final class EngineScorer {
         double motion = scores.get(Engine.MOTION_CANVAS);
         if (caps.motionCanvas() && motion >= 3.0 && motion >= nat)
             return new Decision(Engine.MOTION_CANVAS, "Something moves through ordered steps, so tweened 2D motion fits.", scores, List.of(), null, motion - nat);
-        String why = nativeType ? "The scene's own diagram devices (flow, sequence, code, chart ...) are what the native renderer draws best."
+        String why = nativeType ? "The scene's specialised diagram device (flowchart, sequence, code, chart ...) is what the native renderer draws best."
                 : pc + cc > 0 ? "Process / code / comparison content (" + String.join(", ", hits) + "): the native diagram renderer shows steps, flows and code most clearly."
                 : "General explanation: the native synchronized diagram renderer is the best fit.";
         return new Decision(Engine.NATIVE_DIAGRAM, why, scores, hits, null, nat - Math.max(three, 0));

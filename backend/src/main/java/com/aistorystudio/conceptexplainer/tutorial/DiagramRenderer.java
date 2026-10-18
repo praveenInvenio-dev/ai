@@ -363,6 +363,8 @@ public final class DiagramRenderer {
     /** Pixel bounds of every non-arrow element (needed before drawing so arrows can attach). */
     /** True while a scene WITH a heading is laid out: its content must stay below the heading / label (the camera frames the same zone). */
     private boolean reserveHeader;
+    /** Extra space under the heading for the pinned step bar ("journey"), so content never collides with it. */
+    private double journeyPad;
 
     private double headerBottom() { return portrait ? 330 : 130; }
 
@@ -372,6 +374,8 @@ public final class DiagramRenderer {
         boolean illustrated = false;
         for (Element e : sc.elements()) if (underlay(e)) { illustrated = true; break; }
         reserveHeader = head && !illustrated;
+        journeyPad = 0;
+        if (reserveHeader) for (Element je : sc.elements()) if (hud(je)) { journeyPad = 110; break; }
         try {
             return layout(sc.elements());
         } finally {
@@ -395,12 +399,12 @@ public final class DiagramRenderer {
             // inside the frame (0-100 %): keep it fully on screen as before. Beyond 100 %: the element lives
             // outside the first view and the camera pulls back to show it (overview shot, see camera()).
             double x = e.x() > 100 ? cx - sz[0] / 2 : clamp(cx - sz[0] / 2, 30, W - 30 - sz[0]);
-            double minY = reserveHeader && !full(e) && !backdrop(e) ? headerBottom() : 30;
+            double minY = reserveHeader && !full(e) && !backdrop(e) ? headerBottom() + journeyPad : 30;
             double maxY = (full(e) ? H - 30 : contentBottom()) - sz[1];
             double y = e.y() > 100 ? cy - sz[1] / 2 : clamp(cy - sz[1] / 2, minY, Math.max(minY, maxY));
             if (e.type().equals("photo") && !nz(e.style()).toLowerCase(Locale.ROOT).contains("framed")) { x = 0; y = 0; sz = new double[]{W, H}; }
             else if (backdrop(e) && e.w() <= 0) { x = 0; y = 0; }     // full-bleed picture
-            if (e.type().equals("journey")) { x = 60; y = portrait ? 175 : 110; sz = new double[]{W - 120, 80}; }   // HUD: always at the top
+            if (e.type().equals("journey")) { x = 60; y = reserveHeader ? headerBottom() : (portrait ? 175 : 110); sz = new double[]{W - 120, 80}; }   // HUD: pinned at the top, but never on top of the heading (in a vertical frame the heading ends near y=330)
             b.put(e.id(), new Rectangle2D.Double(x, y, sz[0], sz[1]));
         }
         resolveOverlaps(els, b);
@@ -506,7 +510,7 @@ public final class DiagramRenderer {
     }
 
     private Rectangle2D findFreePlacement(Rectangle2D original, List<Rectangle2D> placed) {
-        double minY = reserveHeader ? headerBottom() : 30;
+        double minY = reserveHeader ? headerBottom() + journeyPad : 30;
         double maxX = Math.max(W * 1.65, original.getWidth() + 60);
         double maxY = Math.max(H * 1.65, original.getHeight() + minY + 30);
         double stepX = Math.max(36, Math.min(72, original.getWidth() / 5));
@@ -737,6 +741,11 @@ public final class DiagramRenderer {
             for (Element e : scene.elements()) if (!full(e) && !backdrop(e)) { onlyCards = false; break; }
             double zin = Math.min(portrait ? 1.6 : 1.3, Math.min((right - left - 40) / box.getWidth(), (bottom - top - 40) / box.getHeight()));
             if (!onlyCards && zin > 1.08) return new double[]{zin, box.getCenterX(), box.getCenterY(), W / 2.0, (top + bottom) / 2.0};
+            if (portrait) {   // a vertical frame: centre what fits in the free area instead of leaving the bottom half empty (but never up into the heading)
+                double mid = (top + bottom) / 2.0, dy = mid - box.getCenterY(), minTop = top + journeyPad;
+                if (box.getY() + dy < minTop) dy = minTop - box.getY();
+                if (Math.abs(dy) > 40) return new double[]{1, W / 2.0, box.getCenterY(), W / 2.0, box.getCenterY() + dy};
+            }
             return identity();
         }
         if (fits) return identity();

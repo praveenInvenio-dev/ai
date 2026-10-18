@@ -17,7 +17,7 @@ const LOCAL_WASM_URL = 'https://rive.local/rive.wasm';
 // Motion Canvas has no supported headless exporter in this service, so it is reported unavailable and the backend never routes to it.
 const CAPABILITIES = {
   MOTION_CANVAS: { available: false, reason: 'No supported headless Motion Canvas exporter is configured in this service.' },
-  THREE_JS: { available: true, reason: 'Playwright Chromium + Three.js templates (orbit, molecule, crystal, layers, axes, nodes).' },
+  THREE_JS: { available: true, reason: 'Playwright Chromium + Three.js templates (orbit, molecule, crystal, layers, axes, lanes, nodes).' },
   RIVE: { available: true, reason: 'Needs a valid .riv file per scene; the runtime wasm is served locally.' },
 };
 app.get('/health', (_, res) => res.json({

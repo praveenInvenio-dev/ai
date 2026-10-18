@@ -113,9 +113,10 @@ export function createStudio(THREE, opts) {
   }
 
   function layers() {
-    const earth = /earth|crust|mantle|core/.test(kindText);
+    const earth = /earth|crust|mantle/.test(kindText);
+    const tech = /jvm|java|app|operating system|kernel|hardware|cpu/.test(kindText);
     const n = Math.max(3, Math.min(5, labels.length || 4));
-    const names = pickLabels(earth ? ['Crust', 'Mantle', 'Outer core', 'Inner core', 'Centre'] : ['Layer 1', 'Layer 2', 'Layer 3', 'Layer 4', 'Layer 5'], n);
+    const names = pickLabels(earth ? ['Crust', 'Mantle', 'Outer core', 'Inner core', 'Centre'] : tech ? ['Your app', 'JVM', 'Threads', 'CPU cores', 'Hardware'] : ['Layer 1', 'Layer 2', 'Layer 3', 'Layer 4', 'Layer 5'], n);
     for (let i = 0; i < n; i++) {
       const r = 3.2 - i * (2.2 / n), h = 0.6, y = (n - 1 - i) * 0.85 - (n - 1) * 0.42;
       const slab = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 64), mat(COLORS[i % COLORS.length]));
@@ -172,13 +173,54 @@ export function createStudio(THREE, opts) {
     return { cam: (t) => { camera.position.set(Math.sin(t * 0.2) * 0.8, 0.8, 7.2); camera.lookAt(0, 0.2, 0); } };
   }
 
-  const builders = { orbit, molecule, layers, axes };
+  // parallel work vs one-at-a-time: lanes are tracks, tasks are blocks, a bright cursor shows what is running
+  function lanes() {
+    const parallel = /parallel|simultaneous|multithread|worker|cores|team|concurrent/.test(kindText);
+    const n = Math.max(2, Math.min(4, labels.length || 3));
+    const names = pickLabels(['Take order', 'Brew tea', 'Take payment', 'Serve'], n);
+    const cursorMat = () => new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x67e8f9, emissiveIntensity: 1.4 });
+    if (parallel) {
+      const speeds = [0.5, 0.26, 0.42, 0.34];
+      for (let i = 0; i < n; i++) {
+        const z = (i - (n - 1) / 2) * 1.8;
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(8.4, 0.14, 1.2), mat(0x1e3250));
+        slab.position.set(0, -0.1, z);
+        const block = new THREE.Mesh(new THREE.BoxGeometry(2.0 + (i % 2) * 1.4, 0.5, 0.9), mat(COLORS[i % COLORS.length]));
+        block.position.set(-1.2 + (i % 2) * 0.7, 0.25, z);
+        const tag = label(names[i], 0.95); tag.position.set(-5.6, 0.35, z);
+        const cursor = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 14), cursorMat()); cursor.position.set(-4, 0.5, z);
+        add([slab, block, tag, cursor], i);
+        spin.push(t => { cursor.position.x = -3.9 + (((t * speeds[i % 4]) + i * 0.17) % 1) * 7.8; });
+      }
+      return { cam: (t) => { camera.position.set(Math.sin(t * 0.15) * 1.0, 5.6, 9.6); camera.lookAt(-0.4, 0, 0); } };
+    }
+    // one lane: every task waits for the one before it
+    const widths = [1.7, 3.0, 1.7, 1.3];
+    let x = -3.9; const marks = [];
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.14, 1.4), mat(0x1e3250)); slab.position.set(0, -0.1, 0);
+    add([slab], 0);
+    for (let i = 0; i < n; i++) {
+      const w = widths[i % 4], cx = x + w / 2;
+      const block = new THREE.Mesh(new THREE.BoxGeometry(w - 0.12, 0.6, 1.0), mat(COLORS[i % COLORS.length])); block.position.set(cx, 0.3, 0);
+      const tag = label(names[i], 0.85); tag.position.set(cx, 1.25, 0);
+      add([block, tag], i);
+      marks.push([x, x + w]); x += w;
+    }
+    const cursor = new THREE.Mesh(new THREE.SphereGeometry(0.24, 20, 14), cursorMat()); cursor.position.set(-4.2, 0.9, 0);
+    add([cursor], 0);
+    const total = x + 3.9;
+    spin.push(t => { cursor.position.x = -4.2 + (((t * 0.16) % 1) * (total + 0.6)); });
+    return { cam: (t) => { camera.position.set(Math.sin(t * 0.15) * 0.8, 3.6, 9.2); camera.lookAt(0, 0.2, 0); } };
+  }
+
+  const builders = { orbit, molecule, layers, axes, lanes };
   let kind = builders[opts.kind] ? opts.kind : null;
   if (!kind) {
     if (/orbit|planet|solar|galaxy|satellite/.test(kindText)) kind = 'orbit';
     else if (/molecule|atom|bond|helix|dna|crystal|lattice/.test(kindText)) kind = 'molecule';
     else if (/layer|crust|mantle|cross.section|atmosphere/.test(kindText)) kind = 'layers';
     else if (/3d|cube|sphere|axes|three-dimensional|coordinate|pyramid|cylinder/.test(kindText)) kind = 'axes';
+    else if (/parallel|multithread|simultaneous|one at a time|in order|sequential/.test(kindText)) kind = 'lanes';
   }
   const rig = (kind ? builders[kind] : nodes)();
 

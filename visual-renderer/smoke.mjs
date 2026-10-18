@@ -5,7 +5,7 @@ let failed = 0;
 const check = (name, ok, extra = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + name + ' ' + extra); if (!ok) failed++; };
 const h = await (await fetch(base + '/health')).json();
 check('health reports Motion Canvas unavailable', h.engines.MOTION_CANVAS === false);
-for (const [kind, title, labels] of [['orbit', 'Planets orbit the sun', ['Sun', 'Earth', 'Mars']], ['molecule', 'Water molecule', ['O', 'H', 'H']], ['layers', 'Layers of the Earth', ['Crust', 'Mantle', 'Core']], ['axes', 'A cube in 3D', ['Cube']], ['', 'Generic', ['A', 'B', 'C']]]) {
+for (const [kind, title, labels] of [['orbit', 'Planets orbit the sun', ['Sun', 'Earth', 'Mars']], ['molecule', 'Water molecule', ['O', 'H', 'H']], ['layers', 'Layers of the Earth', ['Crust', 'Mantle', 'Core']], ['lanes', 'Parallel workers', ['Take order', 'Brew tea', 'Take payment']], ['axes', 'A cube in 3D', ['Cube']], ['', 'Generic', ['A', 'B', 'C']]]) {
   const r = await post({ engine: 'THREE_JS', title, labels, sceneKind: kind, steps: 3, width: 640, height: 360 });
   check('THREE_JS ' + (kind || 'nodes'), r.status === 200 && r.json.rendererStatus === 'RENDERED' && r.json.frames.length === 3, r.json.template || '');
 }

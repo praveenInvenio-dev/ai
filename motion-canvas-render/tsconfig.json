@@ -1,1 +1,0 @@
-{"compilerOptions":{"target":"ES2022","module":"ESNext","moduleResolution":"Bundler","strict":true,"jsx":"react","jsxImportSource":"@motion-canvas/2d","skipLibCheck":true,"types":[]},"include":["src/**/*.ts","vite.config.ts"]}
