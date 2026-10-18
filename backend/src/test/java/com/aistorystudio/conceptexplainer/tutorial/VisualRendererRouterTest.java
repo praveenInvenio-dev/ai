@@ -63,4 +63,17 @@ class VisualRendererRouterTest {
         assertTrue(three >= 1 && three <= 2, "3D must be a minority, was " + three);
         assertTrue(routes.stream().anyMatch(r -> r.engine().equals("NATIVE_DIAGRAM")));
     }
+
+    @Test void anAvailableAnimationEngineIsUsedAtLeastOnceInALongerLesson() {
+        var job = job();
+        job.getScenes().add(scene("Intro", "Welcome to the lesson about queues.", "teacher", "", "{}"));
+        job.getScenes().add(scene("The line", "The cashier takes the order, then the payment, then hands over the receipt.", "shop", "", "{}"));
+        job.getScenes().add(scene("Why it matters", "Customers wait when one step is slow.", "queue", "", "{}"));
+        job.getScenes().add(scene("A fix", "Add a second cashier.", "two cashiers", "", "{}"));
+        job.getScenes().add(scene("Recap", "One line, one cashier, slow service.", "recap", "", "{}"));
+        var routes = VisualRendererRouter.planJob(job, new com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities(false, false, true, true));
+        assertTrue(routes.stream().anyMatch(r -> r.engine().equals("MOTION_CANVAS")), "expected one Motion Canvas scene");
+        var off = VisualRendererRouter.planJob(job, new com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities(false, false, true, false));
+        assertTrue(off.stream().noneMatch(r -> r.engine().equals("MOTION_CANVAS")));
+    }
 }

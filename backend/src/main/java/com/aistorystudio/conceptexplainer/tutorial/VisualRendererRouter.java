@@ -69,6 +69,19 @@ public final class VisualRendererRouter {
             int i = motionIdx.get(k);
             decisions.set(i, decisions.get(i).withEngine(Engine.NATIVE_DIAGRAM, "Kept on the native renderer: this lesson already has enough animated step flows."));
         }
+        // variety floor: an available animation engine is used at least once in a lesson of 5+ scenes if ANY scene fits it even weakly
+        if (caps.motionCanvas() && scenes.size() >= 5 && decisions.stream().noneMatch(d -> d.engine() == Engine.MOTION_CANVAS)) {
+            int best = -1; double bestScore = 1.99;
+            for (int i = 0; i < decisions.size(); i++) {
+                Decision d = decisions.get(i);
+                double m = d.scores().getOrDefault(Engine.MOTION_CANVAS, 0.0);
+                if (d.engine() == Engine.NATIVE_DIAGRAM && m > bestScore) { bestScore = m; best = i; }
+            }
+            if (best >= 0) {
+                Decision d = decisions.get(best);
+                decisions.set(best, new Decision(Engine.MOTION_CANVAS, "Variety: this is the scene of the lesson with the clearest ordered steps, so it gets the animated step flow.", d.scores(), d.hits(), "flow", bestScore));
+            }
+        }
         // 2) never the same special engine three scenes running (RIVE with an explicit asset and MANIM specs are deliberate, so exempt)
         for (int i = 2; i < decisions.size(); i++) {
             Engine e = decisions.get(i).engine();

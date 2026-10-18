@@ -41,3 +41,4 @@ From reviewing two more generated videos (a 82 s vertical reel and a 136 s lesso
   On scenes modelled on your two videos: stepper / flowchart / scheduler scenes -> Motion Canvas; code, tables, bars, metrics, callouts stay native.
 - The Docker motion build step no longer breaks the whole image if it fails; the renderer then reports Motion Canvas OFF with the reason.
 - Rive still cannot appear without a .riv file (upload or rive-library/).
+- Variety floor: when Motion Canvas is available, a lesson of 5+ scenes uses it at least once if any scene fits it even weakly (score >= 2); never over code, formulas or charts.
