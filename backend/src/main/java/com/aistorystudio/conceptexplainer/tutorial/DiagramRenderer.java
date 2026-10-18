@@ -1694,6 +1694,22 @@ public final class DiagramRenderer {
     }
 
     /** Comparison bars: "label|number|unit" rows, bar length proportional to the number. */
+    private static final java.util.regex.Pattern BAR_NUMBER = java.util.regex.Pattern.compile("-?\\d+(?:[.,]\\d+)?");
+
+    /**
+     * One bar row as {label, value, unit}. The planner is asked for "label|value|unit" but often writes "Single: 30|s" or "Single 30 s":
+     * a value that is not a number would draw an empty bar (a dot) next to a label that already contains the number. Find the number wherever it is.
+     */
+    static String[] barRow(String row) {
+        String[] p = row == null ? new String[]{""} : row.split("\\|");
+        if (p.length > 1 && BAR_NUMBER.matcher(p[1]).find()) return p;
+        var m = BAR_NUMBER.matcher(row == null ? "" : row);
+        if (!m.find()) return p;
+        String label = row.substring(0, m.start()).replaceAll("[\\s:=\\-|]+$", "").trim();
+        String unit = row.substring(m.end()).replaceAll("[|]", " ").replaceAll("\\s+", " ").trim();
+        return new String[]{label.isEmpty() ? p[0].trim() : label, m.group().replace(',', '.'), unit};
+    }
+
     private void bars(Graphics2D g, Element e, Rectangle2D r) {
         card(g, r);
         float x = (float) r.getX() + 30, y = (float) r.getY() + 52;
@@ -1702,7 +1718,7 @@ public final class DiagramRenderer {
         double max = 0;
         List<String[]> rows = new ArrayList<>();
         for (String row : listOrEmpty(e)) {
-            String[] p = row.split("\\|");
+            String[] p = barRow(row);
             rows.add(p);
             if (p.length > 1) max = Math.max(max, parseNum(p[1]));
         }

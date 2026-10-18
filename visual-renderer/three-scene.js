@@ -6,7 +6,7 @@ export function createStudio(THREE, opts) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, preserveDrawingBuffer: true });
   renderer.setPixelRatio(1);
   renderer.setSize(W, H, false);
-  const BG = '#07111f';
+  const BG = opts.bg || '#07111f';
   renderer.setClearColor(BG);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(BG);
@@ -250,6 +250,7 @@ export function createStudio(THREE, opts) {
     });
     spin.forEach(fn => fn(t));
     rig.cam(t);
+    if (portrait) camera.position.multiplyScalar(1.22);   // a tall frame is narrow: pull back so the scene is not cut off
     renderer.render(scene, camera);
   }
   return { renderStep, kind: kind || 'nodes' };

@@ -77,4 +77,23 @@ class EngineScorerTest {
         assertEquals(Engine.NATIVE_DIAGRAM, pick("Coding the Team", "We create a class that extends Thread and call start to run it in parallel.", "", "class A extends Thread {}",
                 "Java / Programming", Set.of("code", "button"), false, false, 0, Capabilities.all()).engine());
     }
+
+    @Test void orderedMovingStepsGoToMotionCanvasWhenItIsAvailable() {
+        String text = "This is exactly how a standard Java program works. It follows a strict sequence. First, it takes the order, then it makes the chai, and finally, it collects the payment. If step two takes ten minutes, step three simply doesn't happen yet.";
+        var d = pick("How Java Normally Works", text, "", "", "Java / Programming", Set.of("sequence"), false, false, 0, Capabilities.all());
+        assertEquals(Engine.MOTION_CANVAS, d.engine());
+        assertEquals("flow", d.threeKind());
+        assertEquals(Engine.NATIVE_DIAGRAM, pick("How Java Normally Works", text, "", "", "Java / Programming", Set.of("sequence"), false, false, 0, new Capabilities(true, true, true, false)).engine());
+    }
+
+    @Test void motionNeverReplacesACodeWindowOrAFormula() {
+        String text = "First we write the class, then we call start, and finally the thread runs.";
+        assertEquals(Engine.NATIVE_DIAGRAM, pick("Coding", text, "", "class A extends Thread { }", "Java / Programming", Set.of("code"), false, false, 0, Capabilities.all()).engine());
+    }
+
+    @Test void aLibraryAnimationIsUsedWhenItsTopicMatches() {
+        var d = EngineScorer.decide(new Signals("The app freezes", "The app seems to freeze while it waits.", "", "", "technology", "", Set.of(), false, false, false, 0, true), Capabilities.all());
+        assertEquals(Engine.RIVE, d.engine());
+        assertEquals(Engine.NATIVE_DIAGRAM, EngineScorer.decide(new Signals("The app freezes", "The app seems to freeze while it waits.", "", "", "technology", "", Set.of(), false, false, false, 0, true), new Capabilities(true, false, true, true)).engine());
+    }
 }

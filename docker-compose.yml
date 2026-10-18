@@ -476,6 +476,8 @@ services:
       # (a voice profile outlives any single project), same reasoning as
       # the video-editor-data split above.
       - voice-profile-audio:/voice-profiles
+      # Rive animations the Concept Explainer may use (see rive-library/README.md); read-only
+      - ./rive-library:/rive-library:ro
     ports:
       # Backend is reachable from the frontend over Docker networking.
       # Bind it to loopback only for local diagnostics; never publish it publicly.

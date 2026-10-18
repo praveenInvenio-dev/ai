@@ -4,7 +4,7 @@ const post = body => fetch(base + '/render-frames', { method: 'POST', headers: {
 let failed = 0;
 const check = (name, ok, extra = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + name + ' ' + extra); if (!ok) failed++; };
 const h = await (await fetch(base + '/health')).json();
-check('health reports Motion Canvas unavailable', h.engines.MOTION_CANVAS === false);
+console.log('engines reported by /health:', JSON.stringify(h.engines));
 for (const [kind, title, labels] of [['orbit', 'Planets orbit the sun', ['Sun', 'Earth', 'Mars']], ['molecule', 'Water molecule', ['O', 'H', 'H']], ['layers', 'Layers of the Earth', ['Crust', 'Mantle', 'Core']], ['lanes', 'Parallel workers', ['Take order', 'Brew tea', 'Take payment']], ['axes', 'A cube in 3D', ['Cube']], ['', 'Generic', ['A', 'B', 'C']]]) {
   const r = await post({ engine: 'THREE_JS', title, labels, sceneKind: kind, steps: 3, width: 640, height: 360 });
   check('THREE_JS ' + (kind || 'nodes'), r.status === 200 && r.json.rendererStatus === 'RENDERED' && r.json.frames.length === 3, r.json.template || '');
@@ -13,6 +13,7 @@ let r = await post({ engine: 'RIVE' });
 check('RIVE without asset is rejected', r.status === 503 && r.json.rendererStatus === 'FAILED');
 r = await post({ engine: 'RIVE', riveAssetBase64: Buffer.from('not a rive file').toString('base64') });
 check('RIVE with a garbage file is rejected', r.status === 503 && r.json.rendererStatus === 'FAILED', r.json.error);
-r = await post({ engine: 'MOTION_CANVAS' });
-check('MOTION_CANVAS is rejected', r.status === 503);
+r = await post({ engine: 'MOTION_CANVAS', title: 'Steps', labels: ['Take order', 'Make chai', 'Collect payment'], steps: 4, width: 640, height: 360, theme: 'reference' });
+if (h.engines.MOTION_CANVAS) check('MOTION_CANVAS renders an animated step flow', r.status === 200 && r.json.frames.length === 4 && new Set(r.json.frames).size === 4);
+else check('MOTION_CANVAS is rejected when its player is not built', r.status === 503);
 process.exit(failed ? 1 : 0);

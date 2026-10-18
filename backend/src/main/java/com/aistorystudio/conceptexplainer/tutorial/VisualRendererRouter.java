@@ -29,6 +29,8 @@ public final class VisualRendererRouter {
     static final java.util.regex.Pattern RIVE_PATH = java.util.regex.Pattern.compile("rive-assets/[A-Za-z0-9-]+\\.riv");
     /** At most this share of a lesson's scenes (rounded, minimum one) may be 3D: depth is for the scenes that need it. */
     static final double MAX_THREE_SHARE = 0.35;
+    /** Same idea for animated step flows: a lesson of nothing but moving boxes is as dull as one of nothing but still cards. */
+    static final double MAX_MOTION_SHARE = 0.4;
 
     private VisualRendererRouter() {}
 
@@ -59,6 +61,14 @@ public final class VisualRendererRouter {
             int i = threeIdx.get(k);
             decisions.set(i, decisions.get(i).withEngine(Engine.NATIVE_DIAGRAM, "Kept on the native renderer: this lesson already has enough 3D scenes, and a flat diagram explains this one well too."));
         }
+        int maxMotion = Math.max(1, (int) Math.round(scenes.size() * MAX_MOTION_SHARE));
+        List<Integer> motionIdx = new ArrayList<>();
+        for (int i = 0; i < decisions.size(); i++) if (decisions.get(i).engine() == Engine.MOTION_CANVAS) motionIdx.add(i);
+        motionIdx.sort((a, b) -> Double.compare(decisions.get(b).margin(), decisions.get(a).margin()));
+        for (int k = maxMotion; k < motionIdx.size(); k++) {
+            int i = motionIdx.get(k);
+            decisions.set(i, decisions.get(i).withEngine(Engine.NATIVE_DIAGRAM, "Kept on the native renderer: this lesson already has enough animated step flows."));
+        }
         // 2) never the same special engine three scenes running (RIVE with an explicit asset and MANIM specs are deliberate, so exempt)
         for (int i = 2; i < decisions.size(); i++) {
             Engine e = decisions.get(i).engine();
@@ -86,7 +96,7 @@ public final class VisualRendererRouter {
         boolean uploadedRive = job.getRiveAssetPath() != null && !job.getRiveAssetPath().isBlank();
         int kidsBand = switch (job.getTrack() == null ? "" : job.getTrack()) { case "KIDS_2_5" -> 1; case "KIDS" -> 2; case "KIDS_10_15" -> 3; default -> 0; };
         var signals = new EngineScorer.Signals(scene.getTitle(), scene.getNarration(), scene.getVisualDescription(), scene.getCode(),
-                job.getDomain(), job.getSubject(), types, manimSpec, explicitRive, uploadedRive, kidsBand);
+                job.getDomain(), job.getSubject(), types, manimSpec, explicitRive, uploadedRive, kidsBand, scene.getRiveAssetHint() != null);
         return EngineScorer.decide(signals, caps);
     }
 

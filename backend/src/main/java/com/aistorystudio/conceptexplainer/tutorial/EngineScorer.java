@@ -44,7 +44,12 @@ public final class EngineScorer {
      * @param kidsBand    0 = not a kids lesson, 1-3 = age bands
      */
     public record Signals(String title, String narration, String visual, String code, String domain, String subject, Set<String> planTypes,
-                          boolean manimSpec, boolean explicitRive, boolean uploadedRive, int kidsBand) { }
+                          boolean manimSpec, boolean explicitRive, boolean uploadedRive, int kidsBand, boolean libraryRive) {
+        public Signals(String title, String narration, String visual, String code, String domain, String subject, Set<String> planTypes,
+                       boolean manimSpec, boolean explicitRive, boolean uploadedRive, int kidsBand) {
+            this(title, narration, visual, code, domain, subject, planTypes, manimSpec, explicitRive, uploadedRive, kidsBand, false);
+        }
+    }
 
     /** @param scores per-engine score (for transparency in the UI); @param hits the words that decided it; @param threeKind orbit | molecule | layers | axes */
     public record Decision(Engine engine, String reason, Map<Engine, Double> scores, List<String> hits, String threeKind, double margin) {
@@ -73,7 +78,12 @@ public final class EngineScorer {
             "pipeline", "sequence", "step by step", "process", "algorithm", "state transition", "before and after", "function", "database", "server", "program", "multithreading",
             "queue", "loop", "variable", "compile", "http", "cache", "bug", "code");
     private static final Pattern COMPARE = words("versus", "compare", "comparison", "difference between", "pros and cons", "trade-off", "tradeoff", "myth", "mistake");
-    private static final Pattern MOTION_FLOW = words("flow", "flows", "moves through", "travels", "passes through", "handoff", "hand off", "pipeline", "sequence of steps", "step by step", "timeline");
+    /** Words that say something MOVES through ordered steps (a request travels, a task is handed on, step one then step two). */
+    private static final Pattern MOTION_FLOW = words("flows through", "moves through", "travels", "passes through", "handoff", "hand off", "hands off", "pipeline", "data flow", "step by step", "timeline", "strict sequence");
+    /** Ordering markers: counted every time they occur ("first ... then ... finally" is a sequence worth animating). */
+    private static final Pattern ORDER_MARKERS = Pattern.compile("(?<![\\p{L}\\p{N}])(?:first|then|next|after that|finally|step (?:one|two|three|four|five|\\d))(?![\\p{L}\\p{N}])", Pattern.CASE_INSENSITIVE);
+    /** Devices that are the point of the scene and only the native renderer draws: no animation replaces them. */
+    private static final Set<String> BLOCKS_MOTION = Set.of("code", "terminal", "browser", "datastruct", "formula", "plot", "bars", "periodic", "energy", "lens", "table");
     private static final Pattern RIVE_WORDS = words("character", "mascot", "avatar", "talking head", "user interface", "interface animation", "animated ui", "ui animation",
             "button animation", "rive animation", "loading animation", "toggle");
 
@@ -123,14 +133,18 @@ public final class EngineScorer {
         if (nativeType) bestThree -= 1.0;                                  // the plan chose a specialised 2D device on purpose
         scores.put(Engine.THREE_JS, Math.max(0, bestThree));
 
-        // ---- motion canvas (only ever chosen when the renderer says it can export it)
-        double mc = count(MOTION_FLOW, text, new ArrayList<>(), "motion") * 1.5;
-        scores.put(Engine.MOTION_CANVAS, Math.min(4.5, mc) + (pc > 0 ? 0.5 : 0));
+        // ---- motion canvas: ordered steps that move; never over a code window, data structure or formula
+        int markers = (int) ORDER_MARKERS.matcher(text).results().count();
+        double mc = Math.min(4.0, markers * 1.0) + Math.min(4.0, count(MOTION_FLOW, text, new ArrayList<>(), "motion") * 2.0);
+        boolean blocksMotion = s.planTypes() != null && s.planTypes().stream().anyMatch(BLOCKS_MOTION::contains);
+        if (blocksMotion || nz(s.code()).length() > 8) mc = 0;
+        if (s.kidsBand() > 0) mc *= 0.6;
+        scores.put(Engine.MOTION_CANVAS, mc);
 
         // ---- rive
         List<String> riveHits = new ArrayList<>();
         int rc = count(RIVE_WORDS, text, riveHits, "rive");
-        double riveScore = s.explicitRive() ? 10 : (s.uploadedRive() && rc > 0 ? 6 + rc : 0);
+        double riveScore = s.explicitRive() ? 10 : s.libraryRive() ? 8 : (s.uploadedRive() && rc > 0 ? 6 + rc : 0);
         scores.put(Engine.RIVE, riveScore);
 
         // ---- manim
@@ -140,14 +154,14 @@ public final class EngineScorer {
         if (s.manimSpec() && caps.manim())
             return new Decision(Engine.MANIM, "Scene has a validated maths/physics animation spec, so Manim draws it.", scores, List.of("manim spec"), null, 10 - nat);
         if (riveScore >= 6 && caps.rive())
-            return new Decision(Engine.RIVE, s.explicitRive() ? "The scene names a Rive asset, so the designed animation plays." : "A Rive file was uploaded and this scene is about a character or UI (" + String.join(", ", riveHits) + ").",
+            return new Decision(Engine.RIVE, s.explicitRive() ? "The scene names a Rive asset, so the designed animation plays." : s.libraryRive() ? "A Rive animation in the library matches this topic, so the designed animation plays." : "A Rive file was uploaded and this scene is about a character or UI (" + String.join(", ", riveHits) + ").",
                     scores, riveHits, null, riveScore - nat);
         double three = scores.get(Engine.THREE_JS);
         if (caps.threeJs() && three >= THREE_MIN && three >= nat + THREE_OVER_NATIVE)
             return new Decision(Engine.THREE_JS, "Real depth matters here (" + String.join(", ", threeHits) + "): a 3D camera view explains it better than a flat diagram.", scores, threeHits, bestKind, three - nat);
         double motion = scores.get(Engine.MOTION_CANVAS);
-        if (caps.motionCanvas() && motion >= 3.0 && motion >= nat)
-            return new Decision(Engine.MOTION_CANVAS, "Something moves through ordered steps, so tweened 2D motion fits.", scores, List.of(), null, motion - nat);
+        if (caps.motionCanvas() && motion >= 3.0 && motion >= nat - 1.0)
+            return new Decision(Engine.MOTION_CANVAS, "Ordered steps that move one after another (" + markers + " ordering cues): an animated step flow shows the order better than a still diagram.", scores, List.of(), "flow", motion - nat);
         String why = nativeType ? "The scene's specialised diagram device (flowchart, sequence, code, chart ...) is what the native renderer draws best."
                 : pc + cc > 0 ? "Process / code / comparison content (" + String.join(", ", hits) + "): the native diagram renderer shows steps, flows and code most clearly."
                 : "General explanation: the native synchronized diagram renderer is the best fit.";

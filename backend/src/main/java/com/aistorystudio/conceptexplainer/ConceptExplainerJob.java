@@ -63,6 +63,10 @@ public class ConceptExplainerJob {
         private String visualEngine = "NATIVE_DIAGRAM", visualEngineReason = "Native synchronized diagram renderer";
         /** Template hint for the 3D renderer (orbit | molecule | layers | axes); null for every other engine. */
         private String visualKind;
+        /** File name of a Rive library animation whose keywords match this scene (set before routing); null when none matches. */
+        private String riveAssetHint;
+        public String getRiveAssetHint() { return riveAssetHint; }
+        public void setRiveAssetHint(String v) { riveAssetHint = v == null || v.isBlank() ? null : v; }
         public String getVisualKind() { return visualKind; }
         public void setVisualKind(String v) { visualKind = v == null || v.isBlank() ? null : v; }
         /** Actual production renderer; never infer this from the planned engine. */

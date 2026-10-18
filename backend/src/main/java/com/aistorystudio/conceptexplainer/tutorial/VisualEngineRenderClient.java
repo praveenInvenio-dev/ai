@@ -54,12 +54,19 @@ public final class VisualEngineRenderClient {
 
     public List<byte[]> render(String engine, String title, String narration, String planJson, int steps,
                                int width, int height, Path riveAsset, String sceneKind) throws IOException, InterruptedException {
+        return render(engine, title, narration, planJson, steps, width, height, riveAsset, sceneKind, null);
+    }
+
+    /** {@code theme} is the lesson's look (reel, reference ...): the 3D / animated scene takes its background so it matches the rest of the video. */
+    public List<byte[]> render(String engine, String title, String narration, String planJson, int steps,
+                               int width, int height, Path riveAsset, String sceneKind, String theme) throws IOException, InterruptedException {
         if (!enabled()) throw new IOException("VISUAL_RENDERER_BASE_URL is not configured");
         ObjectNode payload = M.createObjectNode();
         payload.put("engine", engine); payload.put("title", safe(title)); payload.put("narration", safe(narration));
         payload.put("planJson", planJson == null ? "{}" : planJson); payload.put("steps", Math.max(2, Math.min(8, steps)));
         payload.put("width", width); payload.put("height", height);
         if (sceneKind != null && !sceneKind.isBlank()) payload.put("sceneKind", sceneKind);
+        if (theme != null && !theme.isBlank()) payload.put("theme", theme);
         JsonNode plan; try { plan = M.readTree(planJson == null ? "{}" : planJson); } catch (Exception e) { plan = M.createObjectNode(); }
         List<String> labels = labelsFor(plan, sceneKind);
         payload.set("labels", M.valueToTree(labels));
@@ -88,7 +95,7 @@ public final class VisualEngineRenderClient {
     static List<String> labelsFor(JsonNode plan, String sceneKind) {
         List<String> prefer = switch (sceneKind == null ? "" : sceneKind) {
             case "layers" -> List.of("layers", "steps", "tree", "cycle");
-            case "lanes" -> List.of("steps", "cycle", "sequence", "tile", "layers");
+            case "lanes", "flow" -> List.of("steps", "cycle", "sequence", "tile", "layers");
             case "orbit", "molecule" -> List.of("cycle", "tree", "tile", "steps", "layers");
             default -> List.of("steps", "layers", "cycle", "tree", "tile");
         };

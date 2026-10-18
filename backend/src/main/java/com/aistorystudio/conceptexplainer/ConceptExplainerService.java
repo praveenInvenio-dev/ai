@@ -1866,9 +1866,27 @@ public class ConceptExplainerService {
 
     /** Select a preferred visual engine and separately record the renderer that actually exports the scene.
      * This prevents preview availability from being misreported as production export support. */
+    @org.springframework.beans.factory.annotation.Value("${studio.rive.library-dir:/rive-library}")
+    private String riveLibraryDir;
+
+    private com.aistorystudio.conceptexplainer.tutorial.RiveLibrary riveLibrary() {
+        return com.aistorystudio.conceptexplainer.tutorial.RiveLibrary.load(riveLibraryDir);
+    }
+
+    /** Scenes whose topic matches a Rive library animation get it as a hint (only when the renderer can play Rive). */
+    private void hintRiveAssets(ConceptExplainerJob job, com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities caps) {
+        var lib = caps.rive() ? riveLibrary() : com.aistorystudio.conceptexplainer.tutorial.RiveLibrary.empty();
+        for (ConceptExplainerJob.Scene sc : job.getScenes())
+            sc.setRiveAssetHint(lib.match(String.join(" ", String.valueOf(sc.getTitle()), String.valueOf(sc.getNarration()), String.valueOf(sc.getVisualDescription()))).orElse(null));
+    }
+
     private void assignVisualRoutes(ConceptExplainerJob job) {
+        hintRiveAssets(job, visualCapabilities());
         var routes = com.aistorystudio.conceptexplainer.tutorial.VisualRendererRouter.planJob(job, visualCapabilities());
         for (int i = 0; i < job.getScenes().size(); i++) applyRoute(job.getScenes().get(i), routes.get(i));
+        boolean riveReady = visualCapabilities().rive() && (!riveLibrary().isEmpty() || job.getRiveAssetPath() != null);
+        if (!riveReady && job.getWarnings().stream().noneMatch(w -> w.startsWith("Rive animations are off")))
+            job.getWarnings().add("Rive animations are off for this lesson: no .riv file was uploaded and the rive-library folder is empty. Rive files are designed in the Rive editor; add them (upload, or rive-library/manifest.json) to use this engine.");
         long special = job.getScenes().stream().filter(s -> List.of("THREE_JS", "RIVE", "MOTION_CANVAS", "MANIM").contains(s.getVisualEngine())).count();
         if (special > 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Visual routing planned per scene."))) job.getWarnings().add("Visual routing planned per scene. Each scene gets the engine that fits its topic (native diagrams, Manim, Three.js, Rive); a failed export falls back to the native renderer and says so.");
     }
@@ -1882,6 +1900,7 @@ public class ConceptExplainerService {
     /** The scene's route comes from the lesson-wide plan, so editing or re-rendering one scene keeps the lesson's variety rules. */
     private void applyVisualRoute(ConceptExplainerJob job, ConceptExplainerJob.Scene scene) {
         int idx = job.getScenes().indexOf(scene);
+        hintRiveAssets(job, visualCapabilities());
         var routes = com.aistorystudio.conceptexplainer.tutorial.VisualRendererRouter.planJob(job, visualCapabilities());
         var route = idx >= 0 && idx < routes.size() ? routes.get(idx)
                 : com.aistorystudio.conceptexplainer.tutorial.VisualRendererRouter.route(job, scene, visualCapabilities());
@@ -1917,12 +1936,14 @@ public class ConceptExplainerService {
                     if (Files.isRegularFile(candidate)) riveAsset = candidate;
                 }
             } catch (Exception ignored) { }
+            // no per-lesson file: use the library animation that matched this scene's topic
+            if (riveAsset == null && s.getRiveAssetHint() != null) riveAsset = riveLibrary().resolve(s.getRiveAssetHint()).orElse(null);
         }
         try {
             int width = vertical(job) ? 1080 : 1920, height = vertical(job) ? 1920 : 1080;
             var client = new com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient(visualRendererBaseUrl);
             List<byte[]> rendered = client.render(engine, s.getTitle(), s.getNarration(), s.getPlanJson(),
-                    Math.max(2, Math.min(8, s.getSentences().size())), width, height, riveAsset, s.getVisualKind());
+                    Math.max(2, Math.min(8, s.getSentences().size())), width, height, riveAsset, s.getVisualKind(), theme(job));
             List<BufferedImage> frames = new ArrayList<>();
             for (byte[] bytes : rendered) {
                 BufferedImage frame = ImageIO.read(new ByteArrayInputStream(bytes));
