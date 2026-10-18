@@ -16,7 +16,7 @@ const LOCAL_WASM_URL = 'https://rive.local/rive.wasm';
 // ---------------------------------------------------------------- capabilities (reported honestly, never assumed)
 // Motion Canvas runs a PREBUILT player project (motion/): scenes are driven by plain variables, nothing generated is compiled. It is reported available only if that build exists.
 const CAPABILITIES = {
-  MOTION_CANVAS: { available: false, reason: 'The Motion Canvas player bundle was not built (motion/dist missing).' },
+  MOTION_CANVAS: { available: false, reason: 'the Motion Canvas player is not built in this renderer image (old image, or the motion build step failed): run docker compose build --no-cache visual-renderer' },
   THREE_JS: { available: true, reason: 'Playwright Chromium + Three.js templates (orbit, molecule, crystal, layers, axes, lanes, nodes).' },
   RIVE: { available: true, reason: 'Needs a valid .riv file per scene; the runtime wasm is served locally.' },
 };

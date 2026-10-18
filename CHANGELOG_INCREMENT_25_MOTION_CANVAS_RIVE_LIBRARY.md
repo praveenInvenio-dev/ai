@@ -33,3 +33,11 @@ From reviewing two more generated videos (a 82 s vertical reel and a 136 s lesso
 - Not run: Maven build of the whole backend, Docker build, Angular build, real TTS audio.
 - Known, NOT fixed: card text is small on a phone; a clipped label ("Worker Th...") and overlapping "User Balance" cards in the videos; the reel's own
   pause settings in the videos you sent predate Increment 24 (speech filled 87% of the reel).
+
+## Follow-up: "still only Three.js and native"
+- Every lesson now carries one warning line: `Visual engines this run - Three.js: on, Motion Canvas: OFF (reason), Rive: needs a .riv file, Manim: off. Planned scenes: {...}`.
+  If Motion Canvas shows OFF, the running renderer image is old or its motion build step failed (rebuild: `docker compose build --no-cache visual-renderer backend`).
+- The plan's own ordered-step devices (journey / steps / timeline / flowchart / cycle / sequence) now count as a Motion Canvas hint, so stepper scenes use it.
+  On scenes modelled on your two videos: stepper / flowchart / scheduler scenes -> Motion Canvas; code, tables, bars, metrics, callouts stay native.
+- The Docker motion build step no longer breaks the whole image if it fails; the renderer then reports Motion Canvas OFF with the reason.
+- Rive still cannot appear without a .riv file (upload or rive-library/).

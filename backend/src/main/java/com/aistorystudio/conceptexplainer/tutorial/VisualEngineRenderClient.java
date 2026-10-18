@@ -25,7 +25,9 @@ public final class VisualEngineRenderClient {
     public boolean enabled() { return !baseUrl.isBlank(); }
 
     /** What the renderer service can export right now (from its /health). All false when it is not configured or not reachable. */
-    public record Caps(boolean threeJs, boolean rive, boolean motionCanvas) { }
+    public record Caps(boolean threeJs, boolean rive, boolean motionCanvas, String motionReason, String note) {
+        public Caps(boolean threeJs, boolean rive, boolean motionCanvas) { this(threeJs, rive, motionCanvas, "", ""); }
+    }
 
     private static volatile Caps cachedCaps;
     private static volatile long capsAt;
@@ -37,11 +39,13 @@ public final class VisualEngineRenderClient {
         if (c != null && now - capsAt < (c.threeJs() ? 30_000 : 5_000)) return c;
         try {
             HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create(baseUrl + "/health")).timeout(Duration.ofSeconds(3)).GET().build(), HttpResponse.BodyHandlers.ofString());
-            JsonNode e = r.statusCode() == 200 ? M.readTree(r.body()).path("engines") : M.createObjectNode();
-            c = new Caps(e.path("THREE_JS").asBoolean(false), e.path("RIVE").asBoolean(false), e.path("MOTION_CANVAS").asBoolean(false));
+            JsonNode root = r.statusCode() == 200 ? M.readTree(r.body()) : M.createObjectNode();
+            JsonNode e = root.path("engines");
+            c = new Caps(e.path("THREE_JS").asBoolean(false), e.path("RIVE").asBoolean(false), e.path("MOTION_CANVAS").asBoolean(false),
+                    root.path("capabilities").path("MOTION_CANVAS").path("reason").asText(""), r.statusCode() == 200 ? "" : "renderer answered HTTP " + r.statusCode());
         } catch (Exception ex) {
             if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
-            c = new Caps(false, false, false);
+            c = new Caps(false, false, false, "", "the renderer service is not reachable at " + baseUrl);
         }
         cachedCaps = c; capsAt = now;
         return c;

@@ -83,6 +83,8 @@ public final class EngineScorer {
     /** Ordering markers: counted every time they occur ("first ... then ... finally" is a sequence worth animating). */
     private static final Pattern ORDER_MARKERS = Pattern.compile("(?<![\\p{L}\\p{N}])(?:first|then|next|after that|finally|step (?:one|two|three|four|five|\\d))(?![\\p{L}\\p{N}])", Pattern.CASE_INSENSITIVE);
     /** Devices that are the point of the scene and only the native renderer draws: no animation replaces them. */
+    /** Plan devices that already say "ordered steps" (a stepper, a timeline, a flowchart, a cycle): the animated step flow is their natural partner. */
+    private static final Set<String> MOTION_DEVICES = Set.of("steps", "journey", "timeline", "flowchart", "cycle", "sequence");
     private static final Set<String> BLOCKS_MOTION = Set.of("code", "terminal", "browser", "datastruct", "formula", "plot", "bars", "periodic", "energy", "lens", "table");
     private static final Pattern RIVE_WORDS = words("character", "mascot", "avatar", "talking head", "user interface", "interface animation", "animated ui", "ui animation",
             "button animation", "rive animation", "loading animation", "toggle");
@@ -136,6 +138,8 @@ public final class EngineScorer {
         // ---- motion canvas: ordered steps that move; never over a code window, data structure or formula
         int markers = (int) ORDER_MARKERS.matcher(text).results().count();
         double mc = Math.min(4.0, markers * 1.0) + Math.min(4.0, count(MOTION_FLOW, text, new ArrayList<>(), "motion") * 2.0);
+        boolean motionDevice = s.planTypes() != null && s.planTypes().stream().anyMatch(MOTION_DEVICES::contains);
+        if (motionDevice) mc = Math.max(mc + 2.0, 3.0);          // the plan itself says "ordered steps"
         boolean blocksMotion = s.planTypes() != null && s.planTypes().stream().anyMatch(BLOCKS_MOTION::contains);
         if (blocksMotion || nz(s.code()).length() > 8) mc = 0;
         if (s.kidsBand() > 0) mc *= 0.6;
@@ -160,7 +164,7 @@ public final class EngineScorer {
         if (caps.threeJs() && three >= THREE_MIN && three >= nat + THREE_OVER_NATIVE)
             return new Decision(Engine.THREE_JS, "Real depth matters here (" + String.join(", ", threeHits) + "): a 3D camera view explains it better than a flat diagram.", scores, threeHits, bestKind, three - nat);
         double motion = scores.get(Engine.MOTION_CANVAS);
-        if (caps.motionCanvas() && motion >= 3.0 && motion >= nat - 1.0)
+        if (caps.motionCanvas() && motion >= 3.0 && motion >= nat - (motionDevice ? 2.0 : 1.0))
             return new Decision(Engine.MOTION_CANVAS, "Ordered steps that move one after another (" + markers + " ordering cues): an animated step flow shows the order better than a still diagram.", scores, List.of(), "flow", motion - nat);
         String why = nativeType ? "The scene's specialised diagram device (flowchart, sequence, code, chart ...) is what the native renderer draws best."
                 : pc + cc > 0 ? "Process / code / comparison content (" + String.join(", ", hits) + "): the native diagram renderer shows steps, flows and code most clearly."

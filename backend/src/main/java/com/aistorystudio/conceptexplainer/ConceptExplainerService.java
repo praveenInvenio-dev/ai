@@ -1887,8 +1887,25 @@ public class ConceptExplainerService {
         boolean riveReady = visualCapabilities().rive() && (!riveLibrary().isEmpty() || job.getRiveAssetPath() != null);
         if (!riveReady && job.getWarnings().stream().noneMatch(w -> w.startsWith("Rive animations are off")))
             job.getWarnings().add("Rive animations are off for this lesson: no .riv file was uploaded and the rive-library folder is empty. Rive files are designed in the Rive editor; add them (upload, or rive-library/manifest.json) to use this engine.");
+        reportEngineAvailability(job, routes);
         long special = job.getScenes().stream().filter(s -> List.of("THREE_JS", "RIVE", "MOTION_CANVAS", "MANIM").contains(s.getVisualEngine())).count();
         if (special > 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Visual routing planned per scene."))) job.getWarnings().add("Visual routing planned per scene. Each scene gets the engine that fits its topic (native diagrams, Manim, Three.js, Rive); a failed export falls back to the native renderer and says so.");
+    }
+
+    /**
+     * One line per lesson: which engines could really run and what was planned. When a lesson "only uses native and Three.js" this says why:
+     * an old renderer image (Motion Canvas off), an unreachable renderer, or no Rive file.
+     */
+    private void reportEngineAvailability(ConceptExplainerJob job, java.util.List<com.aistorystudio.conceptexplainer.tutorial.VisualRendererRouter.Route> routes) {
+        var rc = new com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient(visualRendererBaseUrl).capabilities();
+        java.util.Map<String, Long> plan = new java.util.TreeMap<>();
+        for (var r : routes) plan.merge(r.engine(), 1L, Long::sum);
+        String riveNote = !rc.rive() ? "off" : (!riveLibrary().isEmpty() || job.getRiveAssetPath() != null) ? "ready" : "needs a .riv file";
+        String line = "Visual engines this run - Three.js: " + (rc.threeJs() ? "on" : "OFF") + ", Motion Canvas: " + (rc.motionCanvas() ? "on" : "OFF" + (rc.motionReason().isBlank() ? "" : " (" + rc.motionReason() + ")"))
+                + ", Rive: " + riveNote + ", Manim: " + (manimAvailable() ? "on" : "off")
+                + (rc.note().isBlank() ? "" : " [" + rc.note() + "]") + ". Planned scenes: " + plan + ".";
+        job.getWarnings().removeIf(w -> w.startsWith("Visual engines this run"));
+        job.getWarnings().add(line);
     }
 
     /** What the renderer service can really export now, combined with the Manim sidecar. */

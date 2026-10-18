@@ -6,7 +6,7 @@ RUN npm install --no-audit --no-fund --omit=dev
 COPY motion/package.json ./motion/
 RUN cd motion && npm install --no-audit --no-fund
 COPY motion ./motion
-RUN cd motion && npm run build && rm -rf node_modules
+RUN cd motion && (npm run build || echo 'MOTION CANVAS BUILD FAILED: the renderer will report it unavailable') && rm -rf node_modules
 COPY server.mjs three-scene.js ./
 ENV PORT=5020
 EXPOSE 5020

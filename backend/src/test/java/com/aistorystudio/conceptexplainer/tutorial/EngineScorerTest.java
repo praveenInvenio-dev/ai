@@ -96,4 +96,13 @@ class EngineScorerTest {
         assertEquals(Engine.RIVE, d.engine());
         assertEquals(Engine.NATIVE_DIAGRAM, EngineScorer.decide(new Signals("The app freezes", "The app seems to freeze while it waits.", "", "", "technology", "", Set.of(), false, false, false, 0, true), new Capabilities(true, false, true, true)).engine());
     }
+
+    @Test void aStepperOrFlowchartDeviceMeansOrderedStepsSoMotionCanvasFitsWhenAvailable() {
+        assertEquals(Engine.MOTION_CANVAS, pick("Launching a Thread", "To launch a thread, extend the Thread class, override the run method, then call start.", "", "",
+                "technology", Set.of("journey"), false, false, 0, Capabilities.all()).engine());
+        assertEquals(Engine.MOTION_CANVAS, pick("The CPU Scheduler", "The OS scheduler hands each thread a turn on the CPU core.", "", "",
+                "technology", Set.of("flowchart"), false, false, 0, Capabilities.all()).engine());
+        // a table, bars or a metric stay native
+        assertEquals(Engine.NATIVE_DIAGRAM, pick("Performance Boost", "Wait time drops from 30 seconds to 12.", "", "", "technology", Set.of("bars"), false, false, 0, Capabilities.all()).engine());
+    }
 }
