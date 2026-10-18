@@ -1,9 +1,8 @@
 FROM mcr.microsoft.com/playwright:v1.64.1-noble
 WORKDIR /app
 COPY package.json ./
-RUN npm install --no-audit --no-fund
-COPY server.mjs ./
-COPY motion-template ./motion-template
+RUN npm install --no-audit --no-fund --omit=dev
+COPY server.mjs three-scene.js ./
 ENV PORT=5020
 EXPOSE 5020
 CMD ["npm","start"]

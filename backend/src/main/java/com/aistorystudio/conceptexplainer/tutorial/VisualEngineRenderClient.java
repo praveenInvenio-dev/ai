@@ -24,13 +24,42 @@ public final class VisualEngineRenderClient {
     public VisualEngineRenderClient(String baseUrl) { this.baseUrl = baseUrl == null ? "" : baseUrl.trim().replaceAll("/+$", ""); }
     public boolean enabled() { return !baseUrl.isBlank(); }
 
+    /** What the renderer service can export right now (from its /health). All false when it is not configured or not reachable. */
+    public record Caps(boolean threeJs, boolean rive, boolean motionCanvas) { }
+
+    private static volatile Caps cachedCaps;
+    private static volatile long capsAt;
+
+    public Caps capabilities() {
+        if (!enabled()) return new Caps(false, false, false);
+        long now = System.currentTimeMillis();
+        Caps c = cachedCaps;
+        if (c != null && now - capsAt < (c.threeJs() ? 30_000 : 5_000)) return c;
+        try {
+            HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create(baseUrl + "/health")).timeout(Duration.ofSeconds(3)).GET().build(), HttpResponse.BodyHandlers.ofString());
+            JsonNode e = r.statusCode() == 200 ? M.readTree(r.body()).path("engines") : M.createObjectNode();
+            c = new Caps(e.path("THREE_JS").asBoolean(false), e.path("RIVE").asBoolean(false), e.path("MOTION_CANVAS").asBoolean(false));
+        } catch (Exception ex) {
+            if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+            c = new Caps(false, false, false);
+        }
+        cachedCaps = c; capsAt = now;
+        return c;
+    }
+
     public List<byte[]> render(String engine, String title, String narration, String planJson, int steps,
                                int width, int height, Path riveAsset) throws IOException, InterruptedException {
+        return render(engine, title, narration, planJson, steps, width, height, riveAsset, null);
+    }
+
+    public List<byte[]> render(String engine, String title, String narration, String planJson, int steps,
+                               int width, int height, Path riveAsset, String sceneKind) throws IOException, InterruptedException {
         if (!enabled()) throw new IOException("VISUAL_RENDERER_BASE_URL is not configured");
         ObjectNode payload = M.createObjectNode();
         payload.put("engine", engine); payload.put("title", safe(title)); payload.put("narration", safe(narration));
         payload.put("planJson", planJson == null ? "{}" : planJson); payload.put("steps", Math.max(2, Math.min(8, steps)));
         payload.put("width", width); payload.put("height", height);
+        if (sceneKind != null && !sceneKind.isBlank()) payload.put("sceneKind", sceneKind);
         JsonNode plan; try { plan = M.readTree(planJson == null ? "{}" : planJson); } catch (Exception e) { plan = M.createObjectNode(); }
         List<String> labels = new ArrayList<>();
         for (String field : List.of("items", "nodes", "steps", "parts")) {

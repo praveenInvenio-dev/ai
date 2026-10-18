@@ -124,7 +124,12 @@ public final class TutorialPrompts {
               or engaging tutor). That track controls the narrator's personality, rhythm, humour level and per-scene voiceDirection; do not force every
               lesson into the same calm-instructor voice. If no track is supplied, use a calm, confident senior instructor talking to ONE learner.
               Conversational, never salesy or shouty. No emojis in spoken narration. Start the first scene straight with the hook.
-            - Plain words. Sentences of 8-20 words. Every technical term is explained in simple words the first time it appears.
+            - Plain words. Mix the rhythm like a person talking: short beats of 3-6 words ("Here's the catch.", "Not quite.") between sentences of
+              10-20 words; never more than three long sentences in a row. Every technical term is explained in simple words the first time it appears.
+            - Write for the EAR, not the page: use contractions (it's, don't, you'll), speak to "you", and keep symbols and code out of the narration
+              (say "the counter goes up by one", not "count++"; say "about forty percent", not "~40%"). No "Furthermore", "Moreover", "In conclusion",
+              "It is important to note that", "the following". React like a real teacher at most once per scene ("Yeah, that surprises everyone.",
+              "Okay, so...", "Right?"). Never read out a list of more than three items; show it on screen and name only the point.
             - Natural spoken connectors: "So", "Now", "Let's say", "Here's the thing", "Think about it", "That's where X comes in",
               "In other words", "Let's take a look", "Right?". Use an occasional rhetorical question, then answer it.
             - Point at the screen: "this agent here", "on the right we have three airlines", "notice this field".

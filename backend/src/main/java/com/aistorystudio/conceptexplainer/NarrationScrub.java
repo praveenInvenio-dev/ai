@@ -1,5 +1,6 @@
 package com.aistorystudio.conceptexplainer;
 
+import com.aistorystudio.conceptexplainer.speech.SpeechHumanizer;
 import java.util.regex.Pattern;
 
 /**
@@ -28,6 +29,7 @@ public final class NarrationScrub {
         if (!t.isEmpty() && Character.isLowerCase(t.charAt(0)) && !s.equals(t)) {
             t = Character.toUpperCase(t.charAt(0)) + t.substring(1);
         }
-        return t;
+        // contractions and plain connectors for English prose; other languages pass through unchanged
+        return SpeechHumanizer.humanize(t);
     }
 }

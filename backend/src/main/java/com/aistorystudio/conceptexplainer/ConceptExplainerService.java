@@ -210,6 +210,12 @@ public class ConceptExplainerService {
             if (manimSpec(s) != null && s.getBackdropPath() != null) {
                 job.setStage(base + ": animating the maths (Manim)");
                 renderManimAnimation(job, s);          // after the time-fit, so the animation matches the final narration length
+                if ("MANIM".equals(s.getVisualEngine())) {
+                    boolean ok = s.getAnimationPath() != null;
+                    s.setActualRenderer(ok ? "MANIM" : "NATIVE_DIAGRAM");
+                    s.setRendererStatus(ok ? "RENDERED" : "FALLBACK");
+                    s.setRendererMessage(ok ? "Manim rendered the maths/physics animation to match the narration." : "Planned MANIM; the animation failed, so the scene's final picture is shown.");
+                }
             }
             job.setStage(base + ": syncing the slide to the voice");
             buildClip(job, s);
@@ -1481,8 +1487,17 @@ public class ConceptExplainerService {
     }
 
     /** Pause after sentence i: the larger of the format's normal gap and the planned silence beat (a beat never shortens a gap). */
+    /** How much of the natural pace/pause variation to apply: toddlers and 60-second reels get less, lessons get all of it. */
+    private static double pacingFactor(ConceptExplainerJob job) {
+        int band = ageBand(job);
+        if (band == 1) return 0.4;
+        if (band == 2) return 0.7;
+        return vertical(job) ? 0.75 : 1.0;
+    }
+
     private double gapAt(ConceptExplainerJob job, ConceptExplainerJob.Scene s, int i) {
-        double base = gap(job, s.getSentences().get(i));
+        double base = gap(job, s.getSentences().get(i))
+                + com.aistorystudio.conceptexplainer.speech.SpeechPacing.plan(s.getSentences().get(i), i, s.getSentences().size()).scaled(pacingFactor(job)).gapAdd();
         List<Double> p = s.getPauseAfter();
         double planned = i < p.size() ? p.get(i) : 0.0;
         return Math.max(base, isShort(job) ? planned * 0.3 : planned);       // a 60-second short cannot afford the reveal pauses of a lesson
@@ -1809,18 +1824,40 @@ public class ConceptExplainerService {
     /** Select a preferred visual engine and separately record the renderer that actually exports the scene.
      * This prevents preview availability from being misreported as production export support. */
     private void assignVisualRoutes(ConceptExplainerJob job) {
-        for (ConceptExplainerJob.Scene scene : job.getScenes()) applyVisualRoute(job, scene);
-        long routed = job.getScenes().stream().filter(s -> "MOTION_CANVAS".equals(s.getVisualEngine()) || "THREE_JS".equals(s.getVisualEngine()) || "RIVE".equals(s.getVisualEngine())).count();
-        if (routed > 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Visual routing planned per scene."))) job.getWarnings().add("Visual routing planned per scene. Planned engine and actual production renderer are reported separately. Scenes use capability-aware routing; failed server-side exports explicitly fall back to the synchronized native diagram renderer.");
+        var routes = com.aistorystudio.conceptexplainer.tutorial.VisualRendererRouter.planJob(job, visualCapabilities());
+        for (int i = 0; i < job.getScenes().size(); i++) applyRoute(job.getScenes().get(i), routes.get(i));
+        long special = job.getScenes().stream().filter(s -> List.of("THREE_JS", "RIVE", "MOTION_CANVAS", "MANIM").contains(s.getVisualEngine())).count();
+        if (special > 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Visual routing planned per scene."))) job.getWarnings().add("Visual routing planned per scene. Each scene gets the engine that fits its topic (native diagrams, Manim, Three.js, Rive); a failed export falls back to the native renderer and says so.");
     }
 
+    /** What the renderer service can really export now, combined with the Manim sidecar. */
+    private com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities visualCapabilities() {
+        var rc = new com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient(visualRendererBaseUrl).capabilities();
+        return new com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities(manimAvailable(), rc.rive(), rc.threeJs(), rc.motionCanvas());
+    }
+
+    /** The scene's route comes from the lesson-wide plan, so editing or re-rendering one scene keeps the lesson's variety rules. */
     private void applyVisualRoute(ConceptExplainerJob job, ConceptExplainerJob.Scene scene) {
-        var route = com.aistorystudio.conceptexplainer.tutorial.VisualRendererRouter.route(job, scene, manimAvailable());
+        int idx = job.getScenes().indexOf(scene);
+        var routes = com.aistorystudio.conceptexplainer.tutorial.VisualRendererRouter.planJob(job, visualCapabilities());
+        var route = idx >= 0 && idx < routes.size() ? routes.get(idx)
+                : com.aistorystudio.conceptexplainer.tutorial.VisualRendererRouter.route(job, scene, visualCapabilities());
+        applyRoute(scene, route);
+    }
+
+    private void applyRoute(ConceptExplainerJob.Scene scene, com.aistorystudio.conceptexplainer.tutorial.VisualRendererRouter.Route route) {
         scene.setVisualEngine(route.engine());
         scene.setVisualEngineReason(route.reason());
-        scene.setActualRenderer("PENDING");
-        scene.setRendererStatus("PLANNED");
-        scene.setRendererMessage("Planned " + route.engine() + "; awaiting server-side production export.");
+        scene.setVisualKind(route.sceneKind());
+        if ("NATIVE_DIAGRAM".equals(route.engine())) {
+            scene.setActualRenderer("NATIVE_DIAGRAM");
+            scene.setRendererStatus("RENDERED");
+            scene.setRendererMessage("Native synchronized diagram renderer (chosen on purpose for this scene).");
+        } else {
+            scene.setActualRenderer("PENDING");
+            scene.setRendererStatus("PLANNED");
+            scene.setRendererMessage("Planned " + route.engine() + "; awaiting server-side production export.");
+        }
     }
 
     private boolean tryRenderWithVisualEngine(ConceptExplainerJob job, ConceptExplainerJob.Scene s) throws IOException {
@@ -1831,9 +1868,9 @@ public class ConceptExplainerService {
             try {
                 JsonNode p = mapper.readTree(s.getPlanJson() == null ? "{}" : s.getPlanJson());
                 String asset = text(p, "riveAsset", job.getRiveAssetPath());
-                if (!blank(asset)) {
-                    Path candidate = Path.of(asset);
-                    if (!candidate.isAbsolute()) candidate = storage.resolve(asset);
+                // only a file uploaded through /rive-assets: never an absolute path or anything the model wrote into the plan
+                if (!blank(asset) && asset.replace('\\', '/').matches("rive-assets/[A-Za-z0-9-]+\\.riv")) {
+                    Path candidate = storage.resolve(asset.replace('\\', '/'));
                     if (Files.isRegularFile(candidate)) riveAsset = candidate;
                 }
             } catch (Exception ignored) { }
@@ -1842,7 +1879,7 @@ public class ConceptExplainerService {
             int width = vertical(job) ? 1080 : 1920, height = vertical(job) ? 1920 : 1080;
             var client = new com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient(visualRendererBaseUrl);
             List<byte[]> rendered = client.render(engine, s.getTitle(), s.getNarration(), s.getPlanJson(),
-                    Math.max(2, Math.min(8, s.getSentences().size())), width, height, riveAsset);
+                    Math.max(2, Math.min(8, s.getSentences().size())), width, height, riveAsset, s.getVisualKind());
             List<BufferedImage> frames = new ArrayList<>();
             for (byte[] bytes : rendered) {
                 BufferedImage frame = ImageIO.read(new ByteArrayInputStream(bytes));
@@ -2017,6 +2054,10 @@ public class ConceptExplainerService {
             else if (v.startsWith("speak:")) speed *= 1.0;     // Indic-Speak is paced for explanation already (unhurried by design)
             double pitch = question ? 1.015 : (excited ? 1.01 : (i % 4 == 0 ? 0.99 : 1.0));
             if (tut) pitch = question ? 1.01 : 1.0;
+            // a person does not read every line at one speed: short lines land slower, long ones flow, the last line settles
+            var pacing = com.aistorystudio.conceptexplainer.speech.SpeechPacing.plan(line, i, s.getSentences().size()).scaled(pacingFactor(job));
+            speed *= pacing.speedMul();
+            pitch *= pacing.pitchMul();
             VoiceDirection vdir = VoiceDirection.of(s.getVoiceEmotion(), s.getVoicePace(), s.getVoiceDelivery(),
                     TeachingStyle.parse(job.getTeachingStyle()).baseEmotion());
             VoiceDirection.TtsParams tp = vdir.toTts(job.getVoice(), speed, pitch, question, excited);
@@ -2025,8 +2066,11 @@ public class ConceptExplainerService {
                         + "Pick a Chatterbox or cloned voice for fuller expression.");
             }
             if (i == 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice used:"))) job.getWarnings().add("Voice used: " + describeVoice(job));
+            // captions keep the written line; the voice gets the spoken form ("count++" -> "count plus plus", "O(n)" -> "big O of n")
+            String spoken = com.aistorystudio.conceptexplainer.speech.SpokenText.forSpeech(line, job.getLanguage());
+            if (spoken.isBlank()) spoken = line;
             var audio = gateway.synthesizeForStoryLanguage(new TextToSpeechProvider.TtsRequest(
-                    line, job.getVoice(), job.getLanguage(), tp.speed(), tp.pitch(),
+                    spoken, job.getVoice(), job.getLanguage(), tp.speed(), tp.pitch(),
                     tp.emotion(), tp.intensity(), kids(job) ? (ageBand(job) == 1
                             ? "warm, gentle children's storyteller, smiling voice, slow and clear, soft wonder, like reading a picture book to a toddler"
                             : ageBand(job) == 3

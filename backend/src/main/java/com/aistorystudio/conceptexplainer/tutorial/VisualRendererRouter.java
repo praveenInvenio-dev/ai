@@ -1,45 +1,103 @@
 package com.aistorystudio.conceptexplainer.tutorial;
 
 import com.aistorystudio.conceptexplainer.ConceptExplainerJob;
+import com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities;
+import com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Decision;
+import com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Engine;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Locale;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
-/** Deterministic, safe per-scene visual-engine planner. Never executes model-generated source code. */
+/**
+ * Deterministic, safe per-scene visual-engine planner. Never executes model-generated source code.
+ *
+ * <p>Each scene is scored by {@link EngineScorer} from its own topic, narration, code and diagram devices, against what the
+ * renderer service can really do right now ({@link Capabilities}). A second, lesson-wide pass ({@link #planJob}) keeps the
+ * lesson varied and honest: 3D is for the few scenes that truly need depth, never most of the lesson, and the same
+ * special engine is not repeated three scenes in a row.</p>
+ */
 public final class VisualRendererRouter {
-    public record Route(String engine, String reason, String productionAdapter) {}
+    public record Route(String engine, String reason, String productionAdapter, String sceneKind) {
+        public Route(String engine, String reason, String productionAdapter) { this(engine, reason, productionAdapter, null); }
+    }
+
     private static final ObjectMapper M = new ObjectMapper();
+    /** The only shape of Rive asset reference the pipeline accepts: a file stored by the upload endpoint. */
+    static final java.util.regex.Pattern RIVE_PATH = java.util.regex.Pattern.compile("rive-assets/[A-Za-z0-9-]+\\.riv");
+    /** At most this share of a lesson's scenes (rounded, minimum one) may be 3D: depth is for the scenes that need it. */
+    static final double MAX_THREE_SHARE = 0.35;
+
     private VisualRendererRouter() {}
 
+    /** Single-scene decision with the legacy capability set (Three.js and Rive assumed up, Motion Canvas down). */
     public static Route route(ConceptExplainerJob job, ConceptExplainerJob.Scene scene, boolean manimAvailable) {
-        String text = (safe(scene.getTitle()) + " " + safe(scene.getNarration()) + " " + safe(scene.getVisualDescription()) + " " + safe(scene.getCode())).toLowerCase(Locale.ROOT);
+        return route(job, scene, new Capabilities(manimAvailable, true, true, false));
+    }
+
+    public static Route route(ConceptExplainerJob job, ConceptExplainerJob.Scene scene, Capabilities caps) {
+        return toRoute(decide(job, scene, caps));
+    }
+
+    /**
+     * Routes every scene of a lesson, then applies the variety rules. Index i of the result belongs to scene i.
+     * Deterministic: the same lesson and capabilities always give the same plan.
+     */
+    public static List<Route> planJob(ConceptExplainerJob job, Capabilities caps) {
+        List<ConceptExplainerJob.Scene> scenes = job.getScenes();
+        List<Decision> decisions = new ArrayList<>();
+        for (ConceptExplainerJob.Scene s : scenes) decisions.add(decide(job, s, caps));
+
+        // 1) depth is for a minority of scenes: keep the strongest 3D scenes, hand the rest to the native renderer
+        int maxThree = Math.max(1, (int) Math.round(scenes.size() * MAX_THREE_SHARE));
+        List<Integer> threeIdx = new ArrayList<>();
+        for (int i = 0; i < decisions.size(); i++) if (decisions.get(i).engine() == Engine.THREE_JS) threeIdx.add(i);
+        threeIdx.sort((a, b) -> Double.compare(decisions.get(b).margin(), decisions.get(a).margin()));
+        for (int k = maxThree; k < threeIdx.size(); k++) {
+            int i = threeIdx.get(k);
+            decisions.set(i, decisions.get(i).withEngine(Engine.NATIVE_DIAGRAM, "Kept on the native renderer: this lesson already has enough 3D scenes, and a flat diagram explains this one well too."));
+        }
+        // 2) never the same special engine three scenes running (RIVE with an explicit asset and MANIM specs are deliberate, so exempt)
+        for (int i = 2; i < decisions.size(); i++) {
+            Engine e = decisions.get(i).engine();
+            if (e == Engine.NATIVE_DIAGRAM || e == Engine.MANIM || e == Engine.RIVE) continue;
+            if (decisions.get(i - 1).engine() == e && decisions.get(i - 2).engine() == e)
+                decisions.set(i, decisions.get(i).withEngine(Engine.NATIVE_DIAGRAM, "Kept on the native renderer to vary the look: the previous two scenes already used " + e.name() + "."));
+        }
+        List<Route> out = new ArrayList<>();
+        for (Decision d : decisions) out.add(toRoute(d));
+        return out;
+    }
+
+    // ------------------------------------------------------------------------------------------------------- internals
+    static Decision decide(ConceptExplainerJob job, ConceptExplainerJob.Scene scene, Capabilities caps) {
         JsonNode plan;
         try { plan = M.readTree(scene.getPlanJson() == null ? "{}" : scene.getPlanJson()); } catch (Exception e) { plan = M.createObjectNode(); }
-
-        if (job.isUseManim() && manimAvailable && plan.path("manim").isObject())
-            return new Route("MANIM", "Scene contains a validated maths/physics animation spec.", "MANIM_HTTP");
-
-        // Rive is selected only when a scene explicitly names an asset. The renderer client
-        // validates that the referenced file exists before sending it to the renderer.
-        boolean explicitRiveAsset = plan.path("riveAsset").isTextual() && !plan.path("riveAsset").asText().isBlank();
-        boolean uploadedRiveAsset = job.getRiveAssetPath() != null && !job.getRiveAssetPath().isBlank();
-        boolean riveSuitable = contains(text, "character", "avatar", "mascot", "talking head", "user interface", "interface animation", "animated ui", "ui animation", "button animation", "rive animation");
-        if (explicitRiveAsset || (uploadedRiveAsset && riveSuitable))
-            return new Route("RIVE", explicitRiveAsset ? "Scene explicitly references a reusable Rive animation asset." : "Uploaded Rive asset assigned to a matching character/UI scene.", "RIVE_EXPORT");
-
-        if (contains(text, "3d", "three-dimensional", "spatial", "orbit", "solar system", "molecule", "anatomy", "rotation in space", "coordinate system", "3d scene", "spatial layout", "camera orbit", "depth layers", "three-dimensional model"))
-            return new Route("THREE_JS", "Spatial structure or rotation benefits from depth and a camera view.", "THREE_JS_EXPORT");
-
-        // Motion Canvas currently has no working server-side export adapter. Use the tested
-        // Three.js renderer for progressive process/code visuals instead of selecting a known
-        // failing adapter for every lesson.
-        if (contains(text, "race condition", "thread", "concurrency", "synchronized", "mutex", "lock", "queue", "request", "api", "data flow", "workflow", "pipeline", "sequence", "step-by-step", "process", "algorithm", "state transition", "before and after", "code", "function", "database", "server", "program", "threading", "multithreading"))
-            return new Route("THREE_JS", "Process, code, or system flow; routed to the verified Three.js renderer while Motion Canvas export is unavailable.", "THREE_JS_EXPORT");
-
-        // Keep ordinary explanatory scenes on the existing synchronized native renderer;
-        // do not mark an unavailable Motion Canvas export as the default.
-        return new Route("NATIVE_DIAGRAM", "General 2D explanation; use the synchronized native diagram renderer.", "NATIVE_DIAGRAM");
+        Set<String> types = new HashSet<>();
+        JsonNode elements = plan.path("elements");
+        if (elements.isArray()) for (JsonNode e : elements) {
+            String t = e.path("type").asText("").trim().toLowerCase(java.util.Locale.ROOT);
+            if (!t.isEmpty()) types.add(t);
+        }
+        boolean manimSpec = job.isUseManim() && plan.path("manim").isObject();
+        boolean explicitRive = plan.path("riveAsset").isTextual() && RIVE_PATH.matcher(plan.path("riveAsset").asText().replace('\\', '/')).matches();
+        boolean uploadedRive = job.getRiveAssetPath() != null && !job.getRiveAssetPath().isBlank();
+        int kidsBand = switch (job.getTrack() == null ? "" : job.getTrack()) { case "KIDS_2_5" -> 1; case "KIDS" -> 2; case "KIDS_10_15" -> 3; default -> 0; };
+        var signals = new EngineScorer.Signals(scene.getTitle(), scene.getNarration(), scene.getVisualDescription(), scene.getCode(),
+                job.getDomain(), job.getSubject(), types, manimSpec, explicitRive, uploadedRive, kidsBand);
+        return EngineScorer.decide(signals, caps);
     }
-    private static String safe(String s) { return s == null ? "" : s; }
-    private static boolean contains(String s, String... needles) { for (String n : needles) if (s.contains(n)) return true; return false; }
+
+    private static Route toRoute(Decision d) {
+        String adapter = switch (d.engine()) {
+            case MANIM -> "MANIM_HTTP";
+            case RIVE -> "RIVE_EXPORT";
+            case THREE_JS -> "THREE_JS_EXPORT";
+            case MOTION_CANVAS -> "MOTION_CANVAS_EXPORT";
+            case NATIVE_DIAGRAM -> "NATIVE_DIAGRAM";
+        };
+        return new Route(d.engine().name(), d.reason(), adapter, d.threeKind());
+    }
 }

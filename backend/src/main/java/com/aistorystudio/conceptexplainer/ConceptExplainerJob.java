@@ -60,7 +60,11 @@ public class ConceptExplainerJob {
         // adaptive teaching framework: why this scene exists and how it should sound
         private String sectionType, learningObjective, visualDescription, voiceEmotion, voicePace, voiceDelivery;
         /** Topic-aware visual routing: preferred engine and concise reason, shown in scene diagnostics. */
-        private String visualEngine = "MOTION_CANVAS", visualEngineReason = "Default 2D explanatory animation";
+        private String visualEngine = "NATIVE_DIAGRAM", visualEngineReason = "Native synchronized diagram renderer";
+        /** Template hint for the 3D renderer (orbit | molecule | layers | axes); null for every other engine. */
+        private String visualKind;
+        public String getVisualKind() { return visualKind; }
+        public void setVisualKind(String v) { visualKind = v == null || v.isBlank() ? null : v; }
         /** Actual production renderer; never infer this from the planned engine. */
         private String actualRenderer = "NATIVE_DIAGRAM", rendererStatus = "FALLBACK", rendererMessage = "Native synchronized diagram renderer";
         public String getActualRenderer() { return actualRenderer; }

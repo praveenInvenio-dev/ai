@@ -426,8 +426,7 @@ services:
     environment:
       PORT: 5020
       NODE_OPTIONS: --max-old-space-size=3072
-    volumes:
-      - projects-data:/data/projects:ro
+      RENDER_CONCURRENCY: 2
     expose:
       - "5020"
     healthcheck:
