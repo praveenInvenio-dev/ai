@@ -66,6 +66,14 @@ class EngineScorerTest {
         assertEquals("lanes", d.threeKind());
     }
 
+
+    @Test void stackLessonsUseARealThreeDimensionalStackTemplate() {
+        var d = pick("Real World LIFO", "Imagine a stack of plates. Push adds an item to the top and pop removes the top item. Last in, first out.", "", "",
+                "Java / Programming", Set.of("datastruct", "analogy", "tile"), false, false, 0, Capabilities.all());
+        assertEquals(Engine.THREE_JS, d.engine());
+        assertEquals("stack", d.threeKind());
+    }
+
     @Test void aLayeredStackGetsTheLayersTemplate() {
         var d = pick("The Java Thread Model", "Under the hood, Java manages this using a layered approach. Your app sits at the top and the JVM handles the threads.", "", "",
                 "Java / Programming", Set.of("layers"), false, false, 0, Capabilities.all());

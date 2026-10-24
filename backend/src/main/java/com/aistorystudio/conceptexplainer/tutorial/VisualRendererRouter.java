@@ -16,7 +16,7 @@ import java.util.Set;
  *
  * <p>Each scene is scored by {@link EngineScorer} from its own topic, narration, code and diagram devices, against what the
  * renderer service can really do right now ({@link Capabilities}). A second, lesson-wide pass ({@link #planJob}) keeps the
- * lesson varied and honest: 3D is for the few scenes that truly need depth, never most of the lesson, and the same
+ * lesson varied and honest: 3D is for the scenes that benefit from spatial depth (target up to ~45% where relevant), never all of the lesson, and the same
  * special engine is not repeated three scenes in a row.</p>
  */
 public final class VisualRendererRouter {
@@ -28,7 +28,7 @@ public final class VisualRendererRouter {
     /** The only shape of Rive asset reference the pipeline accepts: a file stored by the upload endpoint. */
     static final java.util.regex.Pattern RIVE_PATH = java.util.regex.Pattern.compile("rive-assets/[A-Za-z0-9-]+\\.riv");
     /** At most this share of a lesson's scenes (rounded, minimum one) may be 3D: depth is for the scenes that need it. */
-    static final double MAX_THREE_SHARE = 0.35;
+    static final double MAX_THREE_SHARE = 0.45;
     /** Same idea for animated step flows: a lesson of nothing but moving boxes is as dull as one of nothing but still cards. */
     static final double MAX_MOTION_SHARE = 1.0;   // animated boards are cheap and consistent: a lesson may be made of them; ordered flows are still ranked first if a cap is ever lowered
 

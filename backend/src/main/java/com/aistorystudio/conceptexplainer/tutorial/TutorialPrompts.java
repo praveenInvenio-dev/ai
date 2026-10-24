@@ -119,6 +119,17 @@ public final class TutorialPrompts {
     // ------------------------------------------------------------------ shared style rules
 
     private static final String VOICE = """
+            TEACHING QUALITY GATE (mandatory before returning JSON):
+            - Teach for understanding, not coverage theatre. A term appearing on screen is not an explanation.
+            - Build a causal chain: problem/misconception -> plain-language mental model -> accurate rule -> how/why it works -> one continuous worked example -> practical application -> common mistake/boundary -> concise recap or retrieval question.
+            - Fully trace the example with consistent values. For programming, show input/state change/output and explain important lines. For maths, identify assumptions, substitute values, show the calculation and check the result. For systems concepts, follow one request/object through the stages and explain what each stage changes.
+            - Every major claim needs a reason, mechanism or demonstration. Remove generic claims like "it is powerful" or "it makes things easy" unless justified with a concrete case.
+            - Define jargon on first use, then use the same term consistently. Do not introduce new terms faster than the target audience can understand them.
+            - Check essential completeness for the topic and duration: what, why, how, worked example, real use, common mistake/limitation, and evidence of understanding. Combine elements for short videos, but never replace the worked example with a list of definitions.
+            - Visuals must teach state changes or relationships. Narration explains what changes, why it changes, and what the learner should infer.
+            - For Hinglish, use natural Hindi grammar in Latin script with canonical English spelling for technical terms and code identifiers. Never invent phonetic spellings. Keep English phrases short and embedded in familiar sentence frames; avoid literal translation and exaggerated accent cues.
+            - Before final output, silently check accuracy, conceptual depth, beginner clarity, example completeness, practical relevance, language naturalness, narration-to-visual alignment and redundancy. Rewrite weak scenes. Do not claim coverage beyond what is actually taught.
+
             NARRATION STYLE:
             - Follow the selected NARRATION TRACK included in the user prompt (humorous, logic-first, story-driven, professional, beginner-friendly,
               or engaging tutor). That track controls the narrator's personality, rhythm, humour level and per-scene voiceDirection; do not force every

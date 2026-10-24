@@ -106,6 +106,7 @@ public final class VisualEngineRenderClient {
     static List<String> labelsFor(JsonNode plan, String sceneKind) {
         List<String> prefer = switch (sceneKind == null ? "" : sceneKind) {
             case "layers" -> List.of("layers", "steps", "tree", "cycle");
+            case "stack" -> List.of("datastruct", "tree", "steps", "tile", "card");
             case "lanes", "flow" -> List.of("steps", "cycle", "sequence", "tile", "layers");
             case "orbit", "molecule" -> List.of("cycle", "tree", "tile", "steps", "layers");
             default -> List.of("steps", "layers", "cycle", "tree", "tile");

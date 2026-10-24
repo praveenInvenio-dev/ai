@@ -71,8 +71,10 @@ public final class EngineScorer {
             new Lex("earth", words("day and night", "night and day", "sunrise", "sunset", "time zones", "seasons"), 2.0),
             new Lex("orbit", words("solar system", "orbit", "orbits", "orbiting", "planet", "planets", "satellite", "satellites", "galaxy", "eclipse", "revolves around", "revolve around"), 2.0),
             new Lex("molecule", words("molecule", "molecules", "atom", "atoms", "atomic structure", "crystal lattice", "crystal", "double helix", "dna helix", "electron shell", "nucleus", "chemical bond", "chemical bonds"), 2.0),
+            new Lex("stack", words("stack data structure", "java stack", "stack", "lifo", "last in first out", "last-in first-out", "last in, first out",
+                    "push", "pop", "top of the stack", "top item", "plate pile", "pile of plates", "stack of plates", "undo stack", "call stack"), 2.8),
             new Lex("layers", words("layers of the earth", "earth's layers", "atmosphere", "crust and mantle", "cross-section", "cross section", "depth layers", "stack of layers", "strata",
-                    "layered", "layers", "stack", "tiers", "sits on top", "on top of", "under the hood", "abstraction"), 2.0),
+                    "layered", "layers", "tiers", "sits on top", "on top of", "under the hood", "abstraction"), 2.0),
             new Lex("lanes", words("in parallel", "parallel", "concurrently", "simultaneously", "multithreading", "multiple threads", "worker", "workers", "at the same time", "cores",
                     "multi-core", "split the work", "one at a time", "in order", "one after another", "sequential", "sequentially", "single-threaded", "single threaded", "strict sequence"), 2.0),
             new Lex("axes", words("3d", "three-dimensional", "3d model", "3d scene", "coordinate system", "x y z", "xyz axes", "cube", "sphere", "cylinder", "pyramid", "rotation in space", "rotates in space", "camera orbit", "spatial layout", "in 3d"), 2.0));
@@ -153,7 +155,8 @@ public final class EngineScorer {
         if (dom.contains("astronom") || dom.contains("space") || dom.contains("chemis") || dom.contains("geograph") || dom.contains("geometr")) bestThree += bestThree > 0 ? 1.0 : 0;
         if (s.planTypes() != null && s.planTypes().contains("quiz")) bestThree = 0;   // a quiz is about answering, never about a picture of the topic
         if (s.kidsBand() > 0 && !"earth".equals(bestKind)) bestThree *= 0.6;   // 3D is for kids only where it is the right picture: a lit, spinning Earth
-        if (nativeType) bestThree -= 1.0;                                  // the plan chose a specialised 2D device on purpose
+        boolean spatialDataStructure = "stack".equals(bestKind) || "layers".equals(bestKind) || "lanes".equals(bestKind);
+        if (nativeType && !spatialDataStructure) bestThree -= 1.0;          // keep code/formula/chart native, but allow real 3D when the data structure itself benefits from depth
         scores.put(Engine.THREE_JS, Math.max(0, bestThree));
 
         // ---- motion canvas: ordered steps that move; never over a code window, data structure or formula

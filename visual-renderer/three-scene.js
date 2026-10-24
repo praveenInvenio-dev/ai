@@ -254,6 +254,60 @@ export function createStudio(THREE, opts) {
     return { fit: Math.max(5.6, n * 1.45), cam: (t) => { camera.position.set(Math.sin(t * 0.12) * 0.6, 2.4, Math.max(8.5, n * 2.0)); camera.lookAt(0, 0, 0); } };
   }
 
+
+  // ---- stack: a real 3D LIFO structure, not a flat tile diagram.
+  // Each item is revealed bottom-up; the top item is highlighted and gently lifts to communicate POP.
+  function stack() {
+    const group = new THREE.Group(); scene.add(group);
+    const count = Math.max(3, Math.min(5, labels.length || 4));
+    const names = pickLabels(['Item 1', 'Item 2', 'Item 3', 'Item 4', 'Top item'], count);
+    const blockH = 0.48, gap = 0.08, baseY = -1.55;
+    const blocks = [];
+    for (let i = 0; i < count; i++) {
+      const color = i === count - 1 ? 0xfbbf24 : COLORS[i % COLORS.length];
+      const geometry = new THREE.BoxGeometry(2.15, blockH, 0.95);
+      const material = mat(color, i === count - 1
+        ? { emissive: 0x8a5a00, emissiveIntensity: 0.55, metalness: 0.28, roughness: 0.28 }
+        : { metalness: 0.18, roughness: 0.34 });
+      const block = new THREE.Mesh(geometry, material);
+      block.position.set(-0.15, baseY + i * (blockH + gap), 0);
+      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(geometry),
+        new THREE.LineBasicMaterial({ color: i === count - 1 ? 0xfff0ad : 0xdbeafe }));
+      edge.position.copy(block.position);
+      const tag = label(names[i], 0.72);
+      tag.position.set(-0.15, block.position.y, 0.54);
+      const contents = [block, edge, tag];
+      add(contents, i);
+      contents.forEach(o => group.add(o));
+      blocks.push({ block, edge, tag, baseY: block.position.y, top: i === count - 1 });
+    }
+    const floor = new THREE.GridHelper(8, 12, 0x29435f, 0x15283d);
+    floor.position.y = -1.92; add([floor], 0); group.add(floor);
+
+    // The arrows are visible as the narration introduces the two operations.
+    const pushArrow = new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), new THREE.Vector3(1.75, 2.0, 0.1), 1.0, 0x38bdf8, 0.28, 0.18);
+    const pushLabel = label('PUSH', 0.72); pushLabel.position.set(2.25, 2.55, 0);
+    const popArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-2.15, -0.1, 0.1), 1.0, 0xfbbf24, 0.28, 0.18);
+    const popLabel = label('POP', 0.72); popLabel.position.set(-2.4, 0.9, 0);
+    add([pushArrow, pushLabel, popArrow, popLabel], Math.max(1, count - 2));
+    [pushArrow, pushLabel, popArrow, popLabel].forEach(o => group.add(o));
+
+    spin.push(t => {
+      group.rotation.y = Math.sin(t * 0.22) * 0.12;
+      const top = blocks[blocks.length - 1];
+      if (top) {
+        const lift = Math.max(0, Math.sin(t * 1.7)) * 0.12;
+        top.block.position.y = top.baseY + lift;
+        top.edge.position.y = top.baseY + lift;
+        top.tag.position.y = top.baseY + lift;
+      }
+    });
+    return {
+      fit: 5.6,
+      cam: (t) => { camera.position.set(4.2 + Math.sin(t * 0.12) * 0.35, 2.0, 8.5); camera.lookAt(0, 0.1, 0); }
+    };
+  }
+
   // ---- earth: a globe lit from one side (real day and night), a sun, and a "you" marker that rides round from day into night
   function earth() {
     amb.intensity = 0.32; key.visible = false;
@@ -277,10 +331,11 @@ export function createStudio(THREE, opts) {
     spin.push(t => { globe.rotation.y = -t * 0.55 + 1.3; const w = new THREE.Vector3(); you.getWorldPosition(w); tagYou.position.set(w.x, w.y + 0.55, w.z + 0.2); tagYou.visible = w.z > -0.4 && you.visible; });
     return { fit: 7.0, cam: () => { camera.position.set(0.4, 1.4, 9.6); camera.lookAt(-0.6, 0, 0); } };
   }
-  const builders = { orbit, molecule, layers, axes, lanes, earth, dataFlow };
+  const builders = { orbit, molecule, layers, axes, lanes, earth, dataFlow, stack };
   let kind = builders[opts.kind] ? opts.kind : null;
   if (!kind) {
     if (/orbit|planet|solar|galaxy|satellite/.test(kindText)) kind = 'orbit';
+    else if (/stack|lifo|push|pop|plate pile|pile of plates/.test(kindText)) kind = 'stack';
     else if (/molecule|atom|bond|helix|dna|crystal|lattice/.test(kindText)) kind = 'molecule';
     else if (/layer|crust|mantle|cross.section|atmosphere/.test(kindText)) kind = 'layers';
     else if (/3d|cube|sphere|axes|three-dimensional|coordinate|pyramid|cylinder/.test(kindText)) kind = 'axes';

@@ -1,0 +1,37 @@
+# Hinglish technical pronunciation review list
+# Canonical spelling only; do not rewrite these into phonetic Hindi spellings.
+# Use this checklist to build and review actual Voice Lab samples.
+Java
+Stack
+push
+pop
+peek
+LIFO
+Last In, First Out
+call stack
+undo
+array
+object
+class
+method
+variable
+memory
+algorithm
+Pythagorean theorem
+hypotenuse
+right-angled triangle
+square root
+equation
+squared
+input
+output
+database
+API
+request
+response
+server
+client
+cache
+queue
+thread
+exception

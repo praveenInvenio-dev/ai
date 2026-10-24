@@ -76,7 +76,7 @@ public final class ScriptDoctor {
         int seconds = (int) Math.round(words * 60.0 / Math.max(100, wpm) + sentenceCount * 0.3);
 
         // ---- word budget (the #1 cause of a video that runs 40 s when 60 s was asked for, or 100 s for 60)
-        if (maxWords > 0 && words > maxWords * 1.15) {
+        if (maxWords > 0 && words > maxWords * 1.05) {
             out.add(new Issue(0, Severity.WARN, "too-long", String.format(Locale.ROOT,
                     "The script has %d words (about %d s spoken) but %d-%d words fit the chosen length - about %d words too many.",
                     words, seconds, minWords, maxWords, words - maxWords), true));

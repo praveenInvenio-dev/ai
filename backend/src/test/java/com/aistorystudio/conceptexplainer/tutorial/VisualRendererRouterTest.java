@@ -60,8 +60,27 @@ class VisualRendererRouterTest {
         job.getScenes().add(scene("Galaxy", "Stars orbit the galaxy centre.", "galaxy", "", "{}"));
         var routes = VisualRendererRouter.planJob(job, new com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities(false, true, true, false));
         long three = routes.stream().filter(r -> r.engine().equals("THREE_JS")).count();
-        assertTrue(three >= 1 && three <= 2, "3D must be a minority, was " + three);
+        assertTrue(three >= 1 && three <= 3, "3D must be a meaningful minority, was " + three);
         assertTrue(routes.stream().anyMatch(r -> r.engine().equals("NATIVE_DIAGRAM")));
+    }
+
+
+    @Test void stackLessonGetsSeveralThreeDimensionalScenesWhenTheyFit() {
+        var job = job();
+        job.getScenes().add(scene("The Power of One", "Constant time operations stay fast.", "", "", "{}"));
+        job.getScenes().add(scene("Real World LIFO", "Imagine a stack of plates. The last plate added leaves first.", "3D stack of plates", "", "{\"elements\":[{\"type\":\"datastruct\"}]}"));
+        job.getScenes().add(scene("The Undo Problem", "Undo removes the most recent action from a stack.", "3D stack showing undo", "", "{\"elements\":[{\"type\":\"datastruct\"}]}"));
+        job.getScenes().add(scene("The Java Stack", "Java uses push and pop on a stack. LIFO means last in, first out.", "3D stack data structure", "", "{\"elements\":[{\"type\":\"datastruct\"}]}"));
+        job.getScenes().add(scene("The Logic Flow", "A user types, then pushes a character, then pops it on undo.", "ordered sequence", "", "{\"elements\":[{\"type\":\"sequence\"}]}"));
+        job.getScenes().add(scene("Java Implementation", "Here is the code for push and pop.", "", "stack.push(value);", "{\"elements\":[{\"type\":\"code\"}]}"));
+        job.getScenes().add(scene("Stack vs Queue", "Compare a stack and a queue.", "comparison", "", "{\"elements\":[{\"type\":\"compare\"}]}"));
+        job.getScenes().add(scene("Use Cases", "The browser history and call stack use LIFO.", "3D stack", "", "{\"elements\":[{\"type\":\"datastruct\"}]}"));
+        job.getScenes().add(scene("Final Recap", "LIFO means last in first out.", "recap", "", "{}"));
+        var routes = VisualRendererRouter.planJob(job, new com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities(false, false, true, true, true));
+        long three = routes.stream().filter(r -> r.engine().equals("THREE_JS")).count();
+        assertTrue(three >= 2, "stack lesson should use several relevant 3D scenes, was " + three);
+        assertTrue(routes.stream().anyMatch(r -> "stack".equals(r.sceneKind())), "stack template should be selected");
+        assertTrue(routes.stream().anyMatch(r -> r.engine().equals("NATIVE_DIAGRAM")), "code and recap should retain native rendering");
     }
 
     @Test void anAvailableAnimationEngineIsUsedAtLeastOnceInALongerLesson() {
