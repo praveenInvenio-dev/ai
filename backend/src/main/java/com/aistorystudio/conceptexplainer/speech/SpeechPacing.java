@@ -40,12 +40,12 @@ public final class SpeechPacing {
         long commas = bare.chars().filter(c -> c == ',').count();
 
         double speed = 1.0, pitch = 1.0, gap = 0.0;
-        if (words > 0 && words <= 5 && !question) { speed *= 0.95; gap += 0.16; }        // short, punchy: let it land
-        if (words >= 19) { speed *= 1.02; gap += 0.06; }                                  // long: flow through, then breathe
+        if (words > 0 && words <= 5 && !question) { speed *= 0.96; gap += 0.10; }        // short phrase: let it land without over-pausing
+        if (words >= 19) { speed *= 1.015; gap += 0.03; }                                 // long phrase: keep the thought flowing
         if (commas >= 3) speed *= 1.01;
-        if (leadIn) { speed *= 0.96; gap += 0.22; }                                       // breath before the reveal
-        if (beat) { speed *= 0.97; gap += 0.30; }                                         // comic beat: slow slightly, then hold the silence
-        if (question) { speed *= 0.97; pitch *= 1.010; gap += 0.20; }                     // lift, then give the listener a moment
+        if (leadIn) { speed *= 0.96; gap += 0.16; }                                       // anticipate a reveal, but avoid a long dead stop
+        if (beat) { speed *= 0.97; gap += 0.22; }                                         // short comic/suspense beat
+        if (question) { speed *= 0.975; pitch *= 1.010; gap += 0.14; }                    // lift, then leave room to think
         if (exclaim) { speed *= 1.015; pitch *= 1.006; }
         if (index == 0 && count > 1) { pitch *= 1.005; }                                  // the hook is a touch brighter
         if (index == count - 1 && count > 1) { speed *= 0.97; pitch *= 0.996; gap += 0.10; } // land the last line
@@ -53,7 +53,7 @@ public final class SpeechPacing {
 
         speed = clamp(speed, 0.93, 1.05);
         pitch = clamp(pitch, 0.99, 1.015);
-        return new Plan(round(speed), round(pitch), round(Math.min(gap, 0.45)));
+        return new Plan(round(speed), round(pitch), round(Math.min(gap, 0.30)));
     }
 
     /** Plain-text summary used in tests and in the lesson warnings ("pace 0.95x, pause +0.16 s"). */

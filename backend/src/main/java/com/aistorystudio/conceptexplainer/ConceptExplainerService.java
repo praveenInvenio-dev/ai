@@ -1541,11 +1541,43 @@ public class ConceptExplainerService {
     }
 
     private double gapAt(ConceptExplainerJob job, ConceptExplainerJob.Scene s, int i) {
-        double base = gap(job, s.getSentences().get(i))
-                + com.aistorystudio.conceptexplainer.speech.SpeechPacing.plan(s.getSentences().get(i), i, s.getSentences().size()).scaled(pacingFactor(job)).gapAdd();
+        // Do not stack the full format gap, semantic pause, and planner pause: that made
+        // questions/reveals unnaturally stop-start. Keep a short breath as the floor, then
+        // blend in only part of the semantic beat. A script-planned pause can still win.
+        String line = s.getSentences().get(i);
+        double base = gap(job, line);
+        double semantic = com.aistorystudio.conceptexplainer.speech.SpeechPacing.plan(
+                line, i, s.getSentences().size()).scaled(pacingFactor(job)).gapAdd();
+        double natural = Math.min(1.05, base + semantic * 0.45);
         List<Double> p = s.getPauseAfter();
         double planned = i < p.size() ? p.get(i) : 0.0;
-        return Math.max(base, isShort(job) ? planned * 0.3 : planned);       // a 60-second short cannot afford the reveal pauses of a lesson
+        double plannedLimit = isShort(job) ? planned * 0.3 : planned;
+        return Math.max(natural, plannedLimit);
+    }
+
+    /** Scene- and sentence-aware performance cues. These are metadata for expressive engines, never spoken aloud. */
+    private static String sceneActingDirection(ConceptExplainerJob.Scene scene, String line, VoiceDirection direction) {
+        String text = ((scene == null ? "" : String.valueOf(scene.getTitle())) + " " + (line == null ? "" : line))
+                .toLowerCase(Locale.ROOT);
+        if (text.matches("(?s).*(imagine|picture this|what if|have you ever|guess what).*"))
+            return "Open with friendly curiosity, as if sharing a relatable discovery; smile subtly, then keep the explanation flowing.";
+        if (text.matches("(?s).*(why|which|can you|do you|what happens|right\\?).*\\?.*" ) || (line != null && line.trim().endsWith("?")))
+            return "Ask the question directly to one student; lift intonation naturally, then leave a thoughtful beat without sounding theatrical.";
+        if (text.matches("(?s).*(here is the trick|here's the trick|the secret|the catch|but here's|the important part|in other words).*"))
+            return "Build a little anticipation before the key idea; emphasize the reveal clearly, then relax into the explanation.";
+        if (text.matches("(?s).*(remember|the key idea|the rule is|this is called|last-in|first-out|lifo|push|pop).*"))
+            return "Teacherly and precise; stress the technical term and explain it confidently, without shouting or over-enunciating.";
+        if (text.matches("(?s).*(for example|in java|let's code|in practice|real world|browser|database|microservice).*"))
+            return "Practical, conversational demonstration; sound engaged and clear, as though walking a student through a live example.";
+        if (text.matches("(?s).*(to recap|in summary|remember this|you've got it|you can do this|that's the idea).*"))
+            return "Warm and encouraging conclusion; settle the pace and make the takeaway feel satisfying.";
+        return switch (direction.emotion()) {
+            case "curious" -> "Thinking aloud with genuine curiosity; keep the question-and-answer flow natural.";
+            case "dramatic" -> "Use restrained anticipation before the reveal, then return to a clear conversational tone.";
+            case "encouraging", "warm" -> "Friendly mentor tone, confident and supportive, speaking to one learner.";
+            case "energetic", "playful" -> "Lively creator-tutor delivery with a light smile and natural comic timing, never overacting.";
+            default -> "Connected, conversational Indian-English explanation; emphasize meaning rather than individual words.";
+        };
     }
 
     /** The planned stress words that actually occur in this sentence. */
@@ -2125,75 +2157,107 @@ public class ConceptExplainerService {
         Path work = storage.resolve(dir(job) + "/audio/work-" + num(s));
         Files.createDirectories(work);
         List<Path> parts = new ArrayList<>();
+        List<Integer> partEndSentences = new ArrayList<>();
         List<Double> starts = new ArrayList<>(), lengths = new ArrayList<>();
-        double t = 0;
-        for (int i = 0; i < s.getSentences().size(); i++) {
-            String line = s.getSentences().get(i).trim();
-            boolean question = line.endsWith("?") || line.endsWith("？");
+        List<String> sentences = s.getSentences();
+        double t = 0.0;
+        int i = 0;
+        while (i < sentences.size()) {
+            // Synthesize related sentences together so expressive engines hear the question and its
+            // answer as one thought. Keep chunks small to preserve reveal timing and avoid long, flat reads.
+            int end = i + 1;
+            String first = sentences.get(i).trim();
+            int firstWords = wordCount(first);
+            if (i + 1 < sentences.size()) {
+                String next = sentences.get(i + 1).trim();
+                int nextWords = wordCount(next);
+                boolean firstIsHookOrQuestion = first.endsWith("?") || first.toLowerCase(Locale.ROOT).matches(".*(imagine|picture this|what if|here's the thing|here is the thing).*" );
+                boolean compatible = firstWords + nextWords <= 32 && !first.endsWith("...") && !first.endsWith("…");
+                // Keep explicit suspense/reveal boundaries separate; otherwise join short related lines.
+                boolean revealBoundary = first.toLowerCase(Locale.ROOT).matches(".*(here's the catch|here is the catch|the answer is|the secret is).*" );
+                if (compatible && !revealBoundary && (!firstIsHookOrQuestion || nextWords <= 18)) end = i + 2;
+            }
+            StringBuilder writtenChunk = new StringBuilder();
+            int totalWords = 0;
+            for (int k = i; k < end; k++) {
+                String sentence = sentences.get(k).trim();
+                if (writtenChunk.length() > 0) writtenChunk.append(' ');
+                writtenChunk.append(sentence);
+                totalWords += Math.max(1, wordCount(sentence));
+            }
+            String line = writtenChunk.toString();
+            boolean question = first.endsWith("?") || first.endsWith("？");
             boolean excited = line.endsWith("!") || line.contains("[laugh]") || line.contains("[chuckle]");
-            double speed = question ? 0.96 : (excited ? 0.99 : (i % 3 == 1 ? 0.97 : 1.0));
-            String v = job.getVoice() == null ? "" : job.getVoice();
+            String voice = job.getVoice() == null ? "" : job.getVoice();
             boolean tut = tutorial(job);
-            if (tut) speed = question ? 0.98 : 1.0;          // reference-video cadence: steady conversational delivery, no theatrical slow-downs
-            if (isBreakdown(job)) speed = question ? 1.02 : 1.07;   // breakdown reference: brisk ~175 wpm
-            if (kids(job)) speed = ageBand(job) == 1 ? (question ? 0.82 : 0.86)    // 2-5: slow, warm, clear
-                               : ageBand(job) == 3 ? 1.0                            // 10-15: normal conversational pace
-                               : (question ? 0.9 : 0.93);                            // 5-10: unhurried
-            if (v.startsWith("edge:")) speed *= 0.94;          // Edge is brisk; a calmer teacher pace sounds more human
-            else if (v.startsWith("indic:")) speed *= 0.98;    // IndicF5 is already natural; tiny breath room
-            else if (v.startsWith("speak:")) speed *= 1.0;     // Indic-Speak is paced for explanation already (unhurried by design)
-            double pitch = question ? 1.015 : (excited ? 1.01 : (i % 4 == 0 ? 0.99 : 1.0));
-            if (tut) pitch = question ? 1.01 : 1.0;
-            // a person does not read every line at one speed: short lines land slower, long ones flow, the last line settles
-            var pacing = com.aistorystudio.conceptexplainer.speech.SpeechPacing.plan(line, i, s.getSentences().size()).scaled(pacingFactor(job));
+            double speed = question ? 0.98 : (excited ? 0.99 : 1.0);
+            if (isBreakdown(job)) speed = question ? 1.02 : 1.07;
+            if (kids(job)) speed = ageBand(job) == 1 ? (question ? 0.82 : 0.86)
+                    : ageBand(job) == 3 ? 1.0 : (question ? 0.9 : 0.93);
+            if (voice.startsWith("edge:")) speed *= 0.94;
+            else if (voice.startsWith("indic:")) speed *= 0.98;
+            double pitch = tut ? (question ? 1.01 : 1.0) : (question ? 1.015 : (excited ? 1.01 : 1.0));
+            var pacing = com.aistorystudio.conceptexplainer.speech.SpeechPacing.plan(line, i, sentences.size()).scaled(pacingFactor(job));
             speed *= pacing.speedMul();
             pitch *= pacing.pitchMul();
             VoiceDirection vdir = VoiceDirection.of(s.getVoiceEmotion(), s.getVoicePace(), s.getVoiceDelivery(),
                     TeachingStyle.parse(job.getTeachingStyle()).baseEmotion());
             VoiceDirection.TtsParams tp = vdir.toTts(job.getVoice(), speed, pitch, question, excited);
             if (!tp.engineUnderstandsEmotion() && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice style:"))) {
-                job.getWarnings().add("Voice style: this voice has no emotion model, so the teaching tone is applied through pace and pitch only. "
-                        + "Pick a Chatterbox or cloned voice for fuller expression.");
+                job.getWarnings().add("Voice style: selected voice has no emotion model; delivery is limited to pace and pitch. For expressive Indian-English tutoring, select Arjun/Meera (Chatterbox) and ensure the Chatterbox service is healthy.");
             }
             if (i == 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice used:"))) job.getWarnings().add("Voice used: " + describeVoice(job));
-            // captions keep the written line; the voice gets the spoken form ("count++" -> "count plus plus", "O(n)" -> "big O of n")
             String spoken = com.aistorystudio.conceptexplainer.speech.SpokenText.forSpeech(line, job.getLanguage());
             if (spoken.isBlank()) spoken = line;
+            String delivery = kids(job)
+                    ? (ageBand(job) == 1 ? "warm, gentle children's storyteller, smiling voice, slow and clear, soft wonder"
+                    : ageBand(job) == 3 ? "friendly, energetic young creator talking to a capable teen, curious and real, never childish"
+                    : "warm, playful children's storyteller, smiling voice, gentle excitement")
+                    : tut ? "Expressive Indian-English creator-tutor speaking to one student; natural connected phrasing across sentences, conversational contractions, varied intonation, crisp stress on key concepts, curious questions, restrained anticipation before reveals, warm encouraging payoffs. No Hinglish unless requested, no announcer voice, no flat word-by-word reading, no overacting. Scene direction: " + sceneActingDirection(s, line, vdir)
+                    : "natural conversational Indian-English-friendly tutor, " + vdir.delivery();
+            List<String> emphasis = new ArrayList<>();
+            for (int k = i; k < end; k++) emphasis.addAll(emphasisFor(s, sentences.get(k)));
             var audio = gateway.synthesizeForStoryLanguage(new TextToSpeechProvider.TtsRequest(
-                    spoken, job.getVoice(), job.getLanguage(), tp.speed(), tp.pitch(),
-                    tp.emotion(), tp.intensity(), kids(job) ? (ageBand(job) == 1
-                            ? "warm, gentle children's storyteller, smiling voice, slow and clear, soft wonder, like reading a picture book to a toddler"
-                            : ageBand(job) == 3
-                            ? "friendly, energetic young creator talking to a capable teen, curious and real, never childish"
-                            : "warm, playful children's storyteller, smiling voice, gentle excitement, expressive character voices for dialogue")
-                            : tut ? "natural Indian English instructor, warm and confident adult male tutor, clear Indian-English vowel and consonant pronunciation, conversational classroom cadence, steady around 155-165 words per minute, light emphasis on key technical terms, short natural breaths, no exaggerated American/British accent, no robotic sentence endings, no drama"
-                            : "natural conversational Indian-English-friendly tutor, " + vdir.delivery(), emphasisFor(s, line), true,
-                    (line.contains("[laugh]") || line.contains("[chuckle]")) ? "chuckle" : null, tp.acting(), null));
-            if (audio.providerWarning() != null && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice:"))) {
+                    spoken, job.getVoice(), job.getLanguage(), tp.speed(), tp.pitch(), tp.emotion(), tp.intensity(),
+                    delivery, emphasis.stream().distinct().toList(), true,
+                    (line.contains("[laugh]") || line.contains("[chuckle]")) ? "chuckle" : null,
+                    sceneActingDirection(s, line, vdir), null));
+            if (audio.providerWarning() != null && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice:")))
                 job.getWarnings().add("Voice: " + audio.providerWarning());
+            Path clip = work.resolve("phrase-" + i + ".wav");
+            Files.write(clip, audio.audioBytes());
+            parts.add(clip);
+            partEndSentences.add(end - 1);
+            double duration = media.probeDurationSeconds(clip);
+            if (duration <= 0) duration = audio.durationSeconds();
+            // Sentence-level visual cues are estimated within the phrase by word share. This preserves
+            // progressive reveals while the TTS engine gets enough context to sound like one tutor thought.
+            int cumulativeWords = 0;
+            for (int k = i; k < end; k++) {
+                int sentenceWords = Math.max(1, wordCount(sentences.get(k)));
+                double sentenceStart = t + duration * cumulativeWords / (double) totalWords;
+                double sentenceLength = duration * sentenceWords / (double) totalWords;
+                starts.add(sentenceStart);
+                lengths.add(sentenceLength);
+                cumulativeWords += sentenceWords;
             }
-            Path p = work.resolve("s" + i + ".wav");
-            Files.write(p, audio.audioBytes());
-            parts.add(p);
-            starts.add(t);
-            double d = media.probeDurationSeconds(p);
-            if (d <= 0) d = audio.durationSeconds();
-            lengths.add(d);
-            double gap = i < s.getSentences().size() - 1 ? gapAt(job, s, i) : 0.0;
-            t += d + gap;
+            double phraseGap = end < sentences.size() ? gapAt(job, s, end - 1) : 0.0;
+            t += duration + phraseGap;
+            i = end;
         }
-        // join sentences with short breaths, then the shared voice polish (length unchanged)
         Path joined = work.resolve("joined.wav");
         List<String> args = new ArrayList<>(List.of("ffmpeg", "-nostdin", "-y"));
-        for (Path p : parts) args.addAll(List.of("-i", p.toString()));
-        StringBuilder g = new StringBuilder();
-        for (int i = 0; i < parts.size(); i++) {
-            g.append('[').append(i).append(":a]aresample=48000,aformat=channel_layouts=stereo")
-                    .append(i < parts.size() - 1 ? ",apad=pad_dur=" + fmt(gapAt(job, s, i)) : "").append("[s").append(i).append("];");
+        for (Path part : parts) args.addAll(List.of("-i", part.toString()));
+        StringBuilder graph = new StringBuilder();
+        for (int k = 0; k < parts.size(); k++) {
+            double gap = k < parts.size() - 1 ? gapAt(job, s, partEndSentences.get(k)) : 0.0;
+            graph.append('[').append(k).append(":a]aresample=48000,aformat=channel_layouts=stereo")
+                    .append(k < parts.size() - 1 ? ",apad=pad_dur=" + fmt(gap) : "")
+                    .append("[p").append(k).append("];");
         }
-        for (int i = 0; i < parts.size(); i++) g.append("[s").append(i).append(']');
-        g.append("concat=n=").append(parts.size()).append(":v=0:a=1[out]");
-        args.addAll(List.of("-filter_complex", g.toString(), "-map", "[out]", joined.toString()));
+        for (int k = 0; k < parts.size(); k++) graph.append("[p").append(k).append(']');
+        graph.append("concat=n=").append(parts.size()).append(":v=0:a=1[out]");
+        args.addAll(List.of("-filter_complex", graph.toString(), "-map", "[out]", joined.toString()));
         ffmpeg(args);
         byte[] wav = Files.readAllBytes(joined);
         try { wav = media.humanizeVoice(wav); } catch (Exception ignored) { }
@@ -2205,6 +2269,12 @@ public class ConceptExplainerService {
         s.setSentenceTiming(starts, lengths);
         s.setStepTimes(stepTimes(starts, s.getStepPaths().size(), speech > 0 ? speech : t, job));
     }
+
+    private static int wordCount(String text) {
+        if (text == null || text.isBlank()) return 0;
+        return text.replaceAll("\\[[^\\]]*]", " ").trim().split("\\s+").length;
+    }
+
 
     private double gap(ConceptExplainerJob job, String sentence) {
         if (!tutorial(job)) return sentenceGap(sentence);
