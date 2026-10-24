@@ -160,10 +160,41 @@ public final class DiagramSpec {
         return res;
     }
 
+    /** A LaTeX formula as plain readable text for the native renderer: \\frac{a}{b} -> (a) / (b), \\sqrt{x} -> sqrt(x), \\cdot -> ·, Greek letters, ^2 -> ². Anything else loses its backslashes and braces. */
+    static String plainFormula(String tex) {
+        String t = tex == null ? "" : tex;
+        for (int i = 0; i < 4; i++) t = t.replaceAll("\\\\[dt]?frac\\s*\\{([^{}]*)\\}\\s*\\{([^{}]*)\\}", "($1) / ($2)");
+        t = t.replaceAll("\\\\sqrt\\s*\\{([^{}]*)\\}", "sqrt($1)")
+                .replace("\\cdot", "\u00B7").replace("\\times", "\u00D7").replace("\\pm", "\u00B1").replace("\\approx", "\u2248").replace("\\neq", "\u2260")
+                .replace("\\leq", "\u2264").replace("\\geq", "\u2265").replace("\\infty", "\u221E").replace("\\pi", "\u03C0").replace("\\sum", "\u03A3").replace("\\int", "\u222B")
+                .replace("\\alpha", "\u03B1").replace("\\beta", "\u03B2").replace("\\gamma", "\u03B3").replace("\\delta", "\u03B4").replace("\\theta", "\u03B8").replace("\\lambda", "\u03BB")
+                .replace("\\mu", "\u03BC").replace("\\sigma", "\u03C3").replace("\\omega", "\u03C9").replace("\\Delta", "\u0394").replace("\\rightarrow", "\u2192").replace("\\to", "\u2192")
+                .replace("^2", "\u00B2").replace("^3", "\u00B3").replace("^{2}", "\u00B2").replace("^{3}", "\u00B3")
+                .replaceAll("\\\\[a-zA-Z]+", "").replaceAll("[{}]", "").replace("_", "").replaceAll("\\s+", " ").trim();
+        return t;
+    }
+
     /** Field aliases + type mapping. Returns null for elements that cannot be drawn. */
     static ObjectNode normalise(ObjectNode e) {
         String type = e.path("type").asText("").trim().toLowerCase(Locale.ROOT);
         String asked = type;   // what the model called it, before mapping (array / queue / linked_list ... keep their shape)
+        // the animated chart's data ("label|value" lines) on the native bars device, and a LaTeX formula as readable text: both still draw when animated clips are unavailable
+        if (type.equals("chart") && e.path("lines").isArray() && e.path("lines").size() > 0) {
+            type = "bars";
+            String unit = e.path("text").asText("").trim();
+            if (!unit.isEmpty()) {   // the chart's unit becomes the third part of each "label|value|unit" line
+                com.fasterxml.jackson.databind.node.ArrayNode fixed = e.arrayNode();
+                for (com.fasterxml.jackson.databind.JsonNode l : e.path("lines")) { String t = l.asText(""); fixed.add(t.split("\\|").length >= 3 ? t : t + "|" + unit); }
+                e.set("lines", fixed);
+            }
+            e.put("text", "");
+        }
+        if (type.equals("formula")) {
+            String tex = !e.path("text").asText("").isBlank() ? e.path("text").asText("") : e.path("title").asText("");
+            e.put("text", plainFormula(tex));
+            e.remove("title");
+            type = "note";
+        }
         type = switch (type) {
             case "box", "step", "action" -> "button";
             case "cube", "vm", "process" -> "node";

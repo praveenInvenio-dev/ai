@@ -10,12 +10,17 @@ export function createStudio(THREE, opts) {
   renderer.setClearColor(BG);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(BG);
-  scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+  const LIGHT = !!opts.light;   // bright (kids) look: dark text on a cream background
+  const amb = new THREE.AmbientLight(0xffffff, 1.5); scene.add(amb);
   const key = new THREE.DirectionalLight(0xbfe6ff, 2.2); key.position.set(4, 6, 8); scene.add(key);
   const portrait = H > W;
   const camera = new THREE.PerspectiveCamera(portrait ? 52 : 42, W / H, 0.1, 200);
 
-  const COLORS = [0x60a5fa, 0xfbbf24, 0x34d399, 0xf472b6, 0xa78bfa, 0xfb923c];
+  // Theme-aware palette: keep all 3D scenes visually consistent with the selected lesson theme.
+  const COLORS = LIGHT ? [0x6d5bd0, 0xe0a13a, 0x36a68a, 0xd86c91, 0x648bd8, 0xb27bd1]
+    : /#0b0b0c|#1a1a1a/.test(BG) ? [0xf5b942, 0x6ed6e6, 0xf07c69, 0xc4a7ff, 0x9be3b1, 0xf4e8d0]
+    : /#0a1f3a|#08162b|#0c2433/.test(BG) ? [0x38bdf8, 0xfbbf24, 0x2dd4bf, 0x818cf8, 0xfb7185, 0xe2e8f0]
+    : [0x60a5fa, 0xfbbf24, 0x34d399, 0xf472b6, 0xa78bfa, 0xfb923c];
   const items = [];      // { objects:[], appearAt, fade }
   const labels = (opts.labels || []).filter(Boolean).map(String);
   const kindText = (opts.title + ' ' + (opts.narration || '')).toLowerCase();
@@ -24,8 +29,8 @@ export function createStudio(THREE, opts) {
     const cv = document.createElement('canvas'); cv.width = 640; cv.height = 160;
     const ctx = cv.getContext('2d');
     ctx.font = 'bold 64px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(7,17,31,0.95)'; ctx.strokeText(text.slice(0, 22), 320, 80);
-    ctx.fillStyle = '#f8fafc'; ctx.fillText(text.slice(0, 22), 320, 80);
+    ctx.lineWidth = 10; ctx.strokeStyle = LIGHT ? 'rgba(255,247,230,0.95)' : 'rgba(7,17,31,0.95)'; ctx.strokeText(text.slice(0, 22), 320, 80);
+    ctx.fillStyle = LIGHT ? '#2a2540' : '#f8fafc'; ctx.fillText(text.slice(0, 22), 320, 80);
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false }));
     sp.scale.set(2.4 * scale, 0.6 * scale, 1); sp.renderOrder = 10;
     return sp;
@@ -192,7 +197,7 @@ export function createStudio(THREE, opts) {
         add([slab, block, tag, cursor], i);
         spin.push(t => { cursor.position.x = -3.9 + (((t * speeds[i % 4]) + i * 0.17) % 1) * 7.8; });
       }
-      return { cam: (t) => { camera.position.set(Math.sin(t * 0.15) * 1.0, 5.6, 9.6); camera.lookAt(-0.4, 0, 0); } };
+      return { fit: 7.6, cam: (t) => { camera.position.set(Math.sin(t * 0.15) * 1.0, 5.6, 9.6); camera.lookAt(-0.4, 0, 0); } };
     }
     // one lane: every task waits for the one before it
     const widths = [1.7, 3.0, 1.7, 1.3];
@@ -210,30 +215,134 @@ export function createStudio(THREE, opts) {
     add([cursor], 0);
     const total = x + 3.9;
     spin.push(t => { cursor.position.x = -4.2 + (((t * 0.16) % 1) * (total + 0.6)); });
-    return { cam: (t) => { camera.position.set(Math.sin(t * 0.15) * 0.8, 3.6, 9.2); camera.lookAt(0, 0.2, 0); } };
+    return { fit: 6.4, cam: (t) => { camera.position.set(Math.sin(t * 0.15) * 0.8, 3.6, 9.2); camera.lookAt(0, 0.2, 0); } };
   }
 
-  const builders = { orbit, molecule, layers, axes, lanes };
+
+  // Narration-led 3D flow: physical nodes, glowing connections and moving packets.
+  // Each node reveals at the corresponding sentence boundary; packets move continuously once visible.
+  function dataFlow() {
+    const n = Math.max(3, Math.min(5, labels.length || 3));
+    const names = pickLabels(['Client', 'API Gateway', 'Service', 'Database', 'Response'], n);
+    const group = new THREE.Group(); scene.add(group);
+    const xs = names.map((_, i) => (i - (n - 1) / 2) * 2.55);
+    const packets = [];
+    for (let i = 0; i < n; i++) {
+      const nodeGroup = new THREE.Group(); nodeGroup.position.set(xs[i], 0, i % 2 ? -0.25 : 0.25); group.add(nodeGroup);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1.25, 1.05, 0.8), mat(COLORS[i % COLORS.length], { metalness: 0.35, roughness: 0.24, emissive: COLORS[i % COLORS.length], emissiveIntensity: 0.12 }));
+      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(box.geometry), new THREE.LineBasicMaterial({ color: 0xdbeafe }));
+      const tag = label(names[i], 0.72); tag.position.set(0, 1.05, 0.15);
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.92, 0.12, 32), mat(0x243b53)); base.position.y = -0.62;
+      nodeGroup.add(box, edge, tag, base);
+      add([nodeGroup], i);
+      if (i < n - 1) {
+        const start = new THREE.Vector3(xs[i] + 0.7, 0, 0);
+        const end = new THREE.Vector3(xs[i + 1] - 0.7, 0, 0);
+        const delta = end.clone().sub(start);
+        const line = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, delta.length(), 10), new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8 }));
+        line.position.copy(start.clone().add(end).multiplyScalar(0.5)); line.rotation.z = Math.PI / 2;
+        const glow = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), new THREE.MeshBasicMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 1.3 }));
+        glow.position.copy(start); group.add(line, glow); packets.push({ glow, start, end, at: i });
+        add([line], i);
+      }
+    }
+    const floor = new THREE.GridHelper(Math.max(12, n * 3), Math.max(12, n * 3), 0x29435f, 0x15283d); floor.position.y = -0.72; group.add(floor); add([floor], 0);
+    spin.push(t => {
+      group.rotation.y = Math.sin(t * 0.16) * 0.12;
+      packets.forEach(p => { const u = (t * 0.65 + p.at * 0.31) % 1; p.glow.position.lerpVectors(p.start, p.end, u); p.glow.position.y = 0.04 + Math.sin(u * Math.PI) * 0.16; });
+    });
+    return { fit: Math.max(5.6, n * 1.45), cam: (t) => { camera.position.set(Math.sin(t * 0.12) * 0.6, 2.4, Math.max(8.5, n * 2.0)); camera.lookAt(0, 0, 0); } };
+  }
+
+  // ---- earth: a globe lit from one side (real day and night), a sun, and a "you" marker that rides round from day into night
+  function earth() {
+    amb.intensity = 0.32; key.visible = false;
+    const sunPos = new THREE.Vector3(-8.5, 1.4, 2.5);
+    const sunLight = new THREE.DirectionalLight(0xfff2cc, 3.2); sunLight.position.copy(sunPos); scene.add(sunLight);
+    const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512; const g = cv.getContext('2d');
+    const og = g.createLinearGradient(0, 0, 0, 512); og.addColorStop(0, '#2b7fe0'); og.addColorStop(0.5, '#1d6fd1'); og.addColorStop(1, '#2b7fe0'); g.fillStyle = og; g.fillRect(0, 0, 1024, 512);
+    let sd = 7; const rnd = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+    for (let i = 0; i < 34; i++) { const x = rnd() * 1024, y = 90 + rnd() * 330, rx = 30 + rnd() * 90, ry = 18 + rnd() * 50; g.fillStyle = rnd() < 0.7 ? '#43b05f' : '#9a8a45'; for (let k = 0; k < 4; k++) { g.beginPath(); g.ellipse(x + (rnd() - 0.5) * rx, y + (rnd() - 0.5) * ry, rx * (0.5 + rnd() * 0.6), ry * (0.5 + rnd() * 0.6), rnd() * 3, 0, 7); g.fill(); } }
+    g.fillStyle = '#f4f8ff'; g.fillRect(0, 0, 1024, 34); g.fillRect(0, 478, 1024, 34);
+    const globe = new THREE.Mesh(new THREE.SphereGeometry(2.1, 64, 48), new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(cv), roughness: 0.85 }));
+    globe.rotation.z = 0.41; add([globe], 0);
+    const sun = new THREE.Mesh(new THREE.SphereGeometry(0.95, 32, 24), new THREE.MeshBasicMaterial({ color: 0xffd54a })); sun.position.set(-5.1, 1.1, 0.5);
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(1.35, 32, 24), new THREE.MeshBasicMaterial({ color: 0xffe28a, transparent: true, opacity: 0.28 })); halo.position.copy(sun.position);
+    const tagSun = label('Sun', 0.9); tagSun.position.set(sun.position.x, sun.position.y + 1.7, 0); add([sun, halo, tagSun], 1);
+    const you = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff3d71 }));
+    const lat = 0.35, lon0 = 0; you.position.set(Math.cos(lat) * Math.sin(lon0) * 2.14, Math.sin(lat) * 2.14, Math.cos(lat) * Math.cos(lon0) * 2.14); globe.add(you);
+    const tagYou = label('You', 0.8), tagDay = label('Day', 0.95), tagNight = label('Night', 0.95);
+    tagDay.position.set(-2.7, 2.5, 0); tagNight.position.set(2.9, 2.5, 0);
+    add([you, tagYou], 2); add([tagDay, tagNight], 2);
+    spin.push(t => { globe.rotation.y = -t * 0.55 + 1.3; const w = new THREE.Vector3(); you.getWorldPosition(w); tagYou.position.set(w.x, w.y + 0.55, w.z + 0.2); tagYou.visible = w.z > -0.4 && you.visible; });
+    return { fit: 7.0, cam: () => { camera.position.set(0.4, 1.4, 9.6); camera.lookAt(-0.6, 0, 0); } };
+  }
+  const builders = { orbit, molecule, layers, axes, lanes, earth, dataFlow };
   let kind = builders[opts.kind] ? opts.kind : null;
   if (!kind) {
     if (/orbit|planet|solar|galaxy|satellite/.test(kindText)) kind = 'orbit';
     else if (/molecule|atom|bond|helix|dna|crystal|lattice/.test(kindText)) kind = 'molecule';
     else if (/layer|crust|mantle|cross.section|atmosphere/.test(kindText)) kind = 'layers';
     else if (/3d|cube|sphere|axes|three-dimensional|coordinate|pyramid|cylinder/.test(kindText)) kind = 'axes';
+    else if (/api gateway|microservice|data flow|request.{0,20}(route|forward)|router|network|queue|worker|database|client.{0,20}server|server.{0,20}client|pipeline|packet/.test(kindText)) kind = 'dataFlow';
     else if (/parallel|multithread|simultaneous|one at a time|in order|sequential/.test(kindText)) kind = 'lanes';
   }
   const rig = (kind ? builders[kind] : nodes)();
 
   // title, drawn as page text so it is crisp
-  const titleEl = document.createElement('div');
-  titleEl.style.cssText = `position:absolute;top:${portrait ? 6 : 4}%;left:5%;right:5%;color:#eff6ff;font:700 ${portrait ? 54 : 40}px sans-serif;text-align:center;text-shadow:0 2px 10px #000`;
-  titleEl.textContent = String(opts.title || '').slice(0, 90);
-  document.body.appendChild(titleEl);
+  // same heading look as the native renderer: a small grey kicker over a regular-weight title, scaled to the frame height
+  const k = H / 720;
+  const head = document.createElement('div');
+  head.style.cssText = `position:absolute;top:${portrait ? 8.5 : 1.2}%;left:5%;right:5%;text-align:center;text-shadow:${LIGHT ? 'none' : '0 2px 10px #000'};font-family:Lato,Arial,Helvetica,'DejaVu Sans',sans-serif`;
+  head.innerHTML = `<div style="color:${LIGHT ? '#7a7396' : '#8a9bb0'};font:${portrait ? 13 * k : 15 * k}px 'DejaVu Sans Mono',monospace;margin-bottom:${4 * k}px"></div><div style="color:${LIGHT ? '#2a2540' : '#eaf4ff'};font-size:${portrait ? 64 * k * 0.56 : 36 * k}px;font-weight:400"></div>`;
+  head.children[0].textContent = String(opts.kicker || '').slice(0, 60);
+  head.children[1].textContent = String(opts.title || '').slice(0, 90);
+  document.body.appendChild(head);
 
   // step k reveals everything that belongs to steps 0..k; the newest item eases in over the first half second
   // frames may be fewer than items (one frame per narration sentence): spread the reveal so the LAST frame shows everything
   const maxAppear = () => items.reduce((m, it) => Math.max(m, it.appearAt), 0);
   function stepFor(k) { const n = Math.max(1, (opts.count || 1) - 1); return opts.count > 1 ? Math.round(k * maxAppear() / n) : maxAppear(); }
+  // camera + tall-frame fit + draw, shared by the still-frame and the timeline renderers
+  function finish(t) {
+    spin.forEach(fn => fn(t));
+    rig.cam(t);
+    if (portrait) {   // a tall frame is narrow: pull back until the scene's width (about 5.6 units each side of the centre) fits
+      const dist = camera.position.length();
+      const halfW = dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
+      const need = rig.fit || 5.6;   // half-width a template needs; lanes carry wide labels
+      if (halfW < need) {
+        const aim = camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(dist));   // the point the template was looking at
+        camera.position.multiplyScalar(need / halfW);
+        camera.lookAt(aim);                                                                                       // keep looking at it (scaling alone slides the view sideways)
+      }
+    }
+    renderer.render(scene, camera);
+  }
+
+  // ---- timeline mode: a real animation. Item i pops in when the narration reaches the sentence about it (starts = sentence start times in seconds),
+  // and the camera keeps moving (the template's own sway / orbit), so the 3D scene is alive for the whole narration.
+  const easeOut = k => 1 - Math.pow(1 - k, 3);
+  function revealTimes(starts, steps) {
+    const out = [], count = starts.length;
+    for (let i = 0; i < steps; i++) {
+      let k = 0;
+      if (count > 1) { k = count - 1; for (let j = 0; j < count; j++) if (Math.round(j * (steps - 1) / (count - 1)) >= i) { k = j; break; } }
+      out.push(count ? Math.max(0, starts[k] - 0.15) : i * 1.2);
+    }
+    return out;
+  }
+  function renderTime(t, starts) {
+    const rv = revealTimes(starts || [], maxAppear() + 1);
+    items.forEach(it => {
+      const r = rv[Math.min(it.appearAt, rv.length - 1)], show = t >= r, e = easeOut(Math.min(1, Math.max(0, (t - r) / 0.6)));
+      it.objs.forEach(o => {
+        o.visible = show;
+        if (show && !o.isLight && !o.isArrowHelper) { o.userData.s0 = o.userData.s0 || o.scale.clone(); o.scale.copy(o.userData.s0).multiplyScalar(0.55 + 0.45 * e); }
+      });
+    });
+    finish(t);
+  }
   function renderStep(frame, t) {
     const step = stepFor(frame);
     items.forEach(it => {
@@ -248,10 +357,7 @@ export function createStudio(THREE, opts) {
         }
       });
     });
-    spin.forEach(fn => fn(t));
-    rig.cam(t);
-    if (portrait) camera.position.multiplyScalar(1.22);   // a tall frame is narrow: pull back so the scene is not cut off
-    renderer.render(scene, camera);
+    finish(t);
   }
-  return { renderStep, kind: kind || 'nodes' };
+  return { renderStep, renderTime, kind: kind || 'nodes' };
 }

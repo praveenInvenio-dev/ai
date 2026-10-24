@@ -107,7 +107,7 @@ public class StoryboardService {
                              com.aistorystudio.repository.VoiceProfileRepository voiceProfileRepository,
                              com.aistorystudio.repository.CharacterRepository characterRepository,
                              com.aistorystudio.repository.CharacterReferenceRepository characterReferenceRepository,
-                             @Value("${studio.tts.voice:edge:en-IN-NeerjaNeural}") String defaultVoice) {
+                             @Value("${studio.tts.voice:edge:en-IN-PrabhatNeural}") String defaultVoice) {
         this.episodes = episodes;
         this.projects = projects;
         this.scenes = scenes;

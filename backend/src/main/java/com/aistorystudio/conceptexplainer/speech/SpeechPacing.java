@@ -35,6 +35,7 @@ public final class SpeechPacing {
         int words = bare.isEmpty() ? 0 : bare.split("\\s+").length;
         boolean question = bare.endsWith("?") || bare.endsWith("\uFF1F");
         boolean exclaim = bare.endsWith("!");
+        boolean beat = bare.endsWith("...") || bare.endsWith("\u2026");   // "Arre nahi..." : a spoken pause before the punchline
         boolean leadIn = bare.endsWith(":") || bare.matches("(?i).*(here'?s the thing|here'?s the catch|think about it|but here'?s|so what happens|now watch|watch this)[.!]?$");
         long commas = bare.chars().filter(c -> c == ',').count();
 
@@ -43,6 +44,7 @@ public final class SpeechPacing {
         if (words >= 19) { speed *= 1.02; gap += 0.06; }                                  // long: flow through, then breathe
         if (commas >= 3) speed *= 1.01;
         if (leadIn) { speed *= 0.96; gap += 0.22; }                                       // breath before the reveal
+        if (beat) { speed *= 0.97; gap += 0.30; }                                         // comic beat: slow slightly, then hold the silence
         if (question) { speed *= 0.97; pitch *= 1.010; gap += 0.20; }                     // lift, then give the listener a moment
         if (exclaim) { speed *= 1.015; pitch *= 1.006; }
         if (index == 0 && count > 1) { pitch *= 1.005; }                                  // the hook is a touch brighter

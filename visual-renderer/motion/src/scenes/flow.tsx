@@ -13,6 +13,7 @@ export default makeScene2D(function* (view) {
   const vars = useScene().variables;
   const title = String(vars.get('title', '')());
   const bg = String(vars.get('bg', '#0b0b0c')());
+  const kicker = String(vars.get('kicker', '')());
   const portrait = Number(vars.get('portrait', 0)()) === 1;
   let labels: string[] = [];
   try { labels = JSON.parse(String(vars.get('labels', '[]')())); } catch { labels = []; }
@@ -23,7 +24,9 @@ export default makeScene2D(function* (view) {
   const W = view.size().x, H = view.size().y;
   const n = labels.length;
 
-  view.add(<Txt text={title} fill="#eaf4ff" fontFamily={FONT} fontSize={portrait ? 64 : 52} fontWeight={800} y={-H / 2 + (portrait ? 220 : 90)} />);
+  // same heading look as the native renderer: a small grey kicker ("02 · 1865") over a regular-weight title
+  view.add(<Txt text={kicker} fill="#8a9bb0" fontFamily="DejaVu Sans Mono, monospace" fontSize={portrait ? 26 : 15} y={-H / 2 + (portrait ? 190 : 22)} />);
+  view.add(<Txt text={title} fill="#eaf4ff" fontFamily={FONT} fontSize={portrait ? 64 : 36} fontWeight={400} y={-H / 2 + (portrait ? 262 : 52)} />);
 
   // lay the steps out along the long side of the frame
   const boxW = portrait ? Math.min(620, W - 200) : Math.min(380, (W - 160) / n - 60);
@@ -42,7 +45,7 @@ export default makeScene2D(function* (view) {
   labels.forEach((text, i) => {
     view.add(
       <Rect ref={boxes[i]} position={pos[i]} width={boxW} height={boxH} radius={26} fill={FILLS[i % 5]} stroke={COLORS[i % 5]} lineWidth={5} opacity={0} scale={0.6}>
-        <Txt text={text} fill="#f8fafc" fontFamily={FONT} fontSize={portrait ? 50 : 42} fontWeight={700} textWrap width={boxW - 40} textAlign="center" />
+        <Txt text={text} fill="#f8fafc" fontFamily={FONT} fontSize={Math.max(24, Math.min(portrait ? 50 : 42, (boxW - 40) / 6.2))} fontWeight={700} textWrap width={boxW - 40} textAlign="center" />
       </Rect>,
     );
     if (i > 0) {

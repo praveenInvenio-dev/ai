@@ -31,9 +31,10 @@ public final class EngineScorer {
     public enum Engine { MANIM, RIVE, THREE_JS, MOTION_CANVAS, NATIVE_DIAGRAM }
 
     /** What the renderer service can really do right now. */
-    public record Capabilities(boolean manim, boolean rive, boolean threeJs, boolean motionCanvas) {
-        public static Capabilities nativeOnly() { return new Capabilities(false, false, false, false); }
-        public static Capabilities all() { return new Capabilities(true, true, true, true); }
+    public record Capabilities(boolean manim, boolean rive, boolean threeJs, boolean motionCanvas, boolean boards) {
+        public Capabilities(boolean manim, boolean rive, boolean threeJs, boolean motionCanvas) { this(manim, rive, threeJs, motionCanvas, false); }
+        public static Capabilities nativeOnly() { return new Capabilities(false, false, false, false, false); }
+        public static Capabilities all() { return new Capabilities(true, true, true, true, true); }
     }
 
     /**
@@ -53,7 +54,7 @@ public final class EngineScorer {
 
     /** @param scores per-engine score (for transparency in the UI); @param hits the words that decided it; @param threeKind orbit | molecule | layers | axes */
     public record Decision(Engine engine, String reason, Map<Engine, Double> scores, List<String> hits, String threeKind, double margin) {
-        public Decision withEngine(Engine e, String why) { return new Decision(e, why, scores, hits, threeKind, margin); }
+        public Decision withEngine(Engine e, String why) { return new Decision(e, why, scores, hits, e == Engine.NATIVE_DIAGRAM ? null : threeKind, margin); }
     }
 
     // ------------------------------------------------------------------------------------------------- lexicons
@@ -66,6 +67,8 @@ public final class EngineScorer {
     }
 
     private static final List<Lex> THREE = List.of(
+            new Lex("earth", words("earth spins", "earth is spinning", "earth rotates", "rotation of the earth", "earth turns", "earth spin", "spinning earth"), 3.5),
+            new Lex("earth", words("day and night", "night and day", "sunrise", "sunset", "time zones", "seasons"), 2.0),
             new Lex("orbit", words("solar system", "orbit", "orbits", "orbiting", "planet", "planets", "satellite", "satellites", "galaxy", "eclipse", "revolves around", "revolve around"), 2.0),
             new Lex("molecule", words("molecule", "molecules", "atom", "atoms", "atomic structure", "crystal lattice", "crystal", "double helix", "dna helix", "electron shell", "nucleus", "chemical bond", "chemical bonds"), 2.0),
             new Lex("layers", words("layers of the earth", "earth's layers", "atmosphere", "crust and mantle", "cross-section", "cross section", "depth layers", "stack of layers", "strata",
@@ -86,6 +89,20 @@ public final class EngineScorer {
     /** Devices that are the point of the scene and only the native renderer draws: no animation replaces them. */
     /** Plan devices that already say "ordered steps" (a stepper, a timeline, a flowchart, a cycle): the animated step flow is their natural partner. */
     private static final Set<String> MOTION_DEVICES = Set.of("steps", "journey", "timeline", "flowchart", "cycle", "sequence");
+    /** Cards, compare tables and bars can be drawn AND animated by the board clip (each element slides in with its sentence, bars grow, numbers count up). */
+    private static final Set<String> BOARD_TYPES = Set.of("card", "tile", "note", "compare", "bars");
+    /** The reference-video diagram kit: tiles with icons, actors, buttons, notes, containers, messages and arrows between them, animated element by element. */
+    private static final Set<String> DIAGRAM_TYPES = Set.of("tile", "actor", "button", "heading", "pill", "label", "note", "quote", "card", "container", "arrow", "message", "icon");
+    /** Formulas (typeset LaTeX) and charts (D3), alone or with a label / note: animated step by step / point by point. */
+    private static final Set<String> FORMULA_TYPES = Set.of("formula", "label", "note", "pill", "heading");
+    private static final Set<String> CHART_TYPES = Set.of("chart", "label", "note", "pill", "heading");
+    /** Science and exam scenes that play: a quiz with a countdown and a reveal, a free-body diagram where the body accelerates, a cycle that turns. Allowed for kids too. */
+    private static final Set<String> QUIZ_TYPES = Set.of("quiz", "label", "note", "pill", "heading", "mascot", "speech");
+    private static final Set<String> FORCES_TYPES = Set.of("forces", "label", "note", "pill", "heading");
+    private static final Set<String> MASCOT_TYPES = Set.of("mascot", "speech", "label", "pill", "heading");
+    private static final Set<String> CYCLE_TYPES = Set.of("cycle", "label", "note", "pill", "heading");
+    /** A code window (optionally with cards or notes): typed line by line while the narration explains it. */
+    private static final Set<String> CODE_BOARD_TYPES = Set.of("code", "card", "tile", "note");
     private static final Set<String> BLOCKS_MOTION = Set.of("code", "terminal", "browser", "datastruct", "formula", "plot", "bars", "periodic", "energy", "lens", "table");
     private static final Pattern RIVE_WORDS = words("character", "mascot", "avatar", "talking head", "user interface", "interface animation", "animated ui", "ui animation",
             "button animation", "rive animation", "loading animation", "toggle");
@@ -134,7 +151,8 @@ public final class EngineScorer {
         // the plan's own "layers" device is a stack (RAG pipeline, OSI, app/JVM/OS): the 3D layers template draws that very device with its labels
         if (s.planTypes() != null && s.planTypes().contains("layers") && bestThree < 3.5 && s.kidsBand() == 0) { bestThree = 3.5; bestKind = "layers"; threeHits = new ArrayList<>(List.of("layers device")); }
         if (dom.contains("astronom") || dom.contains("space") || dom.contains("chemis") || dom.contains("geograph") || dom.contains("geometr")) bestThree += bestThree > 0 ? 1.0 : 0;
-        if (s.kidsBand() > 0) bestThree *= 0.6;
+        if (s.planTypes() != null && s.planTypes().contains("quiz")) bestThree = 0;   // a quiz is about answering, never about a picture of the topic
+        if (s.kidsBand() > 0 && !"earth".equals(bestKind)) bestThree *= 0.6;   // 3D is for kids only where it is the right picture: a lit, spinning Earth
         if (nativeType) bestThree -= 1.0;                                  // the plan chose a specialised 2D device on purpose
         scores.put(Engine.THREE_JS, Math.max(0, bestThree));
 
@@ -145,7 +163,7 @@ public final class EngineScorer {
         if (motionDevice) mc = Math.max(mc + 2.0, 3.0);          // the plan itself says "ordered steps"
         boolean blocksMotion = s.planTypes() != null && s.planTypes().stream().anyMatch(BLOCKS_MOTION::contains);
         if (blocksMotion || nz(s.code()).length() > 8) mc = 0;
-        if (s.kidsBand() > 0) mc *= 0.6;
+        if (s.kidsBand() > 0) mc = 0;   // the flow scene has no light (kids) palette
         scores.put(Engine.MOTION_CANVAS, mc);
 
         // ---- rive
@@ -166,6 +184,27 @@ public final class EngineScorer {
         double three = scores.get(Engine.THREE_JS);
         if (caps.threeJs() && three >= THREE_MIN && three >= nat + THREE_OVER_NATIVE)
             return new Decision(Engine.THREE_JS, "Real depth matters here (" + String.join(", ", threeHits) + "): a 3D camera view explains it better than a flat diagram.", scores, threeHits, bestKind, three - nat);
+        if (caps.boards() && s.kidsBand() == 0 && s.planTypes() != null && s.planTypes().contains("code") && CODE_BOARD_TYPES.containsAll(s.planTypes()))
+            return new Decision(Engine.MOTION_CANVAS, "A code window: typed in group by group while the narration explains it, with the lines being explained highlighted.", scores, List.of("animated code"), "code", -3.0);
+        if (caps.boards() && s.planTypes() != null && s.planTypes().contains("mascot") && MASCOT_TYPES.containsAll(s.planTypes()))
+            return new Decision(Engine.MOTION_CANVAS, "A talking mascot: Ollie the owl blinks, flaps, changes mood and opens his beak with the narration while his speech bubble types the line.", scores, List.of("animated mascot"), "mascot", -3.0);
+        if (caps.boards() && s.planTypes() != null && s.planTypes().contains("quiz") && QUIZ_TYPES.containsAll(s.planTypes()))
+            return new Decision(Engine.MOTION_CANVAS, "A quiz that plays: options come in one by one, a 3-2-1 think countdown runs, and the right answer turns green when the voice gives it.", scores, List.of("animated quiz"), "quiz", -3.0);
+        if (caps.boards() && s.planTypes() != null && s.planTypes().contains("forces") && FORCES_TYPES.containsAll(s.planTypes()))
+            return new Decision(Engine.MOTION_CANVAS, "A free-body diagram: the forces grow out of the body as they are named, equal and opposite ones cancel, then the net force makes the body accelerate.", scores, List.of("animated forces"), "forces", -3.0);
+        if (caps.boards() && s.planTypes() != null && s.planTypes().contains("cycle") && CYCLE_TYPES.containsAll(s.planTypes()))
+            return new Decision(Engine.MOTION_CANVAS, "A cycle: the stages appear on a ring as the voice reaches them and a dot then chases round it.", scores, List.of("animated cycle"), "cycle", -3.0);
+        if (caps.boards() && s.kidsBand() == 0 && s.planTypes() != null && s.planTypes().contains("formula") && FORMULA_TYPES.containsAll(s.planTypes()))
+            return new Decision(Engine.MOTION_CANVAS, "A formula: typeset in LaTeX and revealed formula by formula as the narration reaches it.", scores, List.of("animated formula"), "formula", -3.0);
+        if (caps.boards() && s.kidsBand() == 0 && s.planTypes() != null && s.planTypes().contains("chart") && CHART_TYPES.containsAll(s.planTypes()))
+            return new Decision(Engine.MOTION_CANVAS, "A chart: drawn with real axes, the line draws itself, bars grow with counting values, a donut sweeps round.", scores, List.of("animated chart"), "chart", -3.0);
+        if (caps.boards() && s.kidsBand() == 0 && s.planTypes() != null && !s.planTypes().isEmpty() && DIAGRAM_TYPES.containsAll(s.planTypes())
+                && (s.planTypes().contains("arrow") || s.planTypes().contains("tile") || s.planTypes().contains("actor") || s.planTypes().contains("container")))
+            return new Decision(Engine.MOTION_CANVAS, "A diagram of tiles, actors and arrows: every element pops in as the voice reaches it, arrows draw themselves and send a dot along, and the element being discussed glows.", scores, List.of("animated diagram"), "diagram", -3.0);
+        boolean boardOnly = s.kidsBand() == 0 && s.planTypes() != null && !s.planTypes().isEmpty() && BOARD_TYPES.containsAll(s.planTypes())
+                && s.planTypes().stream().anyMatch(t -> t.equals("card") || t.equals("compare") || t.equals("bars"));
+        if (caps.boards() && boardOnly)
+            return new Decision(Engine.MOTION_CANVAS, "Cards / table / bars: drawn as an ANIMATED board, each element slides in as the voice reaches it and bars grow with counting numbers.", scores, List.of("animated board"), "board", -3.0);   // ranked below real flows if the governor ever has to choose
         double motion = scores.get(Engine.MOTION_CANVAS);
         if (caps.motionCanvas() && motion >= 3.0 && motion >= nat - (motionDevice ? 2.0 : 1.0))
             return new Decision(Engine.MOTION_CANVAS, "Ordered steps that move one after another (" + markers + " ordering cues): an animated step flow shows the order better than a still diagram.", scores, List.of(), "flow", motion - nat);

@@ -114,6 +114,6 @@ public final class VoiceQa {
     public static double correctionDb(double ratioDb) {
         if (Double.isNaN(ratioDb) || ratioDb >= MUFFLED_BELOW_DB) return 0;
         double deficit = TARGET_DB - ratioDb;
-        return Math.max(0, Math.min(4.0, 2.2 + deficit * 0.14));
+        return Math.max(0, Math.min(6.5, 0.8 + deficit * 0.95));   // was min(4, 2.2 + 0.14*deficit): a voice measured at -22 dB was still -22 dB after correction
     }
 }

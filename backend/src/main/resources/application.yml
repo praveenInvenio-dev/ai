@@ -105,7 +105,7 @@ studio:
     #               tts-chatterbox/server.py. Requires the `chatterbox` compose profile.
     provider: ${TTS_PROVIDER:piper}
     baseUrl: ${TTS_BASE_URL:http://tts:5002}
-    voice: ${TTS_VOICE:edge:en-IN-NeerjaNeural}
+    voice: ${TTS_VOICE:edge:en-IN-PrabhatNeural}
     sarvam:
       baseUrl: ${SARVAM_BASE_URL:https://api.sarvam.ai}
       apiKey: ${SARVAM_API_KEY:}

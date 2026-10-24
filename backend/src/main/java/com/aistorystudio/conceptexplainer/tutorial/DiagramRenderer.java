@@ -645,7 +645,7 @@ public final class DiagramRenderer {
             case "numberline" -> { return new double[]{w > 0 ? w : Math.min(W - 120, 1000), h > 0 ? h : 200}; }
             case "triangle" -> { double d = w > 0 ? w : 560; return new double[]{d, h > 0 ? h : d * 0.8}; }
             case "fraction" -> { int n = Math.max(1, listOrEmpty(e).size()); return new double[]{w > 0 ? w : Math.min(W - 120, 900), h > 0 ? h : 30 + n * 110}; }
-            case "quiz" -> { return new double[]{w > 0 ? w : Math.min(W - 80, portrait ? 960 : 1100), h > 0 ? h : 180 + Math.max(2, listOrEmpty(e).size()) * 86}; }
+            case "quiz" -> { return new double[]{w > 0 ? w : Math.min(W - 80, portrait ? 960 : 1100), h > 0 ? h : 214 + Math.max(2, listOrEmpty(e).size()) * 86}; }
             case "factcard" -> { return new double[]{w > 0 ? w : Math.min(W - 100, 900), h > 0 ? h : 300}; }
             case "mascot" -> { double d = w > 0 ? w : 280; return new double[]{d, h > 0 ? h : d * 1.15}; }
             case "speech" -> {
@@ -739,7 +739,9 @@ public final class DiagramRenderer {
             // reels: a small diagram floating in a big empty frame looks unfinished - frame it closer
             boolean onlyCards = true;
             for (Element e : scene.elements()) if (!full(e) && !backdrop(e)) { onlyCards = false; break; }
-            double zin = Math.min(portrait ? 1.6 : 1.3, Math.min((right - left - 40) / box.getWidth(), (bottom - top - 40) / box.getHeight()));
+            // children need bigger pictures than adults: the kids look may zoom in much further on a small diagram
+            double cap = themeId.equals("kids") || themeId.equals("toddler") ? (portrait ? 2.1 : 1.9) : (portrait ? 1.6 : 1.3);
+            double zin = Math.min(cap, Math.min((right - left - 40) / box.getWidth(), (bottom - top - 40) / box.getHeight()));
             if (!onlyCards && zin > 1.08) return new double[]{zin, box.getCenterX(), box.getCenterY(), W / 2.0, (top + bottom) / 2.0};
             if (portrait) {   // a vertical frame: centre what fits in the free area instead of leaving the bottom half empty (but never up into the heading)
                 double mid = (top + bottom) / 2.0, dy = mid - box.getCenterY(), minTop = top + journeyPad;
@@ -1724,7 +1726,10 @@ public final class DiagramRenderer {
         }
         Color[] cols = {TEXT, accent(e.color(), GREEN)};
         int i = 0;
-        double labelW = r.getWidth() * 0.32, barX = r.getX() + 30 + labelW, barW = r.getWidth() - labelW - 210;
+        // the number column is as wide as the widest "1000 rupees"; the bar track ends before it (a fixed 210 px let long values run into the bar)
+        double numW = 120;
+        for (String[] p : rows) numW = Math.max(numW, widthOf((p.length > 1 ? p[1].trim() : "") + (p.length > 2 ? " " + p[2].trim() : ""), mono, 26));
+        double labelW = r.getWidth() * 0.32, barX = r.getX() + 30 + labelW, barW = Math.max(120, r.getWidth() - labelW - numW - 80);
         for (String[] p : rows) {
             if (y > r.getMaxY() - 10) break;
             text(g, fit(p[0].trim(), sans, 26, (int) labelW - 10), x, y, sans, 26, TEXT);
@@ -2629,7 +2634,12 @@ public final class DiagramRenderer {
             RoundRectangle2D box = new RoundRectangle2D.Double(px - bw / 2, py - 34, bw, 68, 34, 34);
             g.setColor(light ? Color.WHITE : TEAL_BTN); g.fill(box);
             g.setColor(c); g.setStroke(new BasicStroke(2.6f)); g.draw(box);
-            centered(g, part(st.get(i), 0), px, py + 10, sansBold, 26, c, bw - 20);
+            // a long stage name wraps onto two lines (and shrinks if it must) instead of being cut to "Regeneration..."
+            int fs = 26; List<String> sl = wrap(part(st.get(i), 0), sansBold, fs, (int) bw - 24);
+            while (sl.size() > 2 && fs > 17) { fs -= 2; sl = wrap(part(st.get(i), 0), sansBold, fs, (int) bw - 24); }
+            if (sl.size() > 1 && fs > 22) { fs = 22; sl = wrap(part(st.get(i), 0), sansBold, fs, (int) bw - 24); }
+            float ty = (float) (py + fs * 0.36 - (sl.size() - 1) * fs * 0.58);
+            for (String sline : sl) { centered(g, sline, px, ty, sansBold, fs, c, bw - 16); ty += fs * 1.16f; }
         }
         String centre = nz(e.text());
         if (!centre.isEmpty()) {
@@ -3205,7 +3215,7 @@ public final class DiagramRenderer {
         text(g, "QUIZ", x, y - 4, sansBold, 22, HL);
         y += 26;
         for (String l : wrap(nz(e.title()), kidOr(sansBold), 38, (int) r.getWidth() - 70)) { text(g, l, x, y + 34, kidOr(sansBold), 38, TEXT); y += 46; }
-        y += 34;
+        y += 68;   // the first option's box starts 40 px above y: it used to touch the question's descenders
         int right = (int) parseNum(nz(e.style()));
         int reveal = e.highlight() == null || e.highlight().isEmpty() ? -1 : e.highlight().stream().min(Integer::compare).orElse(-1);
         boolean shown = right > 0 && (reveal < 0 || curStep >= reveal);

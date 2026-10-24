@@ -1,0 +1,26 @@
+{
+  "name": "ai-story-studio-revideo-clips",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Animated step-flow clips timed to the narration. Rendered headless by the visual-renderer service (Revideo, MIT).",
+  "dependencies": {
+    "@revideo/2d": "0.11.0",
+    "@revideo/core": "0.11.0",
+    "@revideo/ffmpeg": "0.11.0",
+    "@revideo/renderer": "0.11.0",
+    "@revideo/ui": "0.11.0",
+    "@revideo/vite-plugin": "0.11.0",
+    "vite": "^5.4.10",
+    "@lezer/java": "^1.1.3",
+    "@lezer/javascript": "^1.4.21",
+    "@lezer/python": "^1.1.18",
+    "@lezer/cpp": "^1.1.3",
+    "@lezer/json": "^1.0.3",
+    "@lezer/highlight": "^1.2.1",
+    "d3-array": "^3.2.4",
+    "d3-scale": "^4.0.2",
+    "d3-shape": "^3.2.0",
+    "@codemirror/language": "^6.10.0"
+  }
+}

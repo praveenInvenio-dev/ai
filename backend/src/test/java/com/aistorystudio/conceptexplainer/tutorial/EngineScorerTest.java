@@ -75,7 +75,7 @@ class EngineScorerTest {
 
     @Test void aSpecialisedDeviceStillKeepsTheNativeRenderer() {
         assertEquals(Engine.NATIVE_DIAGRAM, pick("Coding the Team", "We create a class that extends Thread and call start to run it in parallel.", "", "class A extends Thread {}",
-                "Java / Programming", Set.of("code", "button"), false, false, 0, Capabilities.all()).engine());
+                "Java / Programming", Set.of("code", "button"), false, false, 0, Capabilities.all()).engine());   // a button next to the code: not a pure code scene
     }
 
     @Test void orderedMovingStepsGoToMotionCanvasWhenItIsAvailable() {
@@ -86,9 +86,13 @@ class EngineScorerTest {
         assertEquals(Engine.NATIVE_DIAGRAM, pick("How Java Normally Works", text, "", "", "Java / Programming", Set.of("sequence"), false, false, 0, new Capabilities(true, true, true, false)).engine());
     }
 
-    @Test void motionNeverReplacesACodeWindowOrAFormula() {
+    @Test void aMovingStepFlowNeverReplacesACodeWindow() {
         String text = "First we write the class, then we call start, and finally the thread runs.";
-        assertEquals(Engine.NATIVE_DIAGRAM, pick("Coding", text, "", "class A extends Thread { }", "Java / Programming", Set.of("code"), false, false, 0, Capabilities.all()).engine());
+        // with animated boards available the code window is TYPED IN (kind "code"), never turned into a step flow
+        var d = pick("Coding", text, "", "class A extends Thread { }", "Java / Programming", Set.of("code"), false, false, 0, Capabilities.all());
+        assertEquals("code", d.threeKind());
+        // without them it stays on the native renderer (flow animation must not replace a code window)
+        assertEquals(Engine.NATIVE_DIAGRAM, pick("Coding", text, "", "class A extends Thread { }", "Java / Programming", Set.of("code"), false, false, 0, new Capabilities(true, true, true, true)).engine());
     }
 
     @Test void aLibraryAnimationIsUsedWhenItsTopicMatches() {
@@ -102,7 +106,59 @@ class EngineScorerTest {
                 "technology", Set.of("journey"), false, false, 0, Capabilities.all()).engine());
         assertEquals(Engine.MOTION_CANVAS, pick("The CPU Scheduler", "The OS scheduler hands each thread a turn on the CPU core.", "", "",
                 "technology", Set.of("flowchart"), false, false, 0, Capabilities.all()).engine());
-        // a table, bars or a metric stay native
-        assertEquals(Engine.NATIVE_DIAGRAM, pick("Performance Boost", "Wait time drops from 30 seconds to 12.", "", "", "technology", Set.of("bars"), false, false, 0, Capabilities.all()).engine());
+        // without the animated-board capability, bars stay on the native renderer
+        assertEquals(Engine.NATIVE_DIAGRAM, pick("Performance Boost", "Wait time drops from 30 seconds to 12.", "", "", "technology", Set.of("bars"), false, false, 0, new Capabilities(true, true, true, true)).engine());
+    }
+
+    @Test void cardsCompareAndBarsBecomeAnimatedBoardsWhenTheRendererCanDoIt() {
+        var d = pick("Performance Boost", "Wait time drops from 30 seconds to 12.", "", "", "technology", Set.of("bars"), false, false, 0, Capabilities.all());
+        assertEquals(Engine.MOTION_CANVAS, d.engine());
+        assertEquals("board", d.threeKind());
+        assertEquals(Engine.MOTION_CANVAS, pick("The rule", "Cheaper to use means we use more.", "", "", "economics", Set.of("card", "compare"), false, false, 0, Capabilities.all()).engine());
+    }
+
+    @Test void aBoardNeedsOnlyBoardDevicesAndNeverReplacesKidsIllustrations() {
+        // a code window next to cards is still a code scene, but a data structure next to cards keeps the scene native
+        assertEquals("code", pick("Coding", "Here is the code and what it prints.", "", "", "technology", Set.of("card", "code"), false, false, 0, Capabilities.all()).threeKind());
+        assertEquals(Engine.NATIVE_DIAGRAM, pick("Arrays", "Here is the array.", "", "", "technology", Set.of("card", "datastruct"), false, false, 0, Capabilities.all()).engine());
+        assertEquals(Engine.NATIVE_DIAGRAM, pick("Planets", "Cards about the planets.", "", "", "science", Set.of("card"), false, false, 1, Capabilities.all()).engine());
+    }
+
+    @Test void aCodeWindowIsTypedInAsAnAnimatedClipWhenTheRendererCanDoIt() {
+        var d = pick("Coding the Team", "We create a class that extends Thread and call start.", "", "class A extends Thread {}", "Java / Programming", Set.of("code"), false, false, 0, Capabilities.all());
+        assertEquals(Engine.MOTION_CANVAS, d.engine());
+        assertEquals("code", d.threeKind());
+        assertEquals(Engine.NATIVE_DIAGRAM, pick("Coding the Team", "We create a class that extends Thread and call start.", "", "class A extends Thread {}", "Java / Programming", Set.of("code"), false, false, 0, new Capabilities(true, true, true, true)).engine());
+    }
+
+    @Test void tilesActorsAndArrowsBecomeAnAnimatedDiagram() {
+        var d = pick("What happens when you tap", "You tap the app, the app asks the server, the server asks the database.", "", "", "technology", Set.of("actor", "tile", "arrow"), false, false, 0, Capabilities.all());
+        assertEquals(Engine.MOTION_CANVAS, d.engine());
+        assertEquals("diagram", d.threeKind());
+        // not for kids, not without the capability, and a terminal (not drawable) keeps the scene native
+        assertEquals(Engine.NATIVE_DIAGRAM, pick("Tap", "You tap.", "", "", "technology", Set.of("actor", "tile", "arrow"), false, false, 0, new Capabilities(true, true, true, true)).engine());
+        assertEquals(Engine.NATIVE_DIAGRAM, pick("Tap", "You tap.", "", "", "technology", Set.of("actor", "tile", "terminal"), false, false, 0, Capabilities.all()).engine());
+    }
+
+    @Test void formulasAndChartsGetTheirOwnAnimatedScenes() {
+        var f = pick("Gravity", "The pull falls off with the square of the distance.", "", "", "physics", Set.of("formula", "label"), false, false, 0, Capabilities.all());
+        assertEquals(Engine.MOTION_CANVAS, f.engine()); assertEquals("formula", f.threeKind());
+        var c = pick("The trend", "Usage keeps climbing every year.", "", "", "technology", Set.of("chart", "note"), false, false, 0, Capabilities.all());
+        assertEquals(Engine.MOTION_CANVAS, c.engine()); assertEquals("chart", c.threeKind());
+        // a chart next to a tile is a mixed scene: native (the chart then draws on the native bars device)
+        assertEquals(Engine.NATIVE_DIAGRAM, pick("Mixed", "A chart and a server.", "", "", "technology", Set.of("chart", "tile"), false, false, 0, Capabilities.all()).engine());
+        assertEquals(Engine.NATIVE_DIAGRAM, pick("The trend", "Usage keeps climbing.", "", "", "technology", Set.of("chart"), false, false, 0, new Capabilities(true, true, true, true)).engine());
+    }
+
+    @Test void aSpinningEarthIsThe3DPictureForKidsButAQuizAboutItStaysAQuiz() {
+        var earth = pick("Spinning Earth", "The sun does not go anywhere. The Earth is spinning, like a slow merry-go-round.", "", "", "science", Set.of("tile", "arrow"), false, false, 2, Capabilities.all());
+        assertEquals(Engine.THREE_JS, earth.engine()); assertEquals("earth", earth.threeKind());
+        var quiz = pick("Your turn", "What makes day and night? Yes! The Earth spins.", "", "", "science", Set.of("quiz"), false, false, 2, Capabilities.all());
+        assertEquals(Engine.MOTION_CANVAS, quiz.engine()); assertEquals("quiz", quiz.threeKind());
+    }
+
+    @Test void aMascotWithSpeechBecomesATalkingMascotScene() {
+        var d = pick("A big question", "Hello friends! Why does the sun go away at night?", "", "", "science", Set.of("mascot", "speech"), false, false, 2, Capabilities.all());
+        assertEquals(Engine.MOTION_CANVAS, d.engine()); assertEquals("mascot", d.threeKind());
     }
 }

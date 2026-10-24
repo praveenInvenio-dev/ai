@@ -6,6 +6,9 @@ Not published to the host. `GET /health` reports which engines are really availa
 - `MOTION_CANVAS`: a PREBUILT Motion Canvas player project (`motion/`, built in the Docker image). The scene (an animated step flow: boxes appear, arrows draw,
   a packet travels) is driven by plain variables (title, labels, background, orientation). Nothing generated is compiled. Reported available only when
   `motion/dist` exists.
+- Animated clips (`POST /render-clip`, Revideo, MIT): a real mp4 of the step flow where step i appears at `reveals[i]` seconds, as long as the narration.
+  Needs `revideo/` installed and a Chrome for it (the image installs Puppeteer's own). `/health` reports `clips.MOTION_CANVAS`; when it is false lessons keep still frames.
+  The first render in a fresh image can fail while Vite re-optimises, so the service retries. Anonymous Revideo telemetry is switched off.
 - `THREE_JS`: fixed Three.js templates in headless Chromium chosen by `sceneKind` (orbit, molecule, crystal lattice, layers, axes, lanes = parallel work vs
   one-at-a-time); unknown kinds use a generic node chain. The last frame always shows every element.
 - `RIVE`: needs a `.riv` file (uploaded per lesson, or matched from `rive-library/`). Fails on load error, timeout, or a blank canvas. The runtime wasm is served

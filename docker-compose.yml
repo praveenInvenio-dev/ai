@@ -420,6 +420,26 @@ services:
   # Server-side renderer for Concept Explainer. Three.js and Rive can export frames.
   # Motion Canvas headless export is currently disabled until a supported export harness
   # is integrated; failures are reported so the backend can use its native fallback.
+  # Optional open-source narrator voice (Kokoro, Apache-2.0): COMPOSE_PROFILES=...,kokoro
+  tts-kokoro:
+    profiles: ["kokoro"]
+    build:
+      context: ./tts-kokoro
+    environment:
+      KOKORO_DEFAULT_VOICE: ${KOKORO_DEFAULT_VOICE:-am_michael}
+    volumes:
+      - kokoro-cache:/cache
+    expose:
+      - "5006"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5006/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - ai-story-studio-net
+
   visual-renderer:
     build:
       context: ./visual-renderer
@@ -510,6 +530,7 @@ services:
       - ai-story-studio-net
 
 volumes:
+  kokoro-cache:
   video-worker-models:
   rumik-cache:
   # ComfyUI's persistent /root (ComfyUI checkout, models, custom nodes, output).

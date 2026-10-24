@@ -34,6 +34,7 @@ public class ProviderGateway {
     // TTS_PROVIDER default a given episode/preview would otherwise use.
     private final TextToSpeechProvider localTtsProvider;
     private final TextToSpeechProvider chatterboxTtsProvider;
+    private final TextToSpeechProvider kokoroTtsProvider;
     private final TextToSpeechProvider cosyVoiceTtsProvider;
     private final TextToSpeechProvider sarvamTtsProvider;
     private final VisionProvider visionProvider;
@@ -49,6 +50,7 @@ public class ProviderGateway {
             SarvamTTSProvider sarvamTtsProvider,
             ChatterboxTTSProvider chatterboxTtsProvider,
             CosyVoiceTTSProvider cosyVoiceTtsProvider,
+            KokoroTTSProvider kokoroTtsProvider,
             @Value("${studio.tts.provider:piper}") String ttsProviderName,
             @Value("${studio.offlineMode:false}") boolean offlineMode,
             MockTTSProvider mockTtsProvider,
@@ -85,6 +87,7 @@ public class ProviderGateway {
         this.localTtsProvider = localTtsProvider;
         this.chatterboxTtsProvider = chatterboxTtsProvider;
         this.cosyVoiceTtsProvider = cosyVoiceTtsProvider;
+        this.kokoroTtsProvider = kokoroTtsProvider;
         this.sarvamTtsProvider = sarvamTtsProvider;
         this.mockTtsProvider = mockTtsProvider;
         this.visionProvider = visionProvider;
@@ -350,6 +353,23 @@ public class ProviderGateway {
         String lang = request.language() == null ? "" : request.language().trim().toLowerCase(java.util.Locale.ROOT);
         boolean englishFamily = lang.equals("english") || lang.equals("en") || lang.startsWith("english ")
                 || lang.equals("indian english") || lang.equals("en-in") || lang.startsWith("en-in-");
+        // Kokoro (open-source, Apache-2.0) is an explicit pick: "kokoro:am_michael". English only; other languages use their native voice chain below.
+        if (requestedVoice.startsWith("kokoro:") && (englishFamily || lang.isEmpty())) {
+            String kv = requestedVoice.substring("kokoro:".length());
+            try {
+                return kokoroTtsProvider.synthesize(new TextToSpeechProvider.TtsRequest(request.text(), kv, request.language(),
+                        request.speed(), request.pitch(), request.emotion(), request.emotionIntensity(), request.delivery(),
+                        request.emphasis(), request.breath(), request.paralinguisticEvent(), request.actingDirection()));
+            } catch (RuntimeException e) {
+                // keep the gender of the voice picked (af_/bf_ female, am_/bm_ male) on the local Piper voice instead of failing the lesson
+                String piper = piperFor(kv.length() > 1 && kv.charAt(1) == 'f' ? "narrator-female" : "narrator-male");
+                TextToSpeechProvider.TtsResult r = speakLocally(withVoice(request, piper), e);
+                return new TextToSpeechProvider.TtsResult(r.audioBytes(), r.durationSeconds(), r.format(),
+                        r.providerWarning() != null ? r.providerWarning()
+                                : "Kokoro is not available (" + firstLine(e.getMessage()) + ") - spoke with the local " + piper
+                                  + " voice. Check that tts-kokoro is running (COMPOSE_PROFILES must include kokoro).");
+            }
+        }
         boolean chatterboxVoice = requestedVoice.startsWith("narrator-") || requestedVoice.startsWith("tutor-") || requestedVoice.startsWith("chatterbox:");
         // Chatterbox speaks English with the accent of its reference clip. For Hindi / Kannada / Tamil ... narration it
         // would read Indian text with that accent, so those languages fall through to the native voice chain below.

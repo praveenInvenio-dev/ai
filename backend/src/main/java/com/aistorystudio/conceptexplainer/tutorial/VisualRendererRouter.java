@@ -30,7 +30,7 @@ public final class VisualRendererRouter {
     /** At most this share of a lesson's scenes (rounded, minimum one) may be 3D: depth is for the scenes that need it. */
     static final double MAX_THREE_SHARE = 0.35;
     /** Same idea for animated step flows: a lesson of nothing but moving boxes is as dull as one of nothing but still cards. */
-    static final double MAX_MOTION_SHARE = 0.4;
+    static final double MAX_MOTION_SHARE = 1.0;   // animated boards are cheap and consistent: a lesson may be made of them; ordered flows are still ranked first if a cap is ever lowered
 
     private VisualRendererRouter() {}
 
@@ -82,11 +82,12 @@ public final class VisualRendererRouter {
                 decisions.set(best, new Decision(Engine.MOTION_CANVAS, "Variety: this is the scene of the lesson with the clearest ordered steps, so it gets the animated step flow.", d.scores(), d.hits(), "flow", bestScore));
             }
         }
-        // 2) never the same special engine three scenes running (RIVE with an explicit asset and MANIM specs are deliberate, so exempt)
+        // 2) never the same special look three scenes running (an animated board and an animated flow are different looks; RIVE with an explicit asset, MANIM specs and boards / diagrams / code windows are exempt: a lesson made of diagrams is consistent, not repetitive)
         for (int i = 2; i < decisions.size(); i++) {
             Engine e = decisions.get(i).engine();
-            if (e == Engine.NATIVE_DIAGRAM || e == Engine.MANIM || e == Engine.RIVE) continue;
-            if (decisions.get(i - 1).engine() == e && decisions.get(i - 2).engine() == e)
+            if (e == Engine.NATIVE_DIAGRAM || e == Engine.MANIM || e == Engine.RIVE || java.util.Set.of("board", "diagram", "code", "chart", "formula", "quiz", "forces", "cycle", "mascot").contains(decisions.get(i).threeKind())) continue;
+            String key = e + ":" + decisions.get(i).threeKind();
+            if (key.equals(decisions.get(i - 1).engine() + ":" + decisions.get(i - 1).threeKind()) && key.equals(decisions.get(i - 2).engine() + ":" + decisions.get(i - 2).threeKind()))
                 decisions.set(i, decisions.get(i).withEngine(Engine.NATIVE_DIAGRAM, "Kept on the native renderer to vary the look: the previous two scenes already used " + e.name() + "."));
         }
         List<Route> out = new ArrayList<>();

@@ -72,6 +72,27 @@ DEFAULT_VOICE = os.environ.get("CHATTERBOX_DEFAULT_VOICE", "narrator-male")
 BOOTSTRAP_URL = os.environ.get("CHATTERBOX_REFERENCE_BOOTSTRAP_URL", "http://tts:5002")
 BOOTSTRAP_VOICES = os.environ.get("CHATTERBOX_BOOTSTRAP_VOICES", "narrator-male:en_US-ryan-high,narrator-female:en_US-amy-medium,narrator-in-male:edge:en-IN-PrabhatNeural,narrator-in-female:edge:en-IN-NeerjaNeural")
 
+# The built-in narrator voices are ALWAYS available. An older .env (or the old .env.example) that lists only some of them used to hide the rest, so the
+# recommended "Arjun - Indian English" voice (narrator-in-male) was never created and every lesson fell back to Edge. The env value only adds or overrides.
+DEFAULT_BOOTSTRAP = {
+    "narrator-male": "en_US-ryan-high",
+    "narrator-female": "en_US-amy-medium",
+    "narrator-in-male": "edge:en-IN-PrabhatNeural",
+    "narrator-in-female": "edge:en-IN-NeerjaNeural",
+}
+
+
+def bootstrap_map() -> dict:
+    out = dict(DEFAULT_BOOTSTRAP)
+    for item in BOOTSTRAP_VOICES.split(","):
+        if ":" not in item:
+            continue
+        name, source = item.split(":", 1)
+        if name.strip() and source.strip():
+            out[name.strip()] = source.strip()
+    return out
+
+
 _models = {}
 _model_lock = threading.Lock()
 _generation_lock = threading.Lock()
@@ -227,11 +248,8 @@ def _bootstrap_reference_voice(name: str, source: str, attempts: int = 3) -> boo
 
 def bootstrap_reference_voices():
     """Create safe local reference clips from the configured open-source/Edge voice set."""
-    for item in BOOTSTRAP_VOICES.split(","):
-        if ":" not in item:
-            continue
-        name, source = item.split(":", 1)
-        _bootstrap_reference_voice(name.strip(), source.strip(), attempts=12)
+    for name, source in bootstrap_map().items():
+        _bootstrap_reference_voice(name, source, attempts=12)
 
 
 def list_voices():
@@ -394,14 +412,10 @@ def synthesize():
         # Startup bootstrap is asynchronous. If a first request arrives before the
         # narrator reference has been created, build that configured default lazily
         # rather than failing the request and silently falling back to another voice.
-        for item in BOOTSTRAP_VOICES.split(","):
-            if ":" not in item:
-                continue
-            bootstrap_name, bootstrap_source = item.split(":", 1)
-            if bootstrap_name.strip() == str(voice).strip():
-                _bootstrap_reference_voice(bootstrap_name.strip(), bootstrap_source.strip(), attempts=3)
-                reference = voice_reference_path(voice)
-                break
+        source = bootstrap_map().get(str(voice).strip())
+        if source:
+            _bootstrap_reference_voice(str(voice).strip(), source, attempts=3)
+            reference = voice_reference_path(voice)
     if reference is None:
         return jsonify({"error": f"No reference audio found for voice '{voice}'. Expected {VOICE_PROFILES_DIR}/{voice}.wav or {VOICES_DIR}/{voice}.wav. The voice was not substituted." + (f" Why the reference clip could not be created: {BOOTSTRAP_ERRORS[voice]}." if voice in BOOTSTRAP_ERRORS else " Fix: put a clean 10-20 s WAV of that voice at ./tts-chatterbox/voices/" + str(voice) + ".wav, or check that the tts service is running and can reach its voice source.")}), 400
 

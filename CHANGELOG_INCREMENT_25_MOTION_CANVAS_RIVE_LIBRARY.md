@@ -50,3 +50,22 @@ From reviewing two more generated videos (a 82 s vertical reel and a 136 s lesso
   could not be made (the tts service's own error), or how to fix it (put a WAV in tts-chatterbox/voices/). Rebuild `tts-chatterbox` to get this.
 - Script tightening: the prompt now requires complete natural sentences and says to drop the least important detail instead of turning every sentence into a headline.
 - Open question: a 140-180 word budget for 9 scenes is about 18 words per scene, which is why tightened scripts read as fragments.
+- Honest pre-plan defaults: before the visual plan exists a scene now says `PENDING` ("Waiting for the visual plan") instead of "NATIVE_DIAGRAM · FALLBACK". A page opened
+  mid-planning (while the script is being tightened) used to look like every scene had failed over to native.
+
+## Follow-up: why the recommended Indian-English voice never worked
+- Cause: the shipped `.env.example` set `CHATTERBOX_BOOTSTRAP_VOICES` to only the two US voices. That env value replaced the server's built-in list, so `narrator-in-male` /
+  `narrator-in-female` ("Arjun / Meera - Indian English", the recommended voices) were never created and every lesson fell back to a plain Edge voice.
+- Fix: the built-in four voices are always created; the env value only adds or overrides. `.env.example` lists all four. Rebuild `tts-chatterbox` (no .env change needed).
+  The first lesson after the rebuild may pause while the clip is created from the Edge voice (it needs internet from the `tts` container).
+- Animated / 3D scenes whose plan has no list to show now label themselves with the scene's own words instead of template placeholders ("Start / Process / Result", "Take order / Brew tea").
+
+## Follow-up from a finished 60-second reel (86 s, 197 words)
+- Length: the reel budget said 155-175 words, but a real reel measured 0.43 s per word (pauses, title, outro): 197 words = 86 s. Budget is now 125-145 words (about 60 s),
+  8-10 scenes; a reel more than 12% over budget is tightened automatically; the script doctor estimates reel time at 138 wpm.
+- Clarity: the treble correction was capped at 4 dB with a shallow slope, so a voice measured at -22 dB (the Edge en-IN voice) was still -22 dB after correction.
+  It now corrects toward the target (up to 6.5 dB) when the voice is below -21 dB.
+- Vertical 3D: the scene is pulled back until its width fits a tall frame (per template), and the camera keeps looking at its subject; the layer discs and lane labels
+  were cut off at the edges of a 1080x1920 reel.
+- Correction to an earlier analysis: reels play a quiet music bed that fills the pauses, so a pause detector based on silence saw "no pauses". The pauses are there
+  (about 0.25-0.34 s between sentences); the earlier "speech fills 87-90% of the reel" figure was an artefact of the bed.

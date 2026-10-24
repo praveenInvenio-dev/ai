@@ -108,7 +108,7 @@ public final class SpokenText {
         if (english) t = englishRules(t);
         t = PAREN.matcher(t).replaceAll(", $1, ");
         t = DASH.matcher(t).replaceAll(", ");
-        t = t.replace(';', ',').replace('\u2026', '.').replace('\u201C', '"').replace('\u201D', '"').replace('\u2019', '\'').replace('\u2018', '\'');
+        t = t.replace(';', ',').replace("\u2026", "...").replace('\u201C', '"').replace('\u201D', '"').replace('\u2019', '\'').replace('\u2018', '\'');
         t = t.replace("\"", "");
         t = tidy(t);
         for (int i = 0; i < cues.size(); i++) t = t.replace("\u0001" + i + "\u0002", cues.get(i));

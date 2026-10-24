@@ -124,6 +124,12 @@ interface LessonSummary { id: string; title: string; duration: string; language:
                 <option value="narrator-in-male">Arjun — Indian English, male (recommended)</option>
                 <option value="narrator-in-female">Meera — Indian English, female</option>
               </optgroup>
+              <optgroup label="English — Kokoro (open-source, fast, runs on CPU)">
+                <option value="kokoro:am_michael">Michael — American English, male</option>
+                <option value="kokoro:af_heart">Heart — American English, female</option>
+                <option value="kokoro:bm_george">George — British English, male</option>
+                <option value="kokoro:bf_emma">Emma — British English, female</option>
+              </optgroup>
               <optgroup label="Indian English — Edge (cloud, needs internet)">
                 <option value="edge:en-IN-PrabhatNeural">Prabhat — Indian English, male</option>
                 <option value="edge:en-IN-NeerjaNeural">Neerja — Indian English, female</option>
@@ -297,6 +303,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
             <select [(ngModel)]="teachingStyle">
               <optgroup label="New narration tracks">
                 <option value="HUMOROUS_EXPLAINER">Humorous explainer — witty, energetic, memorable</option>
+                <option value="JOURNEY_EXPLAINER">Journey explainer — follow one thing end to end, in slow motion</option>
                 <option value="LOGIC_FIRST_ANALYST">Logic-first analyst — structured reasoning, evidence, trade-offs</option>
                 <option value="STORY_DRIVEN_MENTOR">Story-driven mentor — characters, challenge, reveal</option>
               </optgroup>

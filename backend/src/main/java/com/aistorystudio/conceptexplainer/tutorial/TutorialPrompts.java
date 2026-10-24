@@ -126,6 +126,8 @@ public final class TutorialPrompts {
               Conversational, never salesy or shouty. No emojis in spoken narration. Start the first scene straight with the hook.
             - Plain words. Mix the rhythm like a person talking: short beats of 3-6 words ("Here's the catch.", "Not quite.") between sentences of
               10-20 words; never more than three long sentences in a row. Every technical term is explained in simple words the first time it appears.
+            - In Hindi / Indic narration write every number, year and amount as words in that language (for example "पचास रुपये", "सन अठारह सौ पैंसठ"):
+              the voice reads digits and symbols with English rules. On-screen text stays in English for every narration language.
             - Write for the EAR, not the page: use contractions (it's, don't, you'll), speak to "you", and keep symbols and code out of the narration
               (say "the counter goes up by one", not "count++"; say "about forty percent", not "~40%"). No "Furthermore", "Moreover", "In conclusion",
               "It is important to note that", "the following". React like a real teacher at most once per scene ("Yeah, that surprises everyone.",
@@ -200,6 +202,8 @@ public final class TutorialPrompts {
               terminal  text=the command, content="output lines separated by \\n"
               browser   title=url like "www.flyfast.com/api/flights", content=page headline + lines OR JSON, style=json|page
               code      title=file name, content="code lines separated by \\n" (max 14 lines, real and correct), style="4-6" to frame lines 4-6
+              formula   text=the formula in LaTeX (JSON-escaped, e.g. "F = G\\\\frac{m_1 m_2}{r^2}"), title=short label, lines=[ONE plain-words caption]; for maths, physics, chemistry and finance; 1-4 per scene, each at its own sentence
+              chart     title=chart title, style=line|area|bar|donut, lines=["label|value", 3-8 of them, in order], text=unit (optional); real or clearly illustrative numbers only; a scene with a chart has no other device but a note or a label
               container text=layer name (tall violet box that other elements sit inside), w and h required
               message   text=what one agent says to another, style=right|left (arrow direction), w
               arrow     from=id, to=id, text=optional short label, style=dashed|solid|both
@@ -336,13 +340,13 @@ public final class TutorialPrompts {
     // ================================================================== 60-second short (vertical reel)
 
     /** 60 s at ~140 wpm: title card + 5-7 teaching scenes + outro. */
-    /** 60 s of speech at the narrator's pace (~150-160 wpm incl. pauses) = 155-175 words. */
-    public static Size shortSize() { return new Size(9, 11, 155, 175); }
+    /** Measured on a real reel: 197 words ran 86 s (about 0.43 s per word with pauses, title and outro), so 60 s is about 125-145 words. */
+    public static Size shortSize() { return new Size(8, 10, 125, 145); }
 
     public static final String SHORT_TAGLINE = "Follow the page to learn one concept a day.";
 
     private static final String SHORT_VOICE = """
-            NARRATION (a 60-second vertical explainer reel, 155-175 words in total - it MUST fill 60 seconds):
+            NARRATION (a 60-second vertical explainer reel, 125-145 words in total - about 60 seconds including the pauses; more words make the reel run past 80 seconds):
             - Open with the question people actually ask ("Docker container vs VM?", "How does an AI model actually learn?").
               Then answer it with ONE concrete, tiny example that is built up on screen ("Ten houses. Their size, and their price.").
             - Short spoken sentences of 4-14 words. Fragments are fine. No greeting, no "in this video", no hype, no emojis.

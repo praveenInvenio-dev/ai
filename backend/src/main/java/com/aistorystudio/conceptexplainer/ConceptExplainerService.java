@@ -219,6 +219,7 @@ public class ConceptExplainerService {
                 }
             }
             job.setStage(base + ": syncing the slide to the voice");
+            attachMotionClip(job, s);
             buildClip(job, s);
         }
         job.setStatus(ConceptExplainerJob.Status.ASSEMBLING);
@@ -269,7 +270,7 @@ public class ConceptExplainerService {
             in.add(new com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.SceneInput(s.getSceneNumber(), s.getSectionType(), sents, pictureText(s, mapper), spoken));
         }
         int band = ageBand(job);
-        double wpm = isBreakdown(job) ? 175 : band == 1 ? 135 : band == 2 ? 145 : 155;
+        double wpm = isBreakdown(job) ? 175 : isShort(job) ? 138 : band == 1 ? 135 : band == 2 ? 145 : 155;
         return com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.review(in, size.minWords(), size.maxWords(), wpm, band, english || anyCaptions);
     }
 
@@ -338,7 +339,7 @@ public class ConceptExplainerService {
         try {
             var report = doctor(job);
             int max = sizeFor(job).maxWords();
-            if (max <= 0 || report.words() <= max * 1.3) return;
+            if (max <= 0 || report.words() <= max * (isShort(job) ? 1.12 : 1.3)) return;   // a reel has no slack: every extra word is about 0.43 s
             job.setStage("The script has " + report.words() + " words (limit " + max + "): tightening it");
             job.setScriptReport(report);
             applyScriptFix(job);
@@ -850,7 +851,8 @@ public class ConceptExplainerService {
     private String narrationTrackInstruction(ConceptExplainerJob job) {
         TeachingStyle t = TeachingStyle.parse(job.getTeachingStyle());
         String voiceDirection = switch (t) {
-            case HUMOROUS_EXPLAINER -> "VOICE PERFORMANCE: conversational Indian tutor, playful but clear; vary pace naturally, deliver a short comic beat then pause before the explanation. Prefer playful/energetic emotion and comedic or conversational delivery. At most one small joke per scene; never joke at a learner's expense.";
+            case HUMOROUS_EXPLAINER -> "VOICE PERFORMANCE: entertaining Indian friend-explainer; a smile in the voice, quick through the setup, a clear half-second pause BEFORE the punchline (write it as \"...\" or a one-word sentence), slightly slower on the punchline, then straight back to a clear, exact explanation. Prefer playful/energetic emotion with comedic or conversational delivery. At most one joke per scene; never joke at a learner's expense or about anyone's community.";
+            case JOURNEY_EXPLAINER -> "VOICE PERFORMANCE: calm documentary narrator with quiet curiosity; a hushed, intrigued cold open, a clear half-second beat before each newly named term, brisk and even through the steps, a warm direct question at the end.";
             case LOGIC_FIRST_ANALYST -> "VOICE PERFORMANCE: composed, reasoning-led analyst; steady pace, crisp articulation, slower emphasis for definitions, equations and conclusions. Prefer calm/serious emotion and explanatory/emphatic delivery. No comic asides or exaggerated excitement.";
             case STORY_DRIVEN_MENTOR -> "VOICE PERFORMANCE: warm storyteller-mentor; curious opening, varied pace, brief suspense before reveals, warm delivery for the lesson learned. Prefer curious/warm/dramatic emotion and storytelling delivery. Do not overact or let suspense delay the explanation.";
             case PROFESSIONAL_INSTRUCTOR -> "VOICE PERFORMANCE: confident professional instructor; even pace, clean articulation, deliberate emphasis on key terms, minimal emotion and no jokes.";
@@ -1911,7 +1913,7 @@ public class ConceptExplainerService {
     /** What the renderer service can really export now, combined with the Manim sidecar. */
     private com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities visualCapabilities() {
         var rc = new com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient(visualRendererBaseUrl).capabilities();
-        return new com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities(manimAvailable(), rc.rive(), rc.threeJs(), rc.motionCanvas());
+        return new com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities(manimAvailable(), rc.rive(), rc.threeJs(), rc.motionCanvas(), rc.motionClips());
     }
 
     /** The scene's route comes from the lesson-wide plan, so editing or re-rendering one scene keeps the lesson's variety rules. */
@@ -1941,6 +1943,13 @@ public class ConceptExplainerService {
 
     private boolean tryRenderWithVisualEngine(ConceptExplainerJob job, ConceptExplainerJob.Scene s) throws IOException {
         String engine = s.getVisualEngine();
+        s.setMotionClipPath(null);   // a re-rendered slide must not keep an old animated clip
+        if ("MOTION_CANVAS".equals(engine) && java.util.Set.of("board", "code", "diagram", "chart", "formula", "quiz", "forces", "cycle", "mascot").contains(s.getVisualKind())) {
+            // animated board: the native stills below are the preview and the fallback; the animated clip is rendered once the narration timing is known
+            s.setActualRenderer("NATIVE_DIAGRAM"); s.setRendererStatus("PLANNED");
+            s.setRendererMessage("Animated board: native stills now, the animated clip is rendered once the narration timing is known.");
+            return false;
+        }
         if (!List.of("MOTION_CANVAS", "THREE_JS", "RIVE").contains(engine)) return false;
         Path riveAsset = null;
         if ("RIVE".equals(engine)) {
@@ -2125,7 +2134,7 @@ public class ConceptExplainerService {
             double speed = question ? 0.96 : (excited ? 0.99 : (i % 3 == 1 ? 0.97 : 1.0));
             String v = job.getVoice() == null ? "" : job.getVoice();
             boolean tut = tutorial(job);
-            if (tut) speed = question ? 0.98 : 1.0;          // reference: steady ~160 wpm, no theatrical slow-downs
+            if (tut) speed = question ? 0.98 : 1.0;          // reference-video cadence: steady conversational delivery, no theatrical slow-downs
             if (isBreakdown(job)) speed = question ? 1.02 : 1.07;   // breakdown reference: brisk ~175 wpm
             if (kids(job)) speed = ageBand(job) == 1 ? (question ? 0.82 : 0.86)    // 2-5: slow, warm, clear
                                : ageBand(job) == 3 ? 1.0                            // 10-15: normal conversational pace
@@ -2157,8 +2166,8 @@ public class ConceptExplainerService {
                             : ageBand(job) == 3
                             ? "friendly, energetic young creator talking to a capable teen, curious and real, never childish"
                             : "warm, playful children's storyteller, smiling voice, gentle excitement, expressive character voices for dialogue")
-                            : tut ? "calm, confident senior instructor recording a course, conversational, steady pace, no drama"
-                            : "natural conversational tutor, " + vdir.delivery(), emphasisFor(s, line), true,
+                            : tut ? "natural Indian English instructor, warm and confident adult male tutor, clear Indian-English vowel and consonant pronunciation, conversational classroom cadence, steady around 155-165 words per minute, light emphasis on key technical terms, short natural breaths, no exaggerated American/British accent, no robotic sentence endings, no drama"
+                            : "natural conversational Indian-English-friendly tutor, " + vdir.delivery(), emphasisFor(s, line), true,
                     (line.contains("[laugh]") || line.contains("[chuckle]")) ? "chuckle" : null, tp.acting(), null));
             if (audio.providerWarning() != null && job.getWarnings().stream().noneMatch(w -> w.startsWith("Voice:"))) {
                 job.getWarnings().add("Voice: " + audio.providerWarning());
@@ -2208,12 +2217,13 @@ public class ConceptExplainerService {
         }
         if (vertical(job)) {   // reels: tighter (was 0.28 s: speech filled 88% of a real reel, so the pauses are a little longer)
             String y = sentence == null ? "" : sentence.trim();
-            return y.endsWith("?") ? 0.46 : 0.34;
+            return y.endsWith("?") ? 0.48 : 0.34;
         }
         // measured on the reference narration: median pause 0.34 s, questions a little longer
         String x = sentence == null ? "" : sentence.trim();
-        if (x.endsWith("?")) return 0.42;
-        if (x.endsWith(":")) return 0.40;
+        if (x.endsWith("?")) return 0.48;
+        if (x.endsWith(":")) return 0.42;
+        if (x.endsWith("!") || x.endsWith("！")) return 0.36;
         return 0.34;
     }
 
@@ -2282,6 +2292,7 @@ public class ConceptExplainerService {
                 + (english ? "" : "; " + job.getLanguage() + " narration uses the native " + job.getLanguage() + " voice instead");
         if (v.equals("narrator-male") || v.equals("narrator-female")) return (v.endsWith("female") ? "Amy" : "Ryan") + " - US English (Chatterbox)"
                 + (english ? ". For an Indian accent pick Arjun / Meera - Indian English." : "; " + job.getLanguage() + " narration uses the native voice instead");
+        if (v.startsWith("kokoro:")) return v.substring(7) + " (Kokoro, open-source, local)";
         if (v.startsWith("edge:")) return v.substring(5) + " (Edge neural, cloud)";
         if (v.startsWith("speak:")) return v.substring(6) + " (Indic-Speak, local)";
         if (v.startsWith("indic:")) return v.substring(6) + " (IndicF5, local)";
@@ -2340,6 +2351,68 @@ public class ConceptExplainerService {
 
     // =================================================================== video
 
+    /**
+     * Motion Canvas scenes get a real animated clip once the narration timing is known: step i appears when the sentence about it starts.
+     * Any failure keeps the still frames (the scene is already rendered with them) and says so.
+     */
+    private void attachMotionClip(ConceptExplainerJob job, ConceptExplainerJob.Scene s) {
+        s.setMotionClipPath(null);
+        boolean code = "MOTION_CANVAS".equals(s.getVisualEngine()) && "code".equals(s.getVisualKind());
+        boolean diagram = "MOTION_CANVAS".equals(s.getVisualEngine()) && "diagram".equals(s.getVisualKind());
+        boolean chart = "MOTION_CANVAS".equals(s.getVisualEngine()) && "chart".equals(s.getVisualKind());
+        boolean formula = "MOTION_CANVAS".equals(s.getVisualEngine()) && "formula".equals(s.getVisualKind());
+        boolean science = "MOTION_CANVAS".equals(s.getVisualEngine()) && java.util.Set.of("quiz", "forces", "cycle", "mascot").contains(s.getVisualKind());
+        boolean board = code || diagram || chart || formula || science || ("MOTION_CANVAS".equals(s.getVisualEngine()) && "board".equals(s.getVisualKind()));   // native stills first, the animated clip once the narration timing is known
+        boolean flow = "MOTION_CANVAS".equals(s.getVisualEngine()) && !board && "MOTION_CANVAS".equals(s.getActualRenderer());
+        boolean three = "THREE_JS".equals(s.getVisualEngine()) && "THREE_JS".equals(s.getActualRenderer());
+        if ((!board && !flow && !three) || "STATIC".equals(job.getMotion())) return;
+        if ((diagram || chart || formula || science) && vertical(job)) {   // the planner lays diagrams out on a 16:9 canvas
+            s.setActualRenderer("NATIVE_DIAGRAM"); s.setRendererStatus("FALLBACK"); s.setRendererMessage("Animated diagrams, charts, formulas, quizzes, force diagrams and cycles are 16:9 only; native stills are used in vertical videos.");
+            return;
+        }
+        var client = new com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient(visualRendererBaseUrl);
+        var caps = client.capabilities();
+        if (three ? !caps.threeClips() : !caps.motionClips()) return;
+        String engineName = three ? "3D" : code ? "animated code" : diagram ? "animated diagram" : chart ? "animated chart" : formula ? "animated formula" : science ? "animated " + s.getVisualKind() : board ? "animated board" : "Motion Canvas";
+        try {
+            var labels = com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient.labelsForScene(s.getPlanJson(), s.getVisualKind(), s.getNarration());
+            String kicker = com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient.kickerOf(s.getPlanJson());
+            int w = vertical(job) ? 1080 : 1920, h = vertical(job) ? 1920 : 1080;
+            byte[] mp4;
+            if (three) {
+                mp4 = client.renderThreeClip(s.getTitle(), kicker, s.getNarration(), labels, s.getVisualKind(), s.getSentenceStarts(), theme(job), w, h, s.getDurationSeconds());
+            } else if (science) {
+                mp4 = client.renderScienceClip(s.getVisualKind(), s.getTitle(), kicker, s.getPlanJson(), s.getSentenceStarts(), theme(job), w, h, s.getDurationSeconds());
+            } else if (chart) {
+                mp4 = client.renderChartClip(s.getTitle(), kicker, s.getPlanJson(), s.getSentenceStarts(), theme(job), w, h, s.getDurationSeconds());
+            } else if (formula) {
+                mp4 = client.renderFormulaClip(s.getTitle(), kicker, s.getPlanJson(), s.getSentenceStarts(), theme(job), w, h, s.getDurationSeconds());
+            } else if (diagram) {
+                mp4 = client.renderDiagramClip(s.getTitle(), kicker, s.getPlanJson(), s.getSentenceStarts(), theme(job), w, h, s.getDurationSeconds());
+            } else if (code) {
+                mp4 = client.renderCodeClip(s.getTitle(), kicker, s.getPlanJson(), s.getSentenceStarts(), theme(job), w, h, s.getDurationSeconds());
+            } else if (board) {
+                mp4 = client.renderBoardClip(s.getTitle(), kicker, s.getPlanJson(), s.getSentenceStarts(), theme(job), w, h, s.getDurationSeconds());
+            } else {
+                int steps = Math.max(3, Math.min(5, labels.size()));
+                var reveals = com.aistorystudio.conceptexplainer.tutorial.MotionTiming.reveals(s.getSentenceStarts(), steps);
+                mp4 = client.renderMotionClip(s.getTitle(), kicker, com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient.withDetails(labels, s.getPlanJson()), theme(job), w, h, reveals, s.getDurationSeconds());
+            }
+            Path out = storage.store(dir(job) + "/clips/motion-" + num(s) + "-a" + s.getAudioVersion() + ".mp4", mp4);
+            s.setMotionClipPath(out.toString());
+            s.setMotionClipAudioVersion(s.getAudioVersion());
+            s.setActualRenderer(s.getVisualEngine());
+            s.setRendererStatus("RENDERED");
+            s.setRendererMessage(s.getVisualEngine() + " animated clip (" + engineName + "), each element appears as the voice names it.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            log.warn("Animated clip failed for scene {}: {}", s.getSceneNumber(), rootMessage(e));
+            if (board) { s.setActualRenderer("NATIVE_DIAGRAM"); s.setRendererStatus("FALLBACK"); s.setRendererMessage("Planned animated board; the clip failed (" + rootMessage(e) + "), native stills are used."); }
+            job.getWarnings().add("Scene " + s.getSceneNumber() + ": the animated " + engineName + " clip failed (" + rootMessage(e) + "); " + (board ? "native stills" : "animated stills") + " are used instead.");
+        }
+    }
+
     /** One scene: build steps cross-fade in on their times, narration on top. */
     private void buildClip(ConceptExplainerJob job, ConceptExplainerJob.Scene s) throws Exception {
         if (s.getStepTimes() == null || s.getStepTimes().size() != s.getStepPaths().size()) {
@@ -2350,6 +2423,7 @@ public class ConceptExplainerService {
             s.setStepTimes(stepTimes(starts, s.getStepPaths().size(), s.getDurationSeconds() - tail(job), job));
         }
         double total = s.getDurationSeconds();
+        String motionClip = s.getMotionClipPath() != null && s.getMotionClipAudioVersion() == s.getAudioVersion() && Files.isRegularFile(Path.of(s.getMotionClipPath())) ? s.getMotionClipPath() : null;
         List<String> steps = s.getStepPaths();
         List<Double> t = s.getStepTimes();
         int n = "STATIC".equals(job.getMotion()) ? 1 : steps.size();
@@ -2357,7 +2431,15 @@ public class ConceptExplainerService {
         String pix = backdrop != null ? "yuva420p" : "yuv420p";   // overlay frames keep their transparency over the picture
         List<String> args = new ArrayList<>(List.of("ffmpeg", "-nostdin", "-y"));
         StringBuilder f = new StringBuilder();
-        if (n == 1) {
+        if (motionClip != null) {
+            // a real animated clip timed to this narration replaces the cross-faded stills; it is held on its last frame if the narration runs longer
+            n = 1;
+            int cw = vertical(job) ? 1080 : 1920, ch = vertical(job) ? 1920 : 1080;
+            args.addAll(List.of("-i", motionClip));
+            f.append("[0:v]fps=30,scale=").append(cw).append(':').append(ch).append(":force_original_aspect_ratio=decrease,pad=").append(cw).append(':').append(ch)
+                    .append(":(ow-iw)/2:(oh-ih)/2,tpad=stop_mode=clone:stop_duration=").append(fmt(total)).append(",trim=duration=").append(fmt(total))
+                    .append(",setpts=PTS-STARTPTS,format=").append(pix).append(",setsar=1[v0]");
+        } else if (n == 1) {
             args.addAll(List.of("-loop", "1", "-framerate", "30", "-t", fmt(total), "-i", steps.get(steps.size() - 1)));
             f.append("[0:v]fps=30,format=").append(pix).append(",setsar=1[v0]");
         } else {

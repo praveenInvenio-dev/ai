@@ -60,17 +60,24 @@ public class ConceptExplainerJob {
         // adaptive teaching framework: why this scene exists and how it should sound
         private String sectionType, learningObjective, visualDescription, voiceEmotion, voicePace, voiceDelivery;
         /** Topic-aware visual routing: preferred engine and concise reason, shown in scene diagnostics. */
-        private String visualEngine = "NATIVE_DIAGRAM", visualEngineReason = "Native synchronized diagram renderer";
+        private String visualEngine = "PENDING", visualEngineReason = "Not planned yet: the visual plan is made once the script is final";
         /** Template hint for the 3D renderer (orbit | molecule | layers | axes); null for every other engine. */
         private String visualKind;
         /** File name of a Rive library animation whose keywords match this scene (set before routing); null when none matches. */
+        /** Animated clip (mp4) of this scene, rendered once the narration timing is known; only used while {@code motionClipAudioVersion} equals the audio version. */
+        private String motionClipPath;
+        private int motionClipAudioVersion = -1;
+        public String getMotionClipPath() { return motionClipPath; }
+        public void setMotionClipPath(String v) { motionClipPath = v; }
+        public int getMotionClipAudioVersion() { return motionClipAudioVersion; }
+        public void setMotionClipAudioVersion(int v) { motionClipAudioVersion = v; }
         private String riveAssetHint;
         public String getRiveAssetHint() { return riveAssetHint; }
         public void setRiveAssetHint(String v) { riveAssetHint = v == null || v.isBlank() ? null : v; }
         public String getVisualKind() { return visualKind; }
         public void setVisualKind(String v) { visualKind = v == null || v.isBlank() ? null : v; }
         /** Actual production renderer; never infer this from the planned engine. */
-        private String actualRenderer = "NATIVE_DIAGRAM", rendererStatus = "FALLBACK", rendererMessage = "Native synchronized diagram renderer";
+        private String actualRenderer = "PENDING", rendererStatus = "PENDING", rendererMessage = "Waiting for the visual plan (it is made after the script is final)";
         public String getActualRenderer() { return actualRenderer; }
         public void setActualRenderer(String v) { actualRenderer = v == null ? "NATIVE_DIAGRAM" : v; }
         public String getRendererStatus() { return rendererStatus; }

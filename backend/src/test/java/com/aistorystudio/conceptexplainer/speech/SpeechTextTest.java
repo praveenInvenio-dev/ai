@@ -104,4 +104,11 @@ class SpeechTextTest {
         assertEquals(1.0, flat.speedMul(), 1e-9);
         assertEquals(0.0, flat.gapAdd(), 1e-9);
     }
+
+    @Test void aComicBeatKeepsItsPauseAndGetsSilence() {
+        assertTrue(say("Wait for it\u2026 the bill doubles.").contains("..."));
+        var beat = SpeechPacing.plan("Arre nahi...", 1, 5);
+        assertTrue(beat.gapAdd() >= 0.3);
+        assertTrue(beat.speedMul() < 1.0);
+    }
 }
