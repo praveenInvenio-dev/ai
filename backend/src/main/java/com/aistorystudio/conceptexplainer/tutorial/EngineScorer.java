@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
  *   <li><b>MANIM</b> - maths and physics animation. Only when the scene carries a validated Manim spec.</li>
  *   <li><b>RIVE</b> - a designed character / UI animation. Only when a .riv asset exists and the scene is about a character or UI.</li>
  *   <li><b>THREE_JS</b> - things with real depth: orbits, molecules, crystals, 3D shapes, layered structures, camera moves.</li>
+ *   <li><b>PIXIJS</b> - particle, charge, wave and packet movement in 2D; only offered when renderer health confirms it.</li>
  *   <li><b>MOTION_CANVAS</b> - tweened 2D flow animation; only offered when the renderer reports it can export it.</li>
  *   <li><b>NATIVE_DIAGRAM</b> - the app's own diagram renderer: flowcharts, sequences, data structures, code, comparisons,
  *       charts, illustrated scenes. It is the best fit for most explanatory content, so it is the default.</li>
@@ -28,13 +29,14 @@ public final class EngineScorer {
 
     private EngineScorer() { }
 
-    public enum Engine { MANIM, RIVE, THREE_JS, MOTION_CANVAS, NATIVE_DIAGRAM }
+    public enum Engine { MANIM, RIVE, THREE_JS, PIXIJS, MOTION_CANVAS, NATIVE_DIAGRAM }
 
     /** What the renderer service can really do right now. */
-    public record Capabilities(boolean manim, boolean rive, boolean threeJs, boolean motionCanvas, boolean boards) {
-        public Capabilities(boolean manim, boolean rive, boolean threeJs, boolean motionCanvas) { this(manim, rive, threeJs, motionCanvas, false); }
-        public static Capabilities nativeOnly() { return new Capabilities(false, false, false, false, false); }
-        public static Capabilities all() { return new Capabilities(true, true, true, true, true); }
+    public record Capabilities(boolean manim, boolean rive, boolean threeJs, boolean pixiJs, boolean motionCanvas, boolean boards) {
+        public Capabilities(boolean manim, boolean rive, boolean threeJs, boolean motionCanvas, boolean boards) { this(manim, rive, threeJs, false, motionCanvas, boards); }
+        public Capabilities(boolean manim, boolean rive, boolean threeJs, boolean motionCanvas) { this(manim, rive, threeJs, false, motionCanvas, false); }
+        public static Capabilities nativeOnly() { return new Capabilities(false, false, false, false, false, false); }
+        public static Capabilities all() { return new Capabilities(true, true, true, true, true, true); }
     }
 
     /**
@@ -158,6 +160,13 @@ public final class EngineScorer {
         boolean spatialDataStructure = "stack".equals(bestKind) || "layers".equals(bestKind) || "lanes".equals(bestKind);
         if (nativeType && !spatialDataStructure) bestThree -= 1.0;          // keep code/formula/chart native, but allow real 3D when the data structure itself benefits from depth
         scores.put(Engine.THREE_JS, Math.max(0, bestThree));
+
+        // ---- PixiJS: moving 2D particles/charges/waves/network packets, only when renderer is healthy
+        boolean pixiIntent = Pattern.compile("(?i)(?<![\\p{L}\\p{N}])(particle|particles|charge flow|electric current|wave propagation|network packets?|packet flow|signal propagation|molecular motion)(?![\\p{L}\\p{N}])").matcher(text).find();
+        double pixi = pixiIntent ? 7.0 : 0.0;
+        scores.put(Engine.PIXIJS, pixi);
+        if (caps.pixiJs() && pixiIntent && !nativeType && s.kidsBand() == 0)
+            return new Decision(Engine.PIXIJS, "This scene depends on continuous 2D movement (" + text.trim().substring(0, Math.min(60, text.trim().length())) + "): PixiJS animates particles efficiently while labels remain legible.", scores, List.of("2D particle motion"), "particle_flow", pixi - nat);
 
         // ---- motion canvas: ordered steps that move; never over a code window, data structure or formula
         int markers = (int) ORDER_MARKERS.matcher(text).results().count();

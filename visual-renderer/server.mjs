@@ -10,6 +10,14 @@ import * as esbuild from 'esbuild';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: '40mb' }));
+const renderMetrics = new Map();
+function recordMetric(engine, success, elapsedMs) {
+  const key = String(engine || 'UNKNOWN').toUpperCase();
+  const m = renderMetrics.get(key) || { successes: 0, failures: 0, totalMs: 0, lastMs: 0 };
+  if (success) m.successes++; else m.failures++;
+  m.totalMs += Math.max(0, Number(elapsedMs) || 0); m.lastMs = Math.max(0, Number(elapsedMs) || 0);
+  renderMetrics.set(key, m);
+}
 
 const safe = v => String(v ?? '').replace(/[<>]/g, '').replace(/[\u0000-\u001f]/g, ' ').slice(0, 1200);
 const clampInt = (v, lo, hi, d) => Math.max(lo, Math.min(hi, Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : d));
@@ -20,6 +28,7 @@ const LOCAL_WASM_URL = 'https://rive.local/rive.wasm';
 const CAPABILITIES = {
   MOTION_CANVAS: { available: false, reason: 'the Motion Canvas player is not built in this renderer image (old image, or the motion build step failed): run docker compose build --no-cache visual-renderer' },
   THREE_JS: { available: true, reason: 'Playwright Chromium + Three.js templates (orbit, molecule, crystal, layers, axes, lanes, nodes).' },
+  PIXIJS: { available: true, reason: 'PixiJS 2D renderer for particle flow, waves, charges and network traffic; rendered in isolated Chromium with no external network.' },
   RIVE: { available: true, reason: 'Needs a valid .riv file per scene; the runtime wasm is served locally.' },
 };
 let motionFiles = null;
@@ -55,9 +64,10 @@ try {
 } catch { /* stays unavailable */ }
 
 app.get('/health', (_, res) => res.json({
-  status: 'ok', version: 4, clips: { MOTION_CANVAS: clipsAvailable, THREE_JS: ffmpegOk, reason: clipsReason },
+  status: 'ok', version: 6, clips: { MOTION_CANVAS: clipsAvailable, THREE_JS: ffmpegOk, PIXIJS: ffmpegOk, reason: clipsReason },
   engines: Object.fromEntries(Object.entries(CAPABILITIES).map(([k, v]) => [k, v.available])),
   capabilities: CAPABILITIES,
+  metrics: Object.fromEntries([...renderMetrics.entries()].map(([k, v]) => [k, { ...v, averageMs: Math.round(v.totalMs / Math.max(1, v.successes + v.failures)) }])),
 }));
 
 // ---------------------------------------------------------------- small concurrency gate: Chromium is heavy
@@ -118,6 +128,87 @@ async function threeFrames(req, count) {
     }
     return { frames, template: info };
   } finally { await browser.close(); }
+}
+
+// ---------------------------------------------------------------- PIXIJS (safe template renderer; never executes model-generated JS)
+async function pixiFrames(req, count) {
+  const width = clampInt(req.width, 320, 1920, 1920), height = clampInt(req.height, 240, 1920, 1080);
+  const particles = clampInt(req.particleCount ?? req.count, 12, 180, 72);
+  const code = await bundle('pixi', `import * as PIXI from 'pixi.js'; window.PIXI = PIXI;`);
+  const browser = await chromium.launch(launchOptions());
+  try {
+    const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
+    await lockdown(page, false);
+    await page.setContent(`<html><body style="margin:0;overflow:hidden;background:${themeBg(req.theme)}"><canvas id="c"></canvas><script>${code}</script></body></html>`);
+    await page.evaluate(async ({ width, height, title, kicker, labels, particleCount, bg, light, sceneKind }) => {
+      const app = new window.PIXI.Application();
+      await app.init({ canvas: document.querySelector('#c'), width, height, background: bg, antialias: true, autoStart: false, preference: 'webgl' });
+      window.pixiApp = app;
+      const P = window.PIXI, root = app.stage;
+      const ink = light ? 0x17202a : 0xf2f6ff, muted = light ? 0x56616d : 0x91a4c7;
+      const heading = new P.Text({ text: String(title || 'Concept in motion').slice(0, 90), style: { fontFamily: 'Arial', fontSize: Math.max(24, width * .026), fontWeight: '700', fill: ink } });
+      heading.x = width * .06; heading.y = height * .075; root.addChild(heading);
+      if (kicker) { const k = new P.Text({ text: String(kicker).slice(0,60), style: {fontFamily:'Arial',fontSize:Math.max(12,width*.009),fill:muted,letterSpacing:2} }); k.x=width*.06; k.y=height*.045; root.addChild(k); }
+      const line = new P.Graphics().roundRect(width*.08,height*.48,width*.84,height*.055,height*.027).fill({color:light?0xdde5ef:0x20304b}); root.addChild(line);
+      const point = new P.Graphics().circle(width*.5,height*.507,width*.018).fill({color:0xf7c948}); root.addChild(point);
+      const objs=[]; const colors=[0x5eead4,0x60a5fa,0xc4b5fd,0xfbbf24,0xfb7185];
+      for(let i=0;i<particleCount;i++) { const g=new P.Graphics().circle(0,0,Math.max(4,width*.004)).fill({color:colors[i%colors.length]}); g.y=height*.507 + Math.sin(i*1.7)*height*.012; g.x=width*.1+(i/particleCount)*width*.8; root.addChild(g); objs.push({g,phase:i/particleCount}); }
+      const ls=(Array.isArray(labels)?labels:[]).slice(0,4);
+      const labelObjects=[];
+      ls.forEach((label,i)=>{const t=new P.Text({text:String(label).slice(0,42),style:{fontFamily:'Arial',fontSize:Math.max(17,width*.016),fontWeight:'600',fill:ink,wordWrap:true,wordWrapWidth:width*.32,align:'center'}}); t.anchor.set(.5); t.x=width*(.2+i*.2); t.y=height*.68; root.addChild(t); labelObjects.push(t);});
+      const sub = new P.Text({text: sceneKind==='wave' || sceneKind==='wave_propagation' ? 'Propagation over time' : sceneKind==='network_packets' ? 'Packets move through the network' : 'Direction • movement • rate',style:{fontFamily:'Arial',fontSize:Math.max(14,width*.012),fill:muted}}); sub.anchor.set(.5); sub.x=width/2; sub.y=height*.84; root.addChild(sub);
+      window.renderPixiAt = (t, starts=[]) => { for(const o of objs){const x=(o.phase+t*.18)%1; o.g.x=width*(.1+x*.8); o.g.alpha=.7+.3*Math.sin((x+t)*Math.PI*2); } point.x=width*(.1+((t*.18)%1)*.8); labelObjects.forEach((obj,i)=>{const reveal=Number(starts[i]); obj.visible=Number.isFinite(reveal) ? t>=reveal : t >= (i/Math.max(1,labelObjects.length))*Math.max(1,t);}); app.renderer.render(root); };
+    }, { width, height, title: safe(req.title), kicker: safe(req.kicker).slice(0,60), labels: (req.labels||[]).slice(0,6).map(safe), particleCount: particles, bg: themeBg(req.theme), light: themeLight(req.theme), sceneKind: safe(req.sceneKind) });
+    const frames=[];
+    for(let k=0;k<count;k++){ await page.evaluate(({k,count})=>window.renderPixiAt((k+1)/count*4),{k,count}); frames.push((await page.screenshot({type:'png'})).toString('base64')); }
+    if(new Set(frames).size<2 && count>1) throw new Error('PixiJS frames did not change; refusing blank/static animation output.');
+    return {frames,template:'particle_flow'};
+  } finally { await browser.close(); }
+}
+
+// ---------------------------------------------------------------- PIXIJS continuous clip: 30fps simulation, narration-timed label reveals, H.264 MP4.
+async function pixiClip(req) {
+  const width = clampInt(req.width, 320, 1920, 1920), height = clampInt(req.height, 240, 1920, 1080);
+  const total = Math.min(120, Math.max(2, Number(req.total) || 6));
+  const particleCount = clampInt(req.particleCount, 12, 180, 72);
+  const starts = (Array.isArray(req.starts) ? req.starts : []).map(Number).filter(Number.isFinite).slice(0, 4);
+  const labels = (Array.isArray(req.labels) ? req.labels : []).map(safe).filter(Boolean).slice(0, 4);
+  const code = await bundle('pixi', `import * as PIXI from 'pixi.js'; window.PIXI = PIXI;`);
+  const browser = await chromium.launch(launchOptions());
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pixi-clip-'));
+  try {
+    const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
+    await lockdown(page, false);
+    await page.setContent(`<html><body style="margin:0;overflow:hidden;background:${themeBg(req.theme)}"><canvas id="c"></canvas><script>${code}</script></body></html>`);
+    await page.evaluate(async ({ width, height, title, kicker, labels, particleCount, bg, light, sceneKind, total }) => {
+      const P = window.PIXI, app = new P.Application();
+      await app.init({ canvas: document.querySelector('#c'), width, height, background: bg, antialias: true, autoStart: false, preference: 'webgl' });
+      window.pixiApp = app; const root = app.stage;
+      const ink = light ? 0x17202a : 0xf2f6ff, muted = light ? 0x56616d : 0x91a4c7;
+      const heading = new P.Text({text:String(title||'Concept in motion').slice(0,90),style:{fontFamily:'Arial',fontSize:Math.max(24,width*.026),fontWeight:'700',fill:ink}}); heading.x=width*.06; heading.y=height*.075; root.addChild(heading);
+      if(kicker){const k=new P.Text({text:String(kicker).slice(0,60),style:{fontFamily:'Arial',fontSize:Math.max(12,width*.009),fill:muted,letterSpacing:2}});k.x=width*.06;k.y=height*.045;root.addChild(k);}
+      const line=new P.Graphics().roundRect(width*.08,height*.48,width*.84,height*.055,height*.027).fill({color:light?0xdde5ef:0x20304b});root.addChild(line);
+      const point=new P.Graphics().circle(width*.5,height*.507,width*.018).fill({color:0xf7c948});root.addChild(point);
+      const colors=[0x5eead4,0x60a5fa,0xc4b5fd,0xfbbf24,0xfb7185], objs=[];
+      for(let i=0;i<particleCount;i++){const g=new P.Graphics().circle(0,0,Math.max(4,width*.004)).fill({color:colors[i%colors.length]});g.y=height*.507+Math.sin(i*1.7)*height*.012;root.addChild(g);objs.push({g,phase:i/particleCount});}
+      const labelObjects=[]; labels.forEach((label,i)=>{const t=new P.Text({text:String(label).slice(0,42),style:{fontFamily:'Arial',fontSize:Math.max(17,width*.016),fontWeight:'600',fill:ink,wordWrap:true,wordWrapWidth:width*.32,align:'center'}});t.anchor.set(.5);t.x=width*(.2+i*.2);t.y=height*.68;root.addChild(t);labelObjects.push(t);});
+      const sub=new P.Text({text:sceneKind==='wave'||sceneKind==='wave_propagation'?'Propagation over time':sceneKind==='network_packets'?'Packets move through the network':'Direction • movement • rate',style:{fontFamily:'Arial',fontSize:Math.max(14,width*.012),fill:muted}});sub.anchor.set(.5);sub.x=width/2;sub.y=height*.84;root.addChild(sub);
+      window.renderPixiAt=(t,starts)=>{for(const o of objs){const x=(o.phase+t*.18)%1;o.g.x=width*(.1+x*.8);o.g.alpha=.7+.3*Math.sin((x+t)*Math.PI*2);}point.x=width*(.1+((t*.18)%1)*.8);labelObjects.forEach((obj,i)=>{obj.visible=t>=(Number.isFinite(starts[i])?starts[i]:(i/Math.max(1,labelObjects.length))*total);});app.renderer.render(root);};
+    }, {width,height,title:safe(req.title),kicker:safe(req.kicker).slice(0,60),labels,particleCount,bg:themeBg(req.theme),light:themeLight(req.theme),sceneKind:safe(req.sceneKind),total});
+    const frameCount = Math.ceil(total * 30);
+    const sampleFrames = [];
+    for(let i=0;i<frameCount;i++){
+      await page.evaluate(({t,starts})=>window.renderPixiAt(t,starts),{t:i/30,starts});
+      const frame = await page.screenshot({type:'jpeg',quality:90});
+      await fs.writeFile(path.join(dir,`f${String(i).padStart(5,'0')}.jpg`),frame);
+      if (i === 0 || i === Math.floor(frameCount / 2) || i === frameCount - 1) sampleFrames.push(frame.toString('base64'));
+    }
+    if (new Set(sampleFrames).size < 2) throw new Error('PixiJS animation frames did not change; refusing to export a static clip.');
+    const out=path.join(dir,'clip.mp4');
+    await runBin(FFMPEG,['-y','-framerate','30','-i',path.join(dir,'f%05d.jpg'),'-c:v','libx264','-preset','veryfast','-crf','19','-pix_fmt','yuv420p','-movflags','+faststart',out],{timeout:240000});
+    const bytes=await fs.readFile(out); if(bytes.length<1000) throw new Error('PixiJS produced an empty MP4.');
+    return bytes;
+  } finally { await browser.close(); await fs.rm(dir,{recursive:true,force:true}); }
 }
 
 // ---------------------------------------------------------------- RIVE
@@ -300,31 +391,45 @@ async function renderClip(req) {
 }
 
 app.post('/render-clip', async (req, res) => {
+  const engine = String(req.body?.engine || 'MOTION_CANVAS').toUpperCase();
+  const started = Date.now();
   try {
-    if (String(req.body?.engine || '').toUpperCase() === 'THREE_JS') {
-      if (!ffmpegOk) throw new Error('3D clips need ffmpeg in the renderer image');
-      return res.type('video/mp4').send(await withSlot(() => threeClip(req.body || {})));
+    if (['THREE_JS','PIXIJS'].includes(engine)) {
+      if (!ffmpegOk) throw new Error('Animated visual clips need ffmpeg in the renderer image');
+      const clip = await withSlot(() => engine === 'PIXIJS' ? pixiClip(req.body || {}) : threeClip(req.body || {}));
+      recordMetric(engine + '_CLIP', true, Date.now() - started);
+      return res.type('video/mp4').send(clip);
     }
     if (!clipsAvailable) throw new Error('Animated clips are not available: ' + clipsReason);
-    if (String(req.body?.engine || 'MOTION_CANVAS').toUpperCase() !== 'MOTION_CANVAS') return res.status(400).json({ error: 'Only MOTION_CANVAS clips are supported' });
+    if (engine !== 'MOTION_CANVAS') return res.status(400).json({ error: 'Only MOTION_CANVAS clips are supported' });
     const mp4 = await withSlot(() => renderClip(req.body || {}));
+    recordMetric(engine + '_CLIP', true, Date.now() - started);
     res.type('video/mp4').send(mp4);
-  } catch (e) { res.status(503).json({ error: String(e?.message || e).split('\n')[0], rendererStatus: 'FAILED' }); }
+  } catch (e) {
+    recordMetric(engine + '_CLIP', false, Date.now() - started);
+    res.status(503).json({ error: String(e?.message || e).split('\n')[0], rendererStatus: 'FAILED' });
+  }
 });
 
 app.post('/render-frames', async (req, res) => {
   const p = req.body || {};
   const engine = String(p.engine || '').toUpperCase();
   const count = clampInt(p.steps, 2, 8, 4);
+  const started = Date.now();
   try {
     let out;
     if (engine === 'MOTION_CANVAS') out = await withSlot(() => motionFrames(p, count));
     else if (engine === 'THREE_JS') out = await withSlot(() => threeFrames(p, count));
+    else if (engine === 'PIXIJS') out = await withSlot(() => pixiFrames(p, count));
     else if (engine === 'RIVE') out = await withSlot(() => riveFrames(p, count));
     else return res.status(400).json({ error: 'Unsupported renderer ' + engine });
-    res.json({ engine, rendererStatus: 'RENDERED', ...out });
+    if (!Array.isArray(out.frames) || out.frames.length < 2) throw new Error('Renderer returned fewer than two frames.');
+    if (new Set(out.frames).size < 2 && count > 1) throw new Error(engine + ' returned identical frames; refusing a static result for an animated scene.');
+    recordMetric(engine + '_FRAMES', true, Date.now() - started);
+    res.json({ engine, rendererStatus: 'RENDERED', quality: { frameCount: out.frames.length, distinctFrames: new Set(out.frames).size, validated: true }, ...out });
   } catch (e) {
-    res.status(503).json({ error: String(e?.message || e).split('\n')[0], engine, rendererStatus: 'FAILED' });
+    recordMetric(engine + '_FRAMES', false, Date.now() - started);
+    res.status(503).json({ error: String(e?.message || e).split('\n')[0], engine, rendererStatus: 'FAILED', quality: { validated: false } });
   }
 });
 

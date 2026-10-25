@@ -25,6 +25,7 @@ import { ApiService } from './services/api.service';
           <a routerLink="/voice-lab" routerLinkActive="active"><span>♫</span>Voice lab</a>
           <div class="nav-label">LEARN</div>
           <a routerLink="/concept-explainer" routerLinkActive="active"><span>✦</span>Concept explainer</a>
+          <a routerLink="/concept-studio" routerLinkActive="active"><span>◈</span>Concept Studio <small class="nav-new">NEW</small></a>
           <div class="nav-label">PRODUCTION</div>
           <a routerLink="/motion-studio" routerLinkActive="active"><span>✦</span>Motion &amp; effects studio</a>
           <a routerLink="/video-editor" routerLinkActive="active"><span>◫</span>AI video editor</a>
@@ -64,7 +65,7 @@ import { ApiService } from './services/api.service';
       top: 0;
       height: 100vh;
     }
-    .brand { display:flex;align-items:center;gap:.7rem;margin-bottom:2rem }.brand-mark{width:36px;height:36px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(135deg,var(--accent),#f3c46b);color:#211606;font-weight:900;box-shadow:0 8px 24px rgba(238,162,59,.18)}.brand-name{display:block;font-weight:800;letter-spacing:-.02em}.brand small{display:block;color:var(--muted);font-size:.62rem;margin-top:.15rem}nav{display:flex;flex-direction:column;gap:.25rem;flex:1}.nav-label{font-size:.62rem;letter-spacing:.14em;color:#6f687e;font-weight:800;margin:1rem .7rem .3rem}nav a{text-decoration:none;color:var(--muted);padding:.72em .8em;border-radius:11px;font-size:.88rem;display:flex;align-items:center;gap:.7rem;transition:.16s ease}nav a span{width:18px;text-align:center;color:#777083}nav a:hover{color:var(--text);background:rgba(255,255,255,.045)}nav a.active{color:var(--text);background:linear-gradient(90deg,rgba(238,162,59,.14),rgba(238,162,59,.035));box-shadow:inset 2px 0 var(--accent)}nav a.active span{color:var(--accent)}
+    .brand { display:flex;align-items:center;gap:.7rem;margin-bottom:2rem }.brand-mark{width:36px;height:36px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(135deg,var(--accent),#f3c46b);color:#211606;font-weight:900;box-shadow:0 8px 24px rgba(238,162,59,.18)}.brand-name{display:block;font-weight:800;letter-spacing:-.02em}.brand small{display:block;color:var(--muted);font-size:.62rem;margin-top:.15rem}nav{display:flex;flex-direction:column;gap:.25rem;flex:1}.nav-label{font-size:.62rem;letter-spacing:.14em;color:#6f687e;font-weight:800;margin:1rem .7rem .3rem}nav a{text-decoration:none;color:var(--muted);padding:.72em .8em;border-radius:11px;font-size:.88rem;display:flex;align-items:center;gap:.7rem;transition:.16s ease}nav a span{width:18px;text-align:center;color:#777083}nav a:hover{color:var(--text);background:rgba(255,255,255,.045)}nav a.active{color:var(--text);background:linear-gradient(90deg,rgba(238,162,59,.14),rgba(238,162,59,.035));box-shadow:inset 2px 0 var(--accent)}nav a.active span{color:var(--accent)}.nav-new{margin-left:auto;font-size:.56rem;letter-spacing:.08em;color:var(--teal);border:1px solid rgba(73,201,189,.35);padding:.12rem .32rem;border-radius:5px}
     .rail-footer { padding-top: 1rem; }
     .stage { flex:1; padding:2.5rem clamp(1.2rem,4vw,3.4rem); max-width:none; min-width:0 }
     .demo-banner {

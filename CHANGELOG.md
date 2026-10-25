@@ -208,3 +208,7 @@ See docs/history/.
 - Backend now attempts the selected server-side renderer and records RENDERED only after receiving valid PNG frames; failed renders retain explicit native-diagram fallback diagnostics.
 - Scene routing no longer includes the whole lesson topic in keyword matching, so per-scene visual descriptions drive engine selection.
 - Added deployment/validation notes in `VISUAL_ENGINE_EXPORT_INCREMENT_17.md` and `visual-renderer/README.md`.
+
+
+## Increment 52 — Visual Intelligence in Concept Studio
+See `CHANGELOG_INCREMENT_52_VISUAL_INTELLIGENCE_CONCEPT_STUDIO.md`. The planning panel belongs to the redesigned left-menu Concept Studio route; the legacy Concept explainer route remains compatible.

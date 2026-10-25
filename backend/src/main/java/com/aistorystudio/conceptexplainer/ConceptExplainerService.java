@@ -57,10 +57,10 @@ import java.util.regex.Pattern;
 public class ConceptExplainerService {
 
     private static final Logger log = LoggerFactory.getLogger(ConceptExplainerService.class);
-    private static final double FADE = 0.35;          // element fade-in
-    private static final double SENTENCE_GAP = 0.28;  // breath between sentences
-    private static final double SCENE_TAIL = 0.7;     // silence before next scene
-    private static final double TUTORIAL_TAIL = 0.45; // reference video: short hand-over between scenes
+    private static final double FADE = 0.24;          // readable reveal; avoid fading text for too long
+    private static final double SENTENCE_GAP = 0.42;  // breathing room after each sentence
+    private static final double SCENE_TAIL = 0.9;     // silence/visual hold before next scene
+    private static final double TUTORIAL_TAIL = 0.85; // deliberate hand-over so the learner can process the previous visual
     private static final int INTRO_FRAMES = 18;       // 0.6 s scene-opening motion at 30 fps
     private static final Pattern SENTENCE = Pattern.compile("(?<=[.!?।॥])\\s+");
 
@@ -270,7 +270,7 @@ public class ConceptExplainerService {
             in.add(new com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.SceneInput(s.getSceneNumber(), s.getSectionType(), sents, pictureText(s, mapper), spoken));
         }
         int band = ageBand(job);
-        double wpm = isBreakdown(job) ? 175 : isShort(job) ? 138 : band == 1 ? 135 : band == 2 ? 145 : 155;
+        double wpm = isBreakdown(job) ? 150 : isShort(job) ? 125 : band == 1 ? 115 : band == 2 ? 125 : 135;
         return com.aistorystudio.conceptexplainer.tutorial.ScriptDoctor.review(in, size.minWords(), size.maxWords(), wpm, band, english || anyCaptions);
     }
 
@@ -523,8 +523,11 @@ public class ConceptExplainerService {
                 job.setStage("Scene " + s.getSceneNumber() + "/" + n + ": recording the narration");
                 makeNarration(job, s);
             }
-            if (job.isAnimatedCartoon()) {
-                for (ConceptExplainerJob.Scene s : job.getScenes()) {   // then all Wan animations
+            // Concept Explainer lessons use only programmatic visual engines (Motion Canvas,
+            // Three.js, Manim and native diagrams). Keep Wan image-to-video available for the
+            // separate story/cartoon workflow, but never invoke it for concept lessons.
+            if (job.isAnimatedCartoon() && !tutorial(job)) {
+                for (ConceptExplainerJob.Scene s : job.getScenes()) {
                     job.setStage("Scene " + s.getSceneNumber() + "/" + n + ": animating the picture (Wan)");
                     try {
                         animateScene(job, s);
@@ -533,6 +536,8 @@ public class ConceptExplainerService {
                         job.getWarnings().add("Scene " + s.getSceneNumber() + ": animation failed (" + rootMessage(e) + ") - used a camera move instead.");
                     }
                 }
+            } else if (job.isAnimatedCartoon()) {
+                job.getWarnings().add("Concept Explainer uses programmatic animation only; Wan image-to-video was skipped.");
             }
             for (ConceptExplainerJob.Scene s : job.getScenes()) {
                 job.setStage("Scene " + s.getSceneNumber() + "/" + n + ": putting picture, words and voice together");
@@ -563,10 +568,19 @@ public class ConceptExplainerService {
         int clips = (int) Math.min(3, Math.ceil(need / seg));
         String what = "";
         for (JsonNode e : mapper.readTree(s.getPlanJson()).path("elements")) if ("photo".equals(e.path("type").asText())) what = e.path("text").asText("");
-        String prompt = what + ". Gentle, natural character animation: the characters blink, smile, breathe and make small expressive "
-                + "gestures (pointing, nodding, a little wave); hair and clothes move slightly; soft light and sparkles drift; very slow "
-                + "camera drift. The scene, characters and colours stay exactly the same. High-end 3D animated feature film, smooth motion.";
-        String neg = "scene change, new characters, distorted face, extra limbs, flicker, text, subtitles, fast motion, camera shake";
+        // IMAGE-FIRST HYBRID PIPELINE: the illustration is the visual source of truth. Wan animates
+        // this exact rich image; it must not redesign the scene or try to draw educational text.
+        // Accurate equations, axes, vectors and captions are composited by the deterministic renderers later.
+        String prompt = what + ". Animate this exact starting illustration as a premium educational film shot. "
+                + "Preserve the original composition, subject identity, object count, palette, lighting direction and all important geometry. "
+                + "Add subtle layered depth/parallax, a slow controlled camera push or drift, physically plausible secondary motion, "
+                + "soft atmospheric particles and gentle light movement. Keep the main subject and the key physics setup clearly readable "
+                + "in the same positions throughout the shot. This is a single continuous shot, not a montage. "
+                + "Do not invent a new scene. No lettering or formula rendering is needed; later compositing adds exact educational overlays. "
+                + "High-end cinematic educational illustration, stable smooth motion, clean silhouette, no sudden cuts.";
+        String neg = "scene change, shot change, new objects, object duplication, altered trajectory, changed geometry, "
+                + "distorted face, extra limbs, morphing, flicker, jitter, text, letters, equations, subtitles, watermark, "
+                + "fast motion, camera shake, zoom snap, sudden cuts, smeared subject";
         int w = vertical(job) ? 480 : 832, h = vertical(job) ? 832 : 480;
         Path dirp = storage.resolve(dir(job) + "/anim");
         Files.createDirectories(dirp);
@@ -831,9 +845,10 @@ public class ConceptExplainerService {
                 + "steps for derivations, compare (vector vs scalar...), meter, quiz for a numerical checkpoint.";
         if (x.contains("chem")) return " VISUALS FOR CHEMISTRY: atom (shells), molecule (ball-and-stick), reaction (balanced, subscripts), element tiles, "
                 + "layers / tree for classification, compare (ionic vs covalent...), cycle, quiz.";
-        if (x.contains("bio") || x.contains("science") && x.contains("life")) return " VISUALS FOR BIOLOGY: a framed photo of the structure + pins to label "
-                + "its parts, cycle (life cycles, Krebs...), steps (processes), layers / tree (classification, levels of organisation), compare, checklist "
-                + "(symptoms, functions), quiz. Use body / cell / plant icons, never tech icons.";
+        if (x.contains("bio") || x.contains("science") && x.contains("life")) return " VISUALS FOR BIOLOGY: use a large accurate anatomy / cell illustration with labels anchored to visible structures; "
+                + "animate a real process with sequential highlights and signal/pathway movement. Use cycle (life cycles, Krebs...), steps (processes), compare, "
+                + "checklist and quiz where they teach the concept. Use body / cell / plant visuals, never tech icons. Keep one clinical palette across all scenes; "
+                + "do not replace anatomy with generic cards or decorative icons.";
         if (x.contains("math")) return " VISUALS FOR MATHS: numberline, triangle, fraction, plot, formula with legend, steps for each solution step, "
                 + "matrix / compare for methods, quiz with a worked answer.";
         if (x.contains("general") || x.contains("social") || x.contains("history") || x.contains("geograph") || x.contains("knowledge"))
@@ -844,7 +859,34 @@ public class ConceptExplainerService {
 
     private String trackInstruction(ConceptExplainerJob job) {
         return trackInstructionBase(job) + narrationTrackInstruction(job) + universalVisualQualityInstruction(job)
-                + subjectVisuals(job.getSubject()) + briefText(job) + "\n" + com.aistorystudio.conceptexplainer.tutorial.IconLibrary.catalog(iconProfile(job));
+                + subjectVisuals(job.getSubject()) + healthTeachingInstruction(job) + briefText(job)
+                + "\n" + com.aistorystudio.conceptexplainer.tutorial.IconLibrary.catalog(iconProfile(job));
+    }
+
+    /**
+     * Health/biology lessons need medically accurate mechanisms and purpose-built anatomical visuals,
+     * not generic cards dressed up with clinical colours.
+     */
+    private String healthTeachingInstruction(ConceptExplainerJob job) {
+        String d = ((job.getDomain() == null ? "" : job.getDomain()) + " "
+                + (job.getSubject() == null ? "" : job.getSubject()) + " "
+                + (job.getTopic() == null ? "" : job.getTopic())).toLowerCase(Locale.ROOT);
+        if (!(d.contains("health") || d.contains("biology") || d.contains("medical") || d.contains("neet")
+                || d.contains("brain") || d.contains("human body"))) return "";
+        return """
+
+                HIGH-STAKES BIOLOGY / HEALTH LESSON RULES (mandatory):
+                - Teach accurate anatomy and physiology, not a loose metaphor presented as literal fact. A metaphor may introduce an idea, but immediately explain where it stops being accurate.
+                - For the brain, distinguish neuron electrical signalling along the cell from chemical neurotransmission across most synapses. Do not say that the thalamus and amygdala simply "wake the motor cortex"; describe the alarm pathway cautiously and accurately, noting that sensory pathways and response networks interact.
+                - Explain one mechanism at a time: structure -> what it receives/does -> what happens next -> why that matters. Define technical words immediately in learner-friendly language.
+                - Do not conflate the brainstem, limbic system and cerebral cortex as three literal stacked layers with clean independent jobs. If using a hierarchy visual, label it as a simplified teaching model and show that these systems interact.
+                - For NEET beginners, include the examinable distinctions, one causal walkthrough and one misconception check. Avoid unsupported medical claims and invented facts.
+                - VISUALS: use a consistent clinical biology art direction across ALL scenes: clean off-white / pale teal background, dark readable text, one accent palette, accurate anatomy illustration or a labelled schematic. Never switch randomly between dark navy diagrams and white slides.
+                - Use a full-width, high-resolution anatomical visual for neuron/brain scenes. Labels must point to real visible structures; if the renderer cannot guarantee the arrow target exists, omit the arrow rather than drawing a misleading pointer.
+                - Animate a biological process, not just a decorative object: signal travels down axon; neurotransmitter crosses synaptic cleft; a stimulus is routed through a simplified pathway; highlight the named brain region on an anatomically plausible brain image. Use at least 3 meaningful state changes in an animated scene, each linked to narration.
+                - Every scene's narration must explain what the viewer should notice in the visual. Do not use a generic tile or flow chart when an anatomy illustration, pathway animation or labelled schematic would teach better.
+                - END FRAME: keep recap text and labels fully lit and readable for at least 2 seconds; no fade to near-black while content is still on screen.
+                """;
     }
 
     /** Narration tracks are distinct teaching approaches, not merely different TTS voices. */
@@ -914,6 +956,7 @@ public class ConceptExplainerService {
         if ("HIGH".equals(v)) b.append(" Visual variety HIGH: every beat may use a different visual device.");
         if ("LOW".equals(m)) b.append(" Motion LOW: calm holds, soft changes, few new elements.");
         if ("HIGH".equals(m)) b.append(" Motion HIGH: quick changes, a new element almost every sentence.");
+        b.append(" VISUAL QUALITY CONTRACT: maintain one coherent background, typography and colour system for the entire lesson; never alternate light/dark palettes between adjacent scenes. Prefer large focal objects and readable labels; avoid tiny central diagrams with excessive empty space. Every animation must show a meaningful state change (not only a fade or camera drift) and hold the resulting state long enough to read. Match the visual to the sentence currently spoken. The first frame must already show the lesson visual (no black lead-in); the final recap must remain fully visible and readable through the final audio.");
         if ("LOW".equals(d)) b.append(" Information density LOW: one idea per frame, at most 3 elements.");
         if ("HIGH".equals(d)) b.append(" Information density HIGH: layered detail, 5-8 elements, call-outs.");
         return b.toString();
@@ -1922,7 +1965,7 @@ public class ConceptExplainerService {
         if (!riveReady && job.getWarnings().stream().noneMatch(w -> w.startsWith("Rive animations are off")))
             job.getWarnings().add("Rive animations are off for this lesson: no .riv file was uploaded and the rive-library folder is empty. Rive files are designed in the Rive editor; add them (upload, or rive-library/manifest.json) to use this engine.");
         reportEngineAvailability(job, routes);
-        long special = job.getScenes().stream().filter(s -> List.of("THREE_JS", "RIVE", "MOTION_CANVAS", "MANIM").contains(s.getVisualEngine())).count();
+        long special = job.getScenes().stream().filter(s -> List.of("THREE_JS", "PIXIJS", "RIVE", "MOTION_CANVAS", "MANIM").contains(s.getVisualEngine())).count();
         if (special > 0 && job.getWarnings().stream().noneMatch(w -> w.startsWith("Visual routing planned per scene."))) job.getWarnings().add("Visual routing planned per scene. Each scene gets the engine that fits its topic (native diagrams, Manim, Three.js, Rive); a failed export falls back to the native renderer and says so.");
     }
 
@@ -1935,7 +1978,7 @@ public class ConceptExplainerService {
         java.util.Map<String, Long> plan = new java.util.TreeMap<>();
         for (var r : routes) plan.merge(r.engine(), 1L, Long::sum);
         String riveNote = !rc.rive() ? "off" : (!riveLibrary().isEmpty() || job.getRiveAssetPath() != null) ? "ready" : "needs a .riv file";
-        String line = "Visual engines this run - Three.js: " + (rc.threeJs() ? "on" : "OFF") + ", Motion Canvas: " + (rc.motionCanvas() ? "on" : "OFF" + (rc.motionReason().isBlank() ? "" : " (" + rc.motionReason() + ")"))
+        String line = "Visual engines this run - Three.js: " + (rc.threeJs() ? "on" : "OFF") + ", PixiJS: " + (rc.pixiJs() ? "on" : "OFF") + ", Motion Canvas: " + (rc.motionCanvas() ? "on" : "OFF" + (rc.motionReason().isBlank() ? "" : " (" + rc.motionReason() + ")"))
                 + ", Rive: " + riveNote + ", Manim: " + (manimAvailable() ? "on" : "off")
                 + (rc.note().isBlank() ? "" : " [" + rc.note() + "]") + ". Planned scenes: " + plan + ".";
         job.getWarnings().removeIf(w -> w.startsWith("Visual engines this run"));
@@ -1945,7 +1988,7 @@ public class ConceptExplainerService {
     /** What the renderer service can really export now, combined with the Manim sidecar. */
     private com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities visualCapabilities() {
         var rc = new com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient(visualRendererBaseUrl).capabilities();
-        return new com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities(manimAvailable(), rc.rive(), rc.threeJs(), rc.motionCanvas(), rc.motionClips());
+        return new com.aistorystudio.conceptexplainer.tutorial.EngineScorer.Capabilities(manimAvailable(), rc.rive(), rc.threeJs(), rc.pixiJs(), rc.motionCanvas(), rc.motionClips());
     }
 
     /** The scene's route comes from the lesson-wide plan, so editing or re-rendering one scene keeps the lesson's variety rules. */
@@ -1982,7 +2025,7 @@ public class ConceptExplainerService {
             s.setRendererMessage("Animated board: native stills now, the animated clip is rendered once the narration timing is known.");
             return false;
         }
-        if (!List.of("MOTION_CANVAS", "THREE_JS", "RIVE").contains(engine)) return false;
+        if (!List.of("MOTION_CANVAS", "THREE_JS", "PIXIJS", "RIVE").contains(engine)) return false;
         Path riveAsset = null;
         if ("RIVE".equals(engine)) {
             try {
@@ -2435,21 +2478,24 @@ public class ConceptExplainerService {
         boolean board = code || diagram || chart || formula || science || ("MOTION_CANVAS".equals(s.getVisualEngine()) && "board".equals(s.getVisualKind()));   // native stills first, the animated clip once the narration timing is known
         boolean flow = "MOTION_CANVAS".equals(s.getVisualEngine()) && !board && "MOTION_CANVAS".equals(s.getActualRenderer());
         boolean three = "THREE_JS".equals(s.getVisualEngine()) && "THREE_JS".equals(s.getActualRenderer());
-        if ((!board && !flow && !three) || "STATIC".equals(job.getMotion())) return;
+        boolean pixi = "PIXIJS".equals(s.getVisualEngine()) && "PIXIJS".equals(s.getActualRenderer());
+        if ((!board && !flow && !three && !pixi) || "STATIC".equals(job.getMotion())) return;
         if ((diagram || chart || formula || science) && vertical(job)) {   // the planner lays diagrams out on a 16:9 canvas
             s.setActualRenderer("NATIVE_DIAGRAM"); s.setRendererStatus("FALLBACK"); s.setRendererMessage("Animated diagrams, charts, formulas, quizzes, force diagrams and cycles are 16:9 only; native stills are used in vertical videos.");
             return;
         }
         var client = new com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient(visualRendererBaseUrl);
         var caps = client.capabilities();
-        if (three ? !caps.threeClips() : !caps.motionClips()) return;
-        String engineName = three ? "3D" : code ? "animated code" : diagram ? "animated diagram" : chart ? "animated chart" : formula ? "animated formula" : science ? "animated " + s.getVisualKind() : board ? "animated board" : "Motion Canvas";
+        if (pixi ? !caps.pixiClips() : three ? !caps.threeClips() : !caps.motionClips()) return;
+        String engineName = pixi ? "PixiJS particle flow" : three ? "3D" : code ? "animated code" : diagram ? "animated diagram" : chart ? "animated chart" : formula ? "animated formula" : science ? "animated " + s.getVisualKind() : board ? "animated board" : "Motion Canvas";
         try {
             var labels = com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient.labelsForScene(s.getPlanJson(), s.getVisualKind(), s.getNarration());
             String kicker = com.aistorystudio.conceptexplainer.tutorial.VisualEngineRenderClient.kickerOf(s.getPlanJson());
             int w = vertical(job) ? 1080 : 1920, h = vertical(job) ? 1920 : 1080;
             byte[] mp4;
-            if (three) {
+            if (pixi) {
+                mp4 = client.renderPixiClip(s.getTitle(), kicker, labels, s.getVisualKind(), s.getSentenceStarts(), theme(job), w, h, s.getDurationSeconds());
+            } else if (three) {
                 mp4 = client.renderThreeClip(s.getTitle(), kicker, s.getNarration(), labels, s.getVisualKind(), s.getSentenceStarts(), theme(job), w, h, s.getDurationSeconds());
             } else if (science) {
                 mp4 = client.renderScienceClip(s.getVisualKind(), s.getTitle(), kicker, s.getPlanJson(), s.getSentenceStarts(), theme(job), w, h, s.getDurationSeconds());
@@ -2478,8 +2524,9 @@ public class ConceptExplainerService {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
             log.warn("Animated clip failed for scene {}: {}", s.getSceneNumber(), rootMessage(e));
-            if (board) { s.setActualRenderer("NATIVE_DIAGRAM"); s.setRendererStatus("FALLBACK"); s.setRendererMessage("Planned animated board; the clip failed (" + rootMessage(e) + "), native stills are used."); }
-            job.getWarnings().add("Scene " + s.getSceneNumber() + ": the animated " + engineName + " clip failed (" + rootMessage(e) + "); " + (board ? "native stills" : "animated stills") + " are used instead.");
+            if (board) { s.setActualRenderer("NATIVE_DIAGRAM"); s.setRendererStatus("FALLBACK"); s.setRendererMessage("Planned " + engineName + "; the clip failed (" + rootMessage(e) + "), native stills are used."); }
+            if (pixi) { s.setRendererStatus("FALLBACK"); s.setRendererMessage("PixiJS still frames were retained because continuous MP4 rendering failed: " + rootMessage(e)); }
+            job.getWarnings().add("Scene " + s.getSceneNumber() + ": the animated " + engineName + " clip failed (" + rootMessage(e) + "); " + (board ? "native stills" : "the scene's existing still frames") + " are used instead.");
         }
     }
 

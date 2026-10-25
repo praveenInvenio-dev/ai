@@ -25,17 +25,19 @@ public final class VisualEngineRenderClient {
     public boolean enabled() { return !baseUrl.isBlank(); }
 
     /** What the renderer service can export right now (from its /health). All false when it is not configured or not reachable. */
-    public record Caps(boolean threeJs, boolean rive, boolean motionCanvas, String motionReason, String note, boolean motionClips, boolean threeClips) {
-        public Caps(boolean threeJs, boolean rive, boolean motionCanvas, String motionReason, String note, boolean motionClips) { this(threeJs, rive, motionCanvas, motionReason, note, motionClips, false); }
-        public Caps(boolean threeJs, boolean rive, boolean motionCanvas, String motionReason, String note) { this(threeJs, rive, motionCanvas, motionReason, note, false, false); }
-        public Caps(boolean threeJs, boolean rive, boolean motionCanvas) { this(threeJs, rive, motionCanvas, "", "", false, false); }
+    public record Caps(boolean threeJs, boolean rive, boolean pixiJs, boolean motionCanvas, String motionReason, String note, boolean motionClips, boolean threeClips, boolean pixiClips) {
+        public Caps(boolean threeJs, boolean rive, boolean pixiJs, boolean motionCanvas, String motionReason, String note, boolean motionClips, boolean threeClips) { this(threeJs, rive, pixiJs, motionCanvas, motionReason, note, motionClips, threeClips, false); }
+        public Caps(boolean threeJs, boolean rive, boolean motionCanvas, String motionReason, String note, boolean motionClips, boolean threeClips) { this(threeJs, rive, false, motionCanvas, motionReason, note, motionClips, threeClips, false); }
+        public Caps(boolean threeJs, boolean rive, boolean motionCanvas, String motionReason, String note, boolean motionClips) { this(threeJs, rive, false, motionCanvas, motionReason, note, motionClips, false, false); }
+        public Caps(boolean threeJs, boolean rive, boolean motionCanvas, String motionReason, String note) { this(threeJs, rive, false, motionCanvas, motionReason, note, false, false, false); }
+        public Caps(boolean threeJs, boolean rive, boolean motionCanvas) { this(threeJs, rive, false, motionCanvas, "", "", false, false, false); }
     }
 
     private static volatile Caps cachedCaps;
     private static volatile long capsAt;
 
     public Caps capabilities() {
-        if (!enabled()) return new Caps(false, false, false);
+        if (!enabled()) return new Caps(false, false, false, false, "", "renderer base URL is not configured", false, false);
         long now = System.currentTimeMillis();
         Caps c = cachedCaps;
         if (c != null && now - capsAt < (c.threeJs() ? 30_000 : 5_000)) return c;
@@ -43,12 +45,12 @@ public final class VisualEngineRenderClient {
             HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create(baseUrl + "/health")).timeout(Duration.ofSeconds(3)).GET().build(), HttpResponse.BodyHandlers.ofString());
             JsonNode root = r.statusCode() == 200 ? M.readTree(r.body()) : M.createObjectNode();
             JsonNode e = root.path("engines");
-            c = new Caps(e.path("THREE_JS").asBoolean(false), e.path("RIVE").asBoolean(false), e.path("MOTION_CANVAS").asBoolean(false),
+            c = new Caps(e.path("THREE_JS").asBoolean(false), e.path("RIVE").asBoolean(false), e.path("PIXIJS").asBoolean(false), e.path("MOTION_CANVAS").asBoolean(false),
                     root.path("capabilities").path("MOTION_CANVAS").path("reason").asText(""), r.statusCode() == 200 ? "" : "renderer answered HTTP " + r.statusCode(),
-                    root.path("clips").path("MOTION_CANVAS").asBoolean(false), root.path("clips").path("THREE_JS").asBoolean(false));
+                    root.path("clips").path("MOTION_CANVAS").asBoolean(false), root.path("clips").path("THREE_JS").asBoolean(false), root.path("clips").path("PIXIJS").asBoolean(false));
         } catch (Exception ex) {
             if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
-            c = new Caps(false, false, false, "", "the renderer service is not reachable at " + baseUrl);
+            c = new Caps(false, false, false, false, "", "the renderer service is not reachable at " + baseUrl, false, false);
         }
         cachedCaps = c; capsAt = now;
         return c;
@@ -408,6 +410,20 @@ public final class VisualEngineRenderClient {
         if (sceneKind != null && !sceneKind.isBlank()) p.put("sceneKind", sceneKind);
         p.set("labels", M.valueToTree(labels)); p.set("starts", M.valueToTree(sentenceStarts));
         p.put("total", totalSeconds); p.put("width", width); p.put("height", height);
+        if (theme != null && !theme.isBlank()) p.put("theme", theme);
+        return postClip(p);
+    }
+
+    /** PixiJS particle/flow clip with narration-aligned label reveal times, encoded as MP4 by the renderer service. */
+    public byte[] renderPixiClip(String title, String kicker, List<String> labels, String sceneKind, List<Double> sentenceStarts,
+                                 String theme, int width, int height, double totalSeconds) throws IOException, InterruptedException {
+        ObjectNode p = M.createObjectNode();
+        p.put("engine", "PIXIJS"); p.put("title", title == null ? "" : title);
+        if (kicker != null && !kicker.isBlank()) p.put("kicker", kicker);
+        if (sceneKind != null && !sceneKind.isBlank()) p.put("sceneKind", sceneKind);
+        p.set("labels", M.valueToTree(labels == null ? List.of() : labels.stream().limit(4).toList()));
+        p.set("starts", M.valueToTree(sentenceStarts == null ? List.of() : sentenceStarts.stream().limit(4).toList()));
+        p.put("total", Math.max(2, Math.min(120, totalSeconds))); p.put("width", width); p.put("height", height);
         if (theme != null && !theme.isBlank()) p.put("theme", theme);
         return postClip(p);
     }

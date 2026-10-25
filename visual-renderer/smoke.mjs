@@ -17,3 +17,14 @@ r = await post({ engine: 'MOTION_CANVAS', title: 'Steps', labels: ['Take order',
 if (h.engines.MOTION_CANVAS) check('MOTION_CANVAS renders an animated step flow', r.status === 200 && r.json.frames.length === 4 && new Set(r.json.frames).size === 4);
 else check('MOTION_CANVAS is rejected when its player is not built', r.status === 503);
 process.exit(failed ? 1 : 0);
+
+// PixiJS: deterministic safe-template frame rendering, plus continuous MP4 when ffmpeg is installed.
+r = await post({ engine: 'PIXIJS', title: 'Electric current', narration: 'Charges move through a conductor', labels: ['Charges', 'Measurement point', 'Current'], sceneKind: 'particle_flow', particleCount: 48, steps: 4, width: 640, height: 360, theme: 'reference' });
+check('PIXIJS particle-flow frames render and change', r.status === 200 && r.json.rendererStatus === 'RENDERED' && r.json.frames.length === 4 && new Set(r.json.frames).size > 1, r.json.template || r.json.error || '');
+if (h.clips?.PIXIJS) {
+  const clipResponse = await fetch(base + '/render-clip', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ engine: 'PIXIJS', title: 'Electric current', labels: ['Charges', 'Measurement point', 'Current'], sceneKind: 'particle_flow', starts: [0, 1, 2], total: 3, particleCount: 36, width: 640, height: 360, theme: 'reference' }) });
+  const clip = Buffer.from(await clipResponse.arrayBuffer());
+  check('PIXIJS narration-timed MP4 clip renders', clipResponse.status === 200 && clip.length > 1000 && clip.subarray(4, 8).toString() === 'ftyp', `HTTP ${clipResponse.status}, ${clip.length} bytes`);
+} else {
+  console.log('SKIP PIXIJS MP4 smoke: ffmpeg unavailable in this renderer image');
+}

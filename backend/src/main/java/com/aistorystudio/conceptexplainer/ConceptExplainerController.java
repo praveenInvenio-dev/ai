@@ -21,11 +21,13 @@ public class ConceptExplainerController {
     private final ConceptExplainerService service;
     private final ConceptExplainerJobStore jobs;
     private final StorageProvider storage;
+    private final VisualIntelligenceService visualIntelligence;
 
-    public ConceptExplainerController(ConceptExplainerService service, ConceptExplainerJobStore jobs, StorageProvider storage) {
+    public ConceptExplainerController(ConceptExplainerService service, ConceptExplainerJobStore jobs, StorageProvider storage, VisualIntelligenceService visualIntelligence) {
         this.service = service;
         this.jobs = jobs;
         this.storage = storage;
+        this.visualIntelligence = visualIntelligence;
     }
 
     /** motion: REVEAL (elements appear with the narration, default) or STATIC. animationMode kept for old clients. */
@@ -63,6 +65,14 @@ public class ConceptExplainerController {
         if (riveAsset != null) job.setRiveAssetPath(riveAsset);
         service.generateAsync(job.getId());
         return ResponseEntity.accepted().body(Map.of("jobId", job.getId()));
+    }
+
+
+    /** Explainable visual-engine planning preview used by the redesigned Concept Studio workspace. */
+    @PostMapping("/visual-intelligence/plan")
+    public ResponseEntity<?> visualPlan(@RequestBody VisualIntelligenceService.PlanRequest request) {
+        try { return ResponseEntity.ok(visualIntelligence.plan(request)); }
+        catch (IllegalArgumentException e) { return ResponseEntity.badRequest().body(Map.of("error", e.getMessage())); }
     }
 
     /** Upload a Rive animation for use in production-rendered character/UI scenes. */

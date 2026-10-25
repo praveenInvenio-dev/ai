@@ -65,8 +65,12 @@ interface LessonSummary { id: string; title: string; duration: string; language:
   standalone: true,
   imports: [CommonModule, FormsModule, VisualEnginePreviewComponent],
   template: `
-    <div class="page">
-      <div class="hero">
+    <div class="page concept-studio-page">
+      <div class="studio-topbar"><div class="studio-brand"><span class="studio-mark">✦</span><div><span class="studio-kicker">AI STORY STUDIO / LEARNING</span><strong>Concept Studio</strong></div></div><div class="studio-actions"><button type="button" class="studio-ghost" (click)="scrollToSection('lesson-builder')">＋ New lesson</button><button type="button" class="studio-primary" (click)="scrollToSection('lesson-library')">Open lesson library ↗</button></div></div>
+      <section class="studio-intro"><div class="studio-intro-copy"><div class="studio-overline"><span class="pulse-dot"></span> EXPLAIN COMPLEX IDEAS CLEARLY</div><h1>Turn any topic into a <em>lesson people remember.</em></h1><p>Build concept-first lessons with accurate explanations, purposeful animation, readable diagrams and language-aware narration—from Indian English to regional Indian languages.</p><div class="studio-promise"><span>01 / Understand</span><span>02 / Visualise</span><span>03 / Remember</span></div></div>
+      <div class="studio-preview-card"><div class="preview-card-top"><span>LESSON BLUEPRINT</span><span class="live-pill"><i></i> MULTI-ENGINE</span></div><div class="blueprint-visual"><div class="blueprint-orbit orbit-one"></div><div class="blueprint-orbit orbit-two"></div><div class="blueprint-core">IDEA</div><div class="blueprint-node node-a">WHY</div><div class="blueprint-node node-b">HOW</div><div class="blueprint-node node-c">EXAMPLE</div></div><div class="blueprint-footer"><span><b>✓</b> Concept coverage</span><span><b>✓</b> Visual continuity</span><span><b>✓</b> Voice preview</span></div></div></section>
+      <section class="studio-workflow" aria-label="Lesson workflow"><div class="workflow-step active"><span>01</span><div><b>Design the lesson</b><small>Topic, audience and learning goal</small></div></div><div class="workflow-line"></div><div class="workflow-step"><span>02</span><div><b>Build understanding</b><small>Examples, reasoning and checkpoints</small></div></div><div class="workflow-line"></div><div class="workflow-step"><span>03</span><div><b>Produce the lesson</b><small>Animation, narration and QA</small></div></div></section>
+      <div class="hero legacy-hero">
         <div>
           <div class="eyebrow">LEARN WITH VISUALS</div>
           <h1>Concept Explainer</h1>
@@ -77,7 +81,20 @@ interface LessonSummary { id: string; title: string; duration: string; language:
 
       <app-visual-engine-preview (riveAssetUploaded)="onRiveAssetUploaded($event)"></app-visual-engine-preview>
 
-      <section class="builder card">
+      <section class="visual-intelligence card" *ngIf="isConceptStudio">
+        <div class="vi-heading"><div><div class="eyebrow">VISUAL INTELLIGENCE</div><h2>Let the system plan the visuals</h2><p>Preview how each concept should be explained, which renderer fits each scene, and when the animation should follow the narration.</p></div><span class="vi-status">Explainable routing</span></div>
+        <div class="vi-controls"><label for="vi-topic">Topic to analyse</label><input id="vi-topic" [(ngModel)]="topic" placeholder="e.g. Electric current, Java multithreading, projectile motion"/><button type="button" class="studio-primary" [disabled]="visualPlanLoading || !topic.trim()" (click)="previewVisualPlan()">{{ visualPlanLoading ? 'Planning…' : 'Plan visual strategy' }}</button></div>
+        <div class="vi-error" *ngIf="visualPlanError">{{ visualPlanError }}</div>
+        <div class="vi-result" *ngIf="visualPlan as vp">
+          <div class="vi-goal"><strong>Learning goal</strong><p>{{ vp.learningGoal }}</p><small>{{ vp.visualStrategy }}</small></div>
+          <div class="vi-concept-graph" *ngIf="vp.conceptGraph?.nodes?.length"><h3>Concept map</h3><div class="vi-concept-nodes"><article *ngFor="let node of vp.conceptGraph.nodes"><strong>{{ node.label }}</strong><small>{{ node.explanation }}</small></article></div><ul *ngIf="vp.conceptGraph.relationships?.length"><li *ngFor="let edge of vp.conceptGraph.relationships"><b>{{ conceptNodeLabel(vp, edge.from) }}</b> <span>→ {{ edge.relationship }} →</span> <b>{{ conceptNodeLabel(vp, edge.to) }}</b></li></ul></div>
+          <div class="vi-engine-grid"><article class="vi-engine" *ngFor="let engine of vp.engines"><div><strong>{{ engine.label }}</strong><span [class.vi-unavailable]="!engine.available">{{ engine.available ? 'Available candidate' : 'Planned / not active' }}</span></div><b>{{ engine.score }}/100</b><p>{{ engine.reason }}</p></article></div>
+          <h3>Suggested scene strategy</h3><div class="vi-scenes"><article *ngFor="let scene of vp.sceneIdeas"><span>{{ scene.timingGuidance }}</span><strong>{{ scene.visualIntent.replace('_',' ') }}</strong><small>Preferred: {{ scene.suggestedEngine }}</small><p>{{ scene.reason }}</p></article></div>
+          <p class="vi-policy">{{ vp.policyNote }}</p>
+        </div>
+      </section>
+
+      <section id="lesson-builder" class="builder card studio-builder">
         <div class="section-title"><div><h2>What do you want to learn?</h2><p>AI plans the teaching narrative and creates a dedicated visual for each scene. Diagrams, labels and code are rendered sharply over rich artwork, with progressive explanation beats.</p></div></div>
         <div class="form-grid">
           <div>
@@ -240,6 +257,17 @@ interface LessonSummary { id: string; title: string; duration: string; language:
               <span><strong>Exam Focus</strong><small>Include an exam-style checkpoint, common traps, and application thinking — without turning the lesson into rote memorization.</small></span>
             </label>
           </div>
+          <section class="wide jee-blueprint" *ngIf="track === 'JEE'" aria-label="JEE lesson structure">
+            <div class="jee-blueprint-head"><span class="jee-kicker">JEE LEARNING PATH</span><h3>Build a concept-first, exam-ready lesson</h3><p>Teach the reasoning before shortcuts. Every formula must be explained, every numerical must show its steps, and practice questions must be original unless a verified source is supplied.</p></div>
+            <div class="jee-settings-grid">
+              <div><label>Target exam</label><select [(ngModel)]="jeeTarget"><option value="BOTH">JEE Main + Advanced</option><option value="MAIN">JEE Main</option><option value="ADVANCED">JEE Advanced</option></select></div>
+              <div><label>Class / syllabus level</label><select [(ngModel)]="jeeClass"><option value="BOTH">Class 11 + 12 / combined</option><option value="CLASS_11">Class 11</option><option value="CLASS_12">Class 12</option><option value="FOUNDATION">Foundation / prerequisite revision</option></select></div>
+              <div><label>Explanation depth</label><select [(ngModel)]="jeeDepth"><option value="BALANCED">Concept + worked example</option><option value="INTUITION">Build intuition from basics</option><option value="DERIVATION">Derivation / proof focused</option><option value="PROBLEM_SOLVING">Problem-solving focused</option><option value="REVISION">Fast revision and formula connections</option></select></div>
+              <div><label>Practice level</label><select [(ngModel)]="jeeQuestionMode"><option value="MIXED">Conceptual + numerical / MCQ</option><option value="MAIN_STYLE">JEE Main-style practice</option><option value="ADVANCED_STYLE">JEE Advanced-style multi-step</option><option value="NUMERICAL">Numerical answer type</option><option value="CONCEPTUAL">Conceptual questions only</option></select></div>
+            </div>
+            <div class="jee-toggles"><label><input type="checkbox" [(ngModel)]="jeeFormulaRecap" /> Include formula / key-result recap with units and conditions</label><label><input type="checkbox" [(ngModel)]="jeeTrapCheck" /> Include common traps and a final checkpoint</label></div>
+            <div class="jee-sequence"><b>Required teaching sequence</b><ol><li>Hook + learning objective</li><li>Prerequisite / intuition</li><li>Core concept with a labelled diagram or equation</li><li>Derivation, formula meaning, units and conditions</li><li>One fully worked problem, step by step</li><li>Exam-style practice with explained answer</li><li>Common mistake / trap</li><li>Formula recap + takeaway</li></ol><small>Adapt this sequence to the topic and lesson length. Do not force a derivation or formula sheet when it is not relevant.</small></div>
+          </section>
           <div class="wide">
             <label>Topic</label>
             <input [(ngModel)]="topic" placeholder="e.g. Explain Java Variables" (keyup.enter)="generate()" />
@@ -283,7 +311,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
             <select [(ngModel)]="language" (ngModelChange)="onLanguageChange()">
               <option *ngFor="let l of languages">{{ l }}</option>
             </select>
-            <small class="sync-note">Only the voice uses this language. Everything on screen and the subtitles stay in English.</small>
+            <small class="sync-note">Choose the spoken language. On-screen text and subtitles follow the lesson's configured visual/text pipeline; verify rendered output for your selected language.</small>
           </div>
           <div>
             <label>Difficulty</label>
@@ -378,7 +406,7 @@ interface LessonSummary { id: string; title: string; duration: string; language:
         </div>
         <p class="err-inline" *ngIf="formError">{{ formError }}</p>
 
-        <div class="lessons" *ngIf="lessons.length">
+        <div id="lesson-library" class="lessons" *ngIf="lessons.length">
           <label>My lessons <span class="subtle">(kept for 24 hours)</span></label>
           <ul>
             <li *ngFor="let l of lessons">
@@ -557,12 +585,43 @@ interface LessonSummary { id: string; title: string; duration: string; language:
     .exam-toggle input{margin-top:.25rem;accent-color:#00ffd5}
     .exam-toggle span{display:flex;flex-direction:column;gap:.25rem}.exam-toggle small{opacity:.72;line-height:1.45}
     .sync-note{font-size:.8rem;opacity:.75;margin-top:.3rem}
+
+    .visual-intelligence{margin:1rem 0 1.4rem;padding:1.2rem;border:1px solid rgba(115,234,217,.22);background:linear-gradient(135deg,rgba(115,234,217,.045),rgba(179,160,255,.035))}.vi-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}.vi-heading h2{margin:.2rem 0 .35rem}.vi-heading p,.vi-goal p{color:var(--muted);margin:.25rem 0;line-height:1.5}.vi-status{border:1px solid rgba(115,234,217,.35);border-radius:999px;padding:.35rem .6rem;font-size:.68rem;color:#8ee9db;white-space:nowrap}.vi-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem;align-items:end;margin:1rem 0}.vi-controls label{grid-column:1/-1;font-size:.75rem;color:var(--muted)}.vi-controls input{min-width:0;width:100%;padding:.8rem;border-radius:9px;border:1px solid var(--border);background:rgba(0,0,0,.2);color:var(--text)}.vi-controls button{padding:.8rem 1rem;border-radius:9px;cursor:pointer}.vi-controls button:disabled{opacity:.5;cursor:not-allowed}.vi-error{color:#ffb1a9;font-size:.8rem;margin:.5rem 0}.vi-goal{padding:.9rem;border:1px solid var(--border);border-radius:10px;margin:.8rem 0}.vi-goal small,.vi-policy{color:var(--muted);font-size:.75rem;line-height:1.5}.vi-concept-graph{margin:.8rem 0}.vi-concept-graph h3{font-size:.95rem;margin:.8rem 0 .6rem}.vi-concept-nodes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5rem}.vi-concept-nodes article{border:1px solid var(--border);border-radius:9px;padding:.7rem;background:rgba(0,0,0,.12)}.vi-concept-nodes strong,.vi-concept-nodes small{display:block}.vi-concept-nodes small{font-size:.72rem;line-height:1.4;color:var(--muted);margin-top:.3rem}.vi-concept-graph ul{padding-left:1.1rem;color:var(--muted);font-size:.75rem;line-height:1.6}.vi-concept-graph li b{color:var(--text)}.vi-engine-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.6rem}.vi-engine,.vi-scenes article{border:1px solid var(--border);border-radius:10px;padding:.8rem;background:rgba(0,0,0,.12)}.vi-engine>div{display:flex;justify-content:space-between;gap:.5rem;align-items:center}.vi-engine>div span{font-size:.62rem;color:#8ee9db}.vi-engine>div .vi-unavailable{color:#f3c46b}.vi-engine>b{display:block;font-size:1.1rem;margin:.55rem 0}.vi-engine p,.vi-scenes p{font-size:.75rem;color:var(--muted);line-height:1.45;margin:.4rem 0 0}.vi-result h3{font-size:.95rem;margin:1rem 0 .6rem}.vi-scenes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.6rem}.vi-scenes article>span,.vi-scenes article>small{display:block;color:var(--muted);font-size:.68rem;margin-bottom:.4rem}.vi-scenes article>strong{display:block;text-transform:capitalize;margin-bottom:.35rem}.vi-policy{margin:.8rem 0 0}
+    /* Concept Studio redesign */
+    .concept-studio-page{max-width:1480px}
+    .studio-topbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.35rem 0 1.3rem;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:1.35rem}
+    .studio-brand{display:flex;align-items:center;gap:.8rem}.studio-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:15px;color:#071014;background:linear-gradient(135deg,#73ead9,#b3a0ff);font-size:1.35rem;box-shadow:0 8px 28px rgba(93,223,205,.18)}
+    .studio-kicker{display:block;font-size:.58rem;letter-spacing:.18em;color:var(--muted);font-weight:800;margin-bottom:.2rem}.studio-brand strong{font-size:1.05rem;letter-spacing:-.03em}
+    .studio-actions{display:flex;gap:.55rem;flex-wrap:wrap}.studio-actions button{border-radius:10px;padding:.7rem .95rem;font-weight:700;cursor:pointer}
+    .studio-ghost{background:rgba(255,255,255,.035);border:1px solid var(--border);color:var(--text)}.studio-primary{border:1px solid rgba(115,234,217,.38);background:linear-gradient(120deg,rgba(115,234,217,.17),rgba(179,160,255,.14));color:var(--text)}
+    .studio-intro{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr);gap:1.2rem;margin:1.3rem 0 1rem}
+    .studio-intro-copy{position:relative;overflow:hidden;border:1px solid rgba(115,234,217,.16);border-radius:22px;padding:clamp(1.4rem,3vw,2.6rem);background:radial-gradient(ellipse at 8% 5%,rgba(115,234,217,.11),transparent 45%),linear-gradient(135deg,#101c25,#11121c 65%,#171429);min-height:310px;display:flex;flex-direction:column;justify-content:center}
+    .studio-overline{font-size:.65rem;letter-spacing:.15em;font-weight:800;color:#8ee9db;display:flex;align-items:center;gap:.5rem}.pulse-dot{width:7px;height:7px;border-radius:50%;background:#73ead9;box-shadow:0 0 0 5px rgba(115,234,217,.1)}
+    .studio-intro-copy h1{font-size:clamp(2rem,4.2vw,3.65rem);line-height:1.02;letter-spacing:-.055em;max-width:780px;margin:1.05rem 0 .85rem}.studio-intro-copy h1 em{font-style:normal;background:linear-gradient(90deg,#7fe8d8,#c2a9ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .studio-intro-copy p{max-width:650px;line-height:1.7;color:#b9c5d0;font-size:.96rem;margin:0}.studio-promise{display:flex;gap:.55rem;flex-wrap:wrap;margin-top:1.5rem}.studio-promise span{font-size:.66rem;font-weight:800;letter-spacing:.04em;padding:.42rem .65rem;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#d6e3e6;background:rgba(255,255,255,.025)}
+    .studio-preview-card{border:1px solid rgba(255,255,255,.09);border-radius:22px;background:linear-gradient(160deg,#161825,#0d1119);padding:1.2rem;min-height:310px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden}
+    .preview-card-top{display:flex;justify-content:space-between;gap:.5rem;align-items:center;font-size:.6rem;font-weight:800;letter-spacing:.13em;color:#a5b3c5}.live-pill{border:1px solid rgba(115,234,217,.24);border-radius:20px;padding:.32rem .48rem;color:#91e9da;letter-spacing:.06em}.live-pill i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#73ead9;margin-right:.3rem}
+    .blueprint-visual{height:205px;position:relative;display:grid;place-items:center;isolation:isolate}.blueprint-orbit{position:absolute;border:1px solid rgba(115,234,217,.18);border-radius:50%;transform:rotate(-22deg)}.orbit-one{width:220px;height:145px}.orbit-two{width:280px;height:180px;transform:rotate(33deg);border-color:rgba(179,160,255,.2)}.blueprint-core{width:88px;height:88px;display:grid;place-items:center;border-radius:26px;background:linear-gradient(145deg,#263f4b,#25213c);border:1px solid rgba(115,234,217,.55);color:#a8fff0;font-weight:900;letter-spacing:.12em;box-shadow:0 0 45px rgba(115,234,217,.12);z-index:2}.blueprint-node{position:absolute;padding:.5rem .65rem;border-radius:9px;background:#1a202d;border:1px solid rgba(255,255,255,.12);font-size:.62rem;letter-spacing:.08em;font-weight:900;color:#dbe6f2;box-shadow:0 10px 25px rgba(0,0,0,.22)}.node-a{top:20px;left:18%}.node-b{right:12%;top:72px}.node-c{bottom:14px;left:36%;border-color:rgba(179,160,255,.35)}
+    .blueprint-footer{display:flex;justify-content:space-between;gap:.45rem;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,.08);padding-top:.85rem;font-size:.63rem;color:#9ba9b9}.blueprint-footer b{color:#73ead9;margin-right:.3rem}
+    .studio-workflow{display:flex;align-items:center;gap:.85rem;padding:1rem 1.2rem;margin-bottom:1.3rem;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:rgba(255,255,255,.02)}.workflow-step{display:flex;align-items:center;gap:.7rem;min-width:0}.workflow-step>span{display:grid;place-items:center;flex:0 0 auto;width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.06);color:#9daaba;font-size:.72rem;font-weight:900}.workflow-step.active>span{background:rgba(115,234,217,.15);border:1px solid rgba(115,234,217,.3);color:#8ff0e1}.workflow-step b{display:block;font-size:.77rem}.workflow-step small{display:block;color:var(--muted);font-size:.64rem;margin-top:.15rem}.workflow-line{height:1px;background:linear-gradient(90deg,rgba(115,234,217,.35),rgba(255,255,255,.07));flex:1;min-width:12px}
+    .legacy-hero{display:none}.studio-builder{scroll-margin-top:20px;border-radius:18px;border-color:rgba(255,255,255,.09);background:linear-gradient(150deg,rgba(255,255,255,.035),rgba(255,255,255,.012));padding:clamp(1rem,2vw,1.7rem)}.studio-builder .section-title h2{font-size:1.4rem;letter-spacing:-.035em}.studio-builder .section-title p{max-width:900px;line-height:1.65}
+    .studio-builder label{font-weight:700;font-size:.78rem;color:#d6dce6}.studio-builder input:not([type=checkbox]):not([type=file]),.studio-builder textarea,.studio-builder select{border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#11141c;color:var(--text);padding:.75rem .8rem;min-height:42px}.studio-builder textarea{line-height:1.6}.studio-builder input:focus,.studio-builder textarea:focus,.studio-builder select:focus{outline:2px solid rgba(115,234,217,.2);border-color:rgba(115,234,217,.5)}
+    .studio-builder .mode-card{min-height:112px}.studio-builder .mode-card.selected{border-color:#73ead9;background:linear-gradient(135deg,rgba(115,234,217,.11),rgba(179,160,255,.06))}.studio-builder .mode-icon{background:rgba(115,234,217,.07)}
+    .studio-builder .pre-box,.studio-builder .short-box{border-radius:14px;border-color:rgba(255,255,255,.1);background:rgba(5,8,14,.42)}.studio-builder .form-footer{position:sticky;bottom:1rem;z-index:5;padding:.8rem;border:1px solid rgba(115,234,217,.18);border-radius:14px;background:rgba(13,17,25,.94);backdrop-filter:blur(16px)}
+    #lesson-library{scroll-margin-top:24px}
+    .jee-blueprint{padding:1.1rem;border:1px solid rgba(115,234,217,.25);border-radius:16px;background:linear-gradient(145deg,rgba(115,234,217,.07),rgba(120,100,255,.045))}.jee-blueprint-head{margin-bottom:1rem}.jee-kicker{font-size:.68rem;letter-spacing:.14em;font-weight:900;color:#73ead9}.jee-blueprint h3{margin:.35rem 0;font-size:1.12rem}.jee-blueprint p,.jee-blueprint small{color:var(--muted);line-height:1.55}.jee-settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}.jee-settings-grid label{display:block;margin-bottom:.3rem}.jee-toggles{display:flex;gap:1rem;flex-wrap:wrap;margin:1rem 0}.jee-toggles label{display:flex;align-items:center;gap:.45rem;font-weight:500}.jee-sequence{padding:.85rem;border-radius:12px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08)}.jee-sequence b{font-size:.85rem}.jee-sequence ol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem .9rem;padding-left:1.25rem;margin:.65rem 0}.jee-sequence li{font-size:.8rem;line-height:1.45}.jee-sequence small{display:block;margin-top:.5rem}
+    @media(max-width:1050px){.studio-intro{grid-template-columns:1fr}.studio-preview-card{min-height:270px}.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:680px){.jee-settings-grid,.jee-sequence ol{grid-template-columns:1fr}.studio-topbar{align-items:flex-start;flex-direction:column}.studio-intro-copy{min-height:0}.studio-workflow{align-items:flex-start;flex-direction:column}.workflow-line{width:1px;height:12px;flex:none;margin-left:16px}.form-grid,.mode-grid{grid-template-columns:1fr}.studio-actions{width:100%}.studio-actions button{flex:1}.studio-promise{gap:.35rem}.blueprint-footer{justify-content:flex-start}}
 `]
 })
 export class ConceptExplainerComponent implements OnInit, OnDestroy {
   private base = environment.apiBaseUrl;
   private poll?: Subscription;
   readonly languages = ['English', 'Indian English', 'Kannada', 'Hindi', 'Hinglish', 'Telugu', 'Tamil', 'Malayalam', 'Marathi', 'Bengali', 'Gujarati', 'Punjabi', 'Odia'];
+  isConceptStudio = false;
+  visualPlanLoading = false;
+  visualPlanError = '';
+  visualPlan: any = null;
   topic = '';
   instructions = '';
   duration = '1 minute';
@@ -571,6 +630,12 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
   track = 'TECHNOLOGY';
   subject = 'Java / Programming';
   examFocus = false;
+  jeeTarget = 'BOTH';
+  jeeClass = 'BOTH';
+  jeeDepth = 'BALANCED';
+  jeeQuestionMode = 'MIXED';
+  jeeFormulaRecap = true;
+  jeeTrapCheck = true;
   teachingStyle = 'ENGAGING_TECH_TUTOR';
   destination = 'SOCIAL';
   motion = 'REVEAL';
@@ -649,6 +714,21 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
 
   constructor(private http: HttpClient, private route: ActivatedRoute, private router: Router) {}
 
+  conceptNodeLabel(plan: any, id: string): string {
+    return plan?.conceptGraph?.nodes?.find((node: any) => node.id === id)?.label || id;
+  }
+
+  previewVisualPlan(): void {
+    if (!this.topic.trim()) return;
+    this.visualPlanLoading = true; this.visualPlanError = ''; this.visualPlan = null;
+    this.http.post<any>(`${this.base}/concept-explainer/visual-intelligence/plan`, {
+      topic: this.topic.trim(), audience: this.difficulty, subject: this.subject || this.track, duration: this.duration, complexity: 'balanced'
+    }).subscribe({
+      next: result => { this.visualPlan = result; this.visualPlanLoading = false; },
+      error: error => { this.visualPlanLoading = false; this.visualPlanError = error?.error?.error || 'Could not build the visual plan. Check that the backend is running.'; }
+    });
+  }
+
   edgeForLanguage(): { id: string; label: string }[] {
     const english = ['English', 'Indian English'].includes(this.language);
     const code = english ? 'en' : ConceptExplainerComponent.LANG_CODE[this.language];
@@ -690,6 +770,7 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    this.isConceptStudio = this.router.url.startsWith('/concept-studio');
     this.http.get<{ available: boolean }>(`${this.base}/concept-explainer/manim/status`).subscribe({
       next: r => { this.manimAvailable = !!r?.available; this.manimChecked = true; },
       error: () => { this.manimAvailable = false; this.manimChecked = true; }
@@ -758,7 +839,7 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
     });
     input.value = '';
   }
-  audience = ''; outcome = ''; tone = ''; dVar = 'HIGH'; dMotion = 'MID'; dDensity = 'MID'; reviewScript = false;
+  audience = ''; outcome = ''; tone = ''; dVar = 'HIGH'; dMotion = 'HIGH'; dDensity = 'MID'; reviewScript = true;
   concepts: any[] = []; concept: any = null; conceptTopic = ''; conceptsBusy = false; conceptsError = '';
   reviewBusy = false;
 
@@ -851,12 +932,34 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
 
   onRiveAssetUploaded(assetPath: string): void { this.selectedRiveAssetPath = assetPath; }
 
+  private buildGenerationInstructions(): string {
+    const base = (this.instructions || '').trim();
+    if (this.track !== 'JEE') return base;
+    const subjectGuidance = this.subject === 'Physics'
+      ? 'Physics structure: physical intuition -> labelled setup/free-body or circuit/ray/field diagram when relevant -> law and assumptions -> derive or interpret the equation -> units/dimensions and limiting cases -> worked numerical with substitutions -> exam practice.'
+      : this.subject === 'Mathematics'
+        ? 'Mathematics structure: define the objects and constraints -> explain the idea visually or algebraically -> derive the identity/result where useful -> show a fully worked solution with each transformation justified -> discuss valid shortcuts only after the reasoning -> exam practice.'
+        : 'Chemistry structure: identify the relevant particle-level/model intuition -> explain the governing principle, equation, structure or mechanism -> state assumptions/conditions and units where relevant -> worked application/calculation -> exam practice.';
+    const examLabel = this.jeeTarget === 'MAIN' ? 'JEE Main' : this.jeeTarget === 'ADVANCED' ? 'JEE Advanced' : 'both JEE Main and JEE Advanced, clearly distinguishing difficulty';
+    const classLabel = ({ CLASS_11: 'Class 11', CLASS_12: 'Class 12', FOUNDATION: 'foundation/prerequisite revision', BOTH: 'combined Class 11/Class 12 level' } as Record<string, string>)[this.jeeClass] || 'combined Class 11/Class 12 level';
+    const depthLabel = ({ INTUITION: 'build intuition from first principles', DERIVATION: 'prioritise derivation/proof and assumptions', PROBLEM_SOLVING: 'prioritise problem-solving strategy and worked examples', REVISION: 'fast revision, links between formulas, and high-yield misconceptions', BALANCED: 'balance intuition, explanation, and worked examples' } as Record<string, string>)[this.jeeDepth] || 'balance intuition, explanation, and worked examples';
+    const practiceLabel = ({ MAIN_STYLE: 'one original JEE Main-style question', ADVANCED_STYLE: 'one original JEE Advanced-style multi-step question', NUMERICAL: 'one original numerical-answer question', CONCEPTUAL: 'one conceptual check question', MIXED: 'one conceptual question and one numerical/MCQ-style question when duration permits' } as Record<string, string>)[this.jeeQuestionMode] || 'a balanced exam-style question';
+    return [base, 'JEE LESSON DESIGN (required):',
+      `Target: ${examLabel}. Syllabus level: ${classLabel}. Explanation approach: ${depthLabel}.`, subjectGuidance,
+      'Narration and scene order: (1) state the exact learning objective and a curiosity hook; (2) briefly check prerequisites; (3) build intuition before formal notation; (4) teach the core concept with a readable labelled diagram/equation and reveal parts in narration order; (5) derive or justify the key result when relevant, explaining symbols, units, assumptions and validity conditions; (6) solve one representative problem step by step, showing why each step is chosen; (7) present '+practiceLabel+' and explain the reasoning after a short thinking pause; (8) call out a common misconception or tempting wrong approach; (9) end with the key result/formula and when it applies.',
+      'Accuracy rules: use standard NCERT/JEE terminology; do not invent syllabus coverage, formulas, derivations, answer keys, or previous-year-question claims. Practice questions must be labelled original JEE-style questions unless a verified source/reference was explicitly supplied. State assumptions and sign conventions. Check arithmetic, dimensions/units and the final answer. Do not teach shortcuts that work only for an unstated condition.',
+      `Formula/key-result recap: ${this.jeeFormulaRecap ? 'include when relevant, with symbols, units and conditions' : 'omit a separate formula sheet unless essential to understanding'}.`,
+      `Common-trap/final-checkpoint: ${this.jeeTrapCheck ? 'include one topic-relevant trap and a solved checkpoint' : 'do not force a separate trap or quiz'}.`,
+      'Visual rules: use clean board-style equations, labelled physics diagrams/graphs, mathematical transformations, or chemistry particle/mechanism diagrams as appropriate. Highlight only the currently discussed step. Avoid decorative visuals that do not teach.'
+    ].filter(Boolean).join('\n');
+  }
+
   generate(): void {
     if (!this.topic.trim() || this.loading) return;
     this.loading = true;
     this.formError = '';
     this.http.post<{ jobId: string }>(`${this.base}/concept-explainer/jobs`, {
-      topic: this.topic.trim(), instructions: this.instructions, language: this.language,
+      topic: this.topic.trim(), instructions: this.buildGenerationInstructions(), language: this.language,
       duration: this.duration, difficulty: this.difficulty, motion: this.motion, model: this.model, voice: this.voice, style: this.style,
       track: this.track, subject: this.subject, examFocus: this.examFocus,
       teachingStyle: this.teachingStyle, destination: this.destination, format: this.format,
@@ -908,6 +1011,10 @@ export class ConceptExplainerComponent implements OnInit, OnDestroy {
       next: () => { if (this.job) { this.job.status = 'REGENERATING'; } this.open(id); },
       error: e => { this.busyScene = null; this.busyKind = ''; this.formError = e?.error?.message || 'Could not regenerate this scene.'; }
     });
+  }
+
+  scrollToSection(id: string): void {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   trackScene(_: number, scene: ExplainerScene): number { return scene.sceneNumber; }

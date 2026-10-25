@@ -18,6 +18,77 @@ public final class TutorialPrompts {
 
     private TutorialPrompts() { }
 
+    // ------------------------------------------------------------------ education formats: Shorts, full lessons, JEE/NEET, tutoring and kids
+
+    /**
+     * Research-informed teaching and packaging rules. This is deliberately prompt-only so existing
+     * request/response JSON contracts remain stable. It asks the model to infer a suitable format
+     * from the topic/audience and never claims that a format guarantees reach.
+     */
+    private static final String EDUCATION_CONTENT_PLAYBOOK = """
+            EDUCATIONAL VIDEO PLAYBOOK (select the relevant lane; never force one template onto every subject):
+            AUDIENCE LANES:
+            - JEE / NEET / board-exam preparation: explicitly name the concept and prerequisite; identify the exact learning objective; use a visual intuition first,
+              then the correct rule/formula, a fully worked exam-style question, a common trap, and a short retrieval question. For JEE maths/physics/chemistry,
+              show derivation or reasoning and units/assumptions where relevant. For NEET biology, use labelled anatomy/cell/process diagrams and correct sequence;
+              for NEET chemistry/physics, use worked calculations and conceptual checks. Do not fabricate PYQs, exam trends, marks weightage, cut-offs or official claims.
+              Label a question as PYQ only when the source/year/shift is verified; otherwise label it original practice inspired by the syllabus. Verify the applicable
+              exam year and syllabus against the official exam authority when sources are available. If not verified, flag syllabus alignment as needing review.
+            - School tutor / explain-to-a-beginner: begin with a familiar object or question, build a concrete mental model, reveal one idea at a time, check understanding,
+              and finish with a tiny practice question plus answer/explanation. Avoid unexplained jargon and childish delivery for older learners.
+            - Younger children: use age-appropriate vocabulary, one objective per video, a friendly recurring guide, counting/choice/prediction, visible cause-and-effect,
+              repetition only when it reinforces memory, and warm encouragement. Do not use fear, shame, manipulative urgency, unsafe experiments, or pressure to comment,
+              share, subscribe or disclose personal information. Do not automatically label content "made for kids"; audience designation needs a human/platform-policy decision.
+            - General educational YouTube long-form: answer the title promise early, show a roadmap only if it helps, teach in chapters that each resolve a learner question,
+              include a complete worked example or demonstration, recap the mental model, and offer a natural next lesson. Depth and completeness matter more than forcing
+              a short-form pace across a long video. Avoid filler, artificial suspense and repetitive summaries.
+            - Short-form discovery (Reels / Shorts): one question, misconception, experiment, or exam trap per video. Put the actual problem/result in the opening frame,
+              show evidence or the first step early, change the visual when the reasoning changes, and resolve the question before the ending. The viewer should learn something
+              useful even without watching a follow-up. If the topic needs multiple steps, make a short that teaches one slice and link conceptually to a deeper lesson.
+            NARRATION & LEARNING DESIGN:
+            - Teach the mechanism, not just facts: claim/question -> intuitive model -> visible demonstration -> accurate explanation -> worked example -> limitation/mistake -> retrieval check.
+            - Use prediction pauses sparingly: ask the learner to predict, leave enough time to think, then reveal and explain why. Never withhold a simple answer solely to inflate retention.
+            - For numerical problems, keep units, signs, significant assumptions and arithmetic consistent; show each meaningful transformation and verify the final answer.
+              For biology, distinguish simplification from literal mechanism. For chemistry, balance equations and check charge/atoms where applicable. For code, show valid runnable snippets and expected output.
+            - Every 20-40 seconds in long lessons (or every few beats in short lessons), change the teaching mode when helpful: picture -> diagram -> worked example -> question.
+              This is a pacing heuristic, not a mandatory timer. Do not add motion or jokes during a difficult derivation if they harm comprehension.
+            - Prefer a small number of legible labels and a strong focal visual. Render equations, code, graph axes, legends, molecular bonds, anatomical labels and numerical answers
+              with deterministic tools; never rely on an image model to spell or calculate them. Generated artwork is atmosphere/context, not the source of scientific truth.
+            - Use analogy as a bridge, then explicitly map its limits to the real concept. Do not let a catchy analogy teach a false mechanism.
+            - Use retrieval practice: one short question with a pause and a worked answer, or one misconception check. For exam videos, include a difficulty-appropriate practice item.
+            - Build a content series around learner journeys (prerequisites -> core concept -> worked examples -> common traps -> mixed practice), but each upload must deliver
+              a complete useful payoff on its own. Cross-link to a longer explanation only after resolving the short's promise.
+            TREND & TRUST RULES:
+            - Distinguish stable demand (foundational syllabus topics) from time-sensitive demand (new syllabus, official notice, exam date, current event, newly trending meme/audio).
+              Do not call something "trending now" unless a current source or platform trend signal has actually been checked. Record source/date for time-sensitive claims.
+            - Use trend formats only when they fit the lesson: POV, prediction/reveal, myth-vs-fact, common exam mistake, visual experiment, everyday-life connection, challenge question,
+              or a before/after. Do not force unrelated trending sounds, politics, memes or clickbait into an educational topic.
+            - Originality: create original narration, examples, diagrams and visual sequencing. Do not clone a creator's distinctive script/style or republish others' clips with superficial edits.
+            - Optimize for viewer value and satisfaction, not a guessed algorithm: a clear promise, early payoff, comprehensible pacing, visual proof, accurate content and a reason to save/share.
+              No format, posting cadence, hashtag set or hook guarantees virality. Recommend testing alternative hooks and measuring the actual audience response.
+            """;
+
+    private static String educationLane(String topic, String difficulty, String audience, String duration, String instructions) {
+        String text = ((topic == null ? "" : topic) + " " + (difficulty == null ? "" : difficulty) + " "
+                + (audience == null ? "" : audience) + " " + (duration == null ? "" : duration) + " "
+                + (instructions == null ? "" : instructions)).toLowerCase(Locale.ROOT);
+        String lane;
+        if (text.matches("(?s).*(\\bjee\\b|neet|iit|medical entrance|engineering entrance|pyq|exam prep|board exam|syllabus).*")) {
+            lane = "EXAM PREPARATION LANE: prioritize syllabus-linked conceptual understanding, correct worked problems, common traps, retrieval practice and verified source/year labels. "
+                    + "Never fabricate PYQs or claim predicted questions/weightage without evidence.";
+        } else if (text.matches("(?s).*(\\bkids?\\b|children|toddler|preschool|ages? 2|ages? 3|ages? 4|ages? 5|primary school).*")) {
+            lane = "CHILD-FOCUSED LANE: infer the stated age range; use age-appropriate words, one objective, a safe visible demonstration, a friendly guide and non-coercive encouragement. "
+                    + "Do not ask children to disclose personal information or pressure engagement. Flag that platform audience designation needs a separate human decision.";
+        } else if (text.matches("(?s).*(\\btutor\\b|school|class [1-9]|grade|beginner|teach me|explain to).*")) {
+            lane = "TUTOR LANE: explain in small steps, check prerequisites, show a concrete example, ask one retrieval question and explain the answer.";
+        } else if (text.matches("(?s).*(full lesson|long-form|10 minute|10-minute|15 minute|lecture|deep dive).*")) {
+            lane = "LONG-FORM LESSON LANE: build chapter-like sections around learner questions, show a complete worked example, recap the model and recommend a logical next lesson without filler.";
+        } else {
+            lane = "GENERAL EDUCATION LANE: choose the teaching structure best suited to the subject; do not assume every topic needs jokes, an analogy or a dramatic reveal.";
+        }
+        return EDUCATION_CONTENT_PLAYBOOK + "\n\nSELECTED LANE FOR THIS REQUEST:\n" + lane;
+    }
+
     // ------------------------------------------------------------------ variety (every format)
 
     /** Teaching devices every format can use; each one carries a different kind of idea. */
@@ -136,7 +207,8 @@ public final class TutorialPrompts {
               lesson into the same calm-instructor voice. If no track is supplied, use a calm, confident senior instructor talking to ONE learner.
               Conversational, never salesy or shouty. No emojis in spoken narration. Start the first scene straight with the hook.
             - Plain words. Mix the rhythm like a person talking: short beats of 3-6 words ("Here's the catch.", "Not quite.") between sentences of
-              10-20 words; never more than three long sentences in a row. Every technical term is explained in simple words the first time it appears.
+              8-16 words; never more than two long sentences in a row.
+            - INSTRUCTIONAL PACING: target 125-140 spoken words per minute. For Hinglish and scenes teaching maths/code, prefer the slower end. Keep a short pause after a new term, after each worked-example operation, and before the answer to a question. If the script will not fit, remove repetition or reduce scope; never make the voice race to fit the timeline. Every technical term is explained in simple words the first time it appears.
             - In Hindi / Indic narration write every number, year and amount as words in that language (for example "पचास रुपये", "सन अठारह सौ पैंसठ"):
               the voice reads digits and symbols with English rules. On-screen text stays in English for every narration language.
             - Write for the EAR, not the page: use contractions (it's, don't, you'll), speak to "you", and keep symbols and code out of the narration
@@ -274,7 +346,7 @@ public final class TutorialPrompts {
 
     public static String outlineSystemPrompt() {
         return "You are the lead instructor and course designer of a top technical training platform. You design ONE video lesson in the\n"
-                + "exact style described below. Plan only; narration is written later.\n\n" + VOICE + "\n" + SCREEN + "\n" + DEVICES + """
+                + "exact style described below. Plan only; narration is written later.\n\n" + VOICE + "\n" + SCREEN + "\n" + DEVICES + "\n\n" + EDUCATION_CONTENT_PLAYBOOK + """
 
                 Return JSON only:
                 {"title": "lesson title",
@@ -302,6 +374,7 @@ public final class TutorialPrompts {
         sb.append("Topic: ").append(topic);
         sb.append("\n").append(languageRule(language));
         sb.append("\nLearner level: ").append(difficulty);
+        sb.append("\n\n").append(educationLane(topic, difficulty, null, size.maxWords() >= 1400 ? "full lesson" : size.maxWords() >= 400 ? "3-minute lesson" : "short lesson", instructions));
         sb.append("\nScenes: ").append(size.minScenes()).append("-").append(size.maxScenes());
         sb.append(" | Total narration: ").append(size.minWords()).append("-").append(size.maxWords()).append(" words (about 160 words per minute).");
         if (size.maxScenes() >= 30) {
@@ -311,8 +384,26 @@ public final class TutorialPrompts {
         }
         if (instructions != null && !instructions.isBlank()) sb.append("\nUser instructions: ").append(instructions);
         if (trackNotes != null && !trackNotes.isBlank()) sb.append("\n").append(trackNotes);
-        sb.append("\nThe first scene is HOOK (what we will understand and why it matters, starting from something the learner already "
-                + "knows). The last scene is RECAP.");
+        sb.append("\n\nDISCOVERY + LEARNING DESIGN (platform-aware, not algorithm gaming):")
+          .append("\n- First scene: show the central question, surprising true result, common mistake or recognizable pain immediately; no logo intro or generic greeting.")
+          .append("\n- First payoff: demonstrate something concrete early, then explain why it works. Keep curiosity open with useful progress, not artificial delay.")
+          .append("\n- Use one coherent running example and a visible change per scene. Cut repetition, filler, generic transitions and unrelated visuals.")
+          .append("\n- ENGINE-AWARE VISUAL PLAN: choose a device that activates an existing renderer. JEE/NEET maths/physics: forces, wave, lens, triangle, numberline, formula or plot; chemistry: atom, molecule, reaction, periodic or energy; biology: labelled diagrams/pins and 3D only where spatial structure matters; programming/system design: sequence, flowchart, datastruct, layers, lanes, steps or code.")
+          .append("\n- Use Manim only when motion is the explanation (projectile trajectory, vector addition, wave, function plot, geometry or equation steps). The service validates templates and parameters; do not invent unsupported template names or numbers.")
+          .append("\n- Use Three.js only when real spatial depth improves understanding (orbit, molecule, crystal, layers, stack, axes or parallel lanes); give meaningful object labels. Use Motion Canvas for ordered reveals, arrows, process flow, formula/chart/quiz/forces/cycle/diagram animation when available. Native diagrams remain the precise fallback.")
+          .append("\n- Vary engines across a lesson: a few high-value Manim/3D scenes, Motion Canvas for mechanisms, native diagrams for supporting explanations. Never add motion merely as decoration.")
+          .append("\n- Add a memorable takeaway or compact comparison that is useful enough to save or send; never force a share/like request.")
+          .append("\n- For social versions, produce a standalone explanation with mobile-safe composition and captions. For long-form versions, use deeper setup, evidence, trade-offs and a complete worked example.")
+          .append("\n- End by answering the opening question. Only include a CTA if the publishing objective requests one, and place it after the value is delivered.")
+          .append("\n\nREQUIRED NARRATION ARC (adapt wording to the topic, but preserve this learning logic):")
+          .append("\n1. WHAT IT IS: define the topic in plain language and anchor it with a concrete analogy or situation.")
+          .append("\n2. CURRENT PROBLEM: show the real limitation, pain point, failure, or unanswered question that makes the topic necessary.")
+          .append("\n3. WHAT IT SOLVES: state the specific outcome and benefit; be honest about what it does not solve.")
+          .append("\n4. HOW IT SOLVES IT: explain the mechanism causally, in small steps; connect each component to the problem it addresses.")
+          .append("\n5. IMPLEMENTATION EXAMPLE: work through one coherent end-to-end example with concrete inputs/actions/results. For programming, use valid code, explain key lines, and state expected output. For non-code topics, use a practical worked example.")
+          .append("\n6. CONCLUSION: recap the problem-to-solution chain, when to use the idea, one limitation or common mistake, and a memorable takeaway.")
+          .append("\nThese are semantic sections, not six mandatory title cards. Combine or split scenes according to lesson length, but do not omit any relevant stage or repeat the same explanation.")
+          .append("\nThe first scene must begin with the topic or its central problem; no greeting or generic 'today we will learn' filler. The last scene is a concise conclusion/recap.");
         return sb.toString();
     }
 
@@ -327,6 +418,9 @@ public final class TutorialPrompts {
                 - Something new appears on (almost) every sentence; the scene's first sentence has its context already on screen (at 0).
                 - Reuse ids from the cast and previous scenes for the same thing; list the ones that stay in "keep".
                 - Only write the scenes asked for, in order.
+                - Preserve the outline's concrete science/math device instead of replacing it with generic cards: forces, wave, lens, triangle, numberline, formula, plot, atom, molecule, reaction, periodic, energy, pins, sequence, flowchart, datastruct, layers or lanes as appropriate.
+                - Ordered movement should be represented with steps/sequence/flowchart or tile+arrow elements so the existing Motion Canvas router can animate progression. Keep explicit 3D cues and real labels for spatial topics so Three.js can select its matching template.
+                - Physics/maths scenes may receive a validated Manim spec after narration drafting. Keep equations, code, numbers and graph data accurate and never rely on generated image text for them.
                 Return JSON only: {"scenes": [ ...scene JSON... ]}
                 """;
     }
@@ -339,6 +433,7 @@ public final class TutorialPrompts {
         sb.append("\nEach outlined scene names its main visual \"device\" - build that scene around exactly that device.");
         sb.append("\n\nWrite scenes ").append(from).append(" to ").append(to).append(" (1-based) now, about ")
                 .append(wordsForBatch).append(" spoken words in total for these scenes.");
+        sb.append("\nNARRATION STRUCTURE: preserve this causal teaching arc across the full lesson: (1) what the topic is, (2) the current problem, (3) what it solves, (4) how it solves it, (5) one coherent implementation/worked example, (6) conclusion with use guidance and a common pitfall. The outline may merge adjacent stages, but do not skip a relevant stage. Each narration sentence must add a new explanation or move the example forward. In the implementation section, explain the key steps and expected result rather than merely reading code aloud.");
         if (previousScene != null && !previousScene.isBlank()) {
             sb.append("\nElements on screen at the end of the previous scene (reuse ids, keep what still matters):\n").append(previousScene);
         }
@@ -350,24 +445,32 @@ public final class TutorialPrompts {
 
     // ================================================================== 60-second short (vertical reel)
 
-    /** 60 s at ~140 wpm: title card + 5-7 teaching scenes + outro. */
-    /** Measured on a real reel: 197 words ran 86 s (about 0.43 s per word with pauses, title and outro), so 60 s is about 125-145 words. */
-    public static Size shortSize() { return new Size(8, 10, 125, 145); }
+    /** Target a calm 60-second explainer: fewer words leave time for examples and visual comprehension. */
+    /** Measured narration must be checked after TTS; text word count alone is not a duration guarantee. */
+    public static Size shortSize() { return new Size(7, 9, 105, 125); }
 
     public static final String SHORT_TAGLINE = "Follow the page to learn one concept a day.";
 
     private static final String SHORT_VOICE = """
-            NARRATION (a 60-second vertical explainer reel, 125-145 words in total - about 60 seconds including the pauses; more words make the reel run past 80 seconds):
-            - Open with the question people actually ask ("Docker container vs VM?", "How does an AI model actually learn?").
-              Then answer it with ONE concrete, tiny example that is built up on screen ("Ten houses. Their size, and their price.").
-            - Short spoken sentences of 4-14 words. Fragments are fine. No greeting, no "in this video", no hype, no emojis.
-            - Use real numbers the viewer can see: values, sizes, counts, before -> after ("600 megabytes versus 30").
+            NARRATION (a 60-second vertical explainer reel, target 105-125 words in total. Use a calm, understandable pace and leave time for pauses and visual comprehension; word count alone does not determine final duration):
+            - DESIGN FOR VIEWER CHOICE AND RETENTION, not a mythical universal algorithm: the first frame and first spoken line must make the topic and payoff instantly legible.
+              Open on a specific curiosity, misconception, visible result, surprising-but-true contrast, or a familiar pain point. Avoid generic greetings, clickbait and unsupported superlatives.
+              The first 1-2 seconds must start the explanation, not announce that an explanation is coming. Then answer with ONE concrete, tiny example built up on screen.
+            - Create a clean curiosity loop: pose one precise question -> reveal useful evidence in stages -> resolve the opening question before the ending.
+              Every scene must add new information, a visible state change, a mini-reveal or a practical consequence. Remove any sentence that only repeats the heading.
+            - Short spoken sentences of 4-12 words. Fragments are fine, but do not compress explanations into cryptic fragments. No greeting, no "in this video", no hype, no emojis.
+            - PACE IS A QUALITY REQUIREMENT: target about 125-140 spoken words per minute for instructional narration, slower for formulas, unfamiliar terms, code walkthroughs and multilingual Hinglish. Never solve a duration problem by rushing speech. Cut redundant words first.
+            - After a key definition, formula, code operation or state change, leave a brief visual hold so a beginner can inspect the result. Avoid cramming two new concepts into one sentence or scene.
+            - Use real numbers the viewer can see: values, sizes, counts, before -> after ("600 megabytes versus 30"). Verify factual claims and calculations; label illustrative numbers as examples and never fabricate statistics or results.
+            - BUILD A SHAREABLE PAYOFF: include one concise, useful insight a viewer would send to a friend/classmate/colleague, such as a misconception corrected, a practical shortcut, a memorable analogy or a worked result. It must arise naturally from the topic, not a forced "share this" request.
+            - Make it understandable with sound off: accurate, concise captions and short on-screen phrases; keep key text inside mobile-safe areas and clear of platform UI/caption zones. Use high contrast and readable text, not tiny paragraphs.
+            - Optimize for original value: use original narration, explanation, examples and visual choices. Do not imitate a creator verbatim, rely on copied clips, or treat trending audio/hashtags as a substitute for a good explanation.
             - One idea per scene, in this order: the question -> the setup/example -> how it works (2-4 scenes, each one
               step) -> the key difference or the payoff with a number -> one sentence that names the concept ("That loop is
               gradient descent.") -> scale it up to the real world in one line.
             - Narrator personality and emotional delivery follow the selected NARRATION TRACK in the user prompt. Keep the short-form pace clear and intelligible,
               around 140-155 words per minute, and follow the selected narrator voice's gender and language; never force a male persona when a different voice is selected.
-            - The final scene says "Follow the page to learn one concept a day." (in the narration language; English caption exactly that).
+            - Finish the explanation first: resolve the opening question and deliver the promised payoff. A CTA is optional and must be brief, topic-relevant, and only used when the selected publishing goal asks for it; never sacrifice the answer for a generic subscribe/follow line.
             - COMPLETENESS (the viewer must get it in one watch, never half-baked): say in plain words WHAT the concept is, show HOW it
               works step by step on the example (cause -> effect), show WHY it matters with a concrete before/after, NAME it, and give one
               real-world place it is used. Every technical word is explained the moment it appears.
@@ -375,8 +478,7 @@ public final class TutorialPrompts {
 
     private static final String SHORT_SCREEN = """
             ON SCREEN (vertical 1080x1920, near-black, minimal monochrome UI + a few colour accents):
-            - Scene 1: ONE "titlecard" element: title = small topic tag (e.g. "Machine learning"), text = the concept name (2-4 words,
-              drawn big in green), content = a 3-6 word subtitle ("how AI models learn"), style = "Learn one concept a day".
+            - Scene 1: start with a legible visual hook, not a branding intro. If a titlecard is required by the renderer, its title and subtitle must themselves pose the question, reveal the contrast or promise a concrete result; branding stays secondary.
             - Teaching scenes: a small mono "label" like "02 · the hypervisor" and a short "heading" (2-6 words, the scene's claim).
             - Use: node (wireframe cube + name + mono sub-label), button (a wide dark bar such as "hypervisor" or "host kernel"),
               (for health / body / biology / everyday topics use matching icons on nodes and tiles - ear, heart, pill, virus, money,
@@ -389,7 +491,7 @@ public final class TutorialPrompts {
               by arrows, values that change, a before/after side by side. Use the full width (x 15-85) and height (y 20-70).
               Every element carries real information from the narration. NO decoration: no chips/tabs/plots/numbers that are not
               explained; a plot only with real meaningful data points; never a lone element in an empty frame.
-            - Last scene: ONE "outro" element, text = "Follow the page to learn one concept a day.", title = "Follow".
+            - Last teaching scene resolves the hook with a concrete answer/result. If the renderer requires an outro element, keep it visually subordinate and do not let it replace the lesson payoff.
             """;
 
     private static final String SHORT_SCHEMA = """
@@ -413,7 +515,7 @@ public final class TutorialPrompts {
 
     public static String shortOutlineSystemPrompt() {
         return "You design 60-second vertical explainer reels that teach one concept so clearly a beginner gets it in one watch.\n\n"
-                + SHORT_VOICE + "\n" + SHORT_SCREEN + "\n" + DEVICES + """
+                + SHORT_VOICE + "\n" + SHORT_SCREEN + "\n" + DEVICES + "\n\n" + EDUCATION_CONTENT_PLAYBOOK + """
 
                 Return JSON only:
                 {"title":"concept name","summary":"one sentence","hook":"the opening question",
@@ -432,6 +534,7 @@ public final class TutorialPrompts {
         if (approach != null) sb.append("Teaching approach for THIS reel: ").append(approach).append("\n");
         sb.append(variety(4)).append("\n");
         sb.append("Topic: ").append(topic).append("\n").append(languageRule(language)).append("\nLearner level: ").append(difficulty);
+        sb.append("\n\n").append(educationLane(topic, difficulty, null, "short-form", instructions));
         sb.append("\nScenes: ").append(size.minScenes()).append("-").append(size.maxScenes()).append(" including the title card and the outro")
                 .append(" | Total narration: ").append(size.minWords()).append("-").append(size.maxWords()).append(" words (60 seconds).");
         if (instructions != null && !instructions.isBlank()) sb.append("\nUser instructions: ").append(instructions);
@@ -570,6 +673,7 @@ public final class TutorialPrompts {
         int[] a = arcSeconds(Math.max(30, totalSeconds));
         return """
                 STORY CRAFT - how this video holds attention (follow these on top of everything above):
+                EDUCATION ADDENDUM: match the explanation to the learner and format. For exam prep, show the question, knowns, rule, each calculation, units, final check and a common trap. For biology, use correctly labelled structures and process arrows. For chemistry, balance equations and show molecular/particle changes accurately. For younger learners, use one safe, concrete discovery and age-appropriate language. For long-form, answer the title promise early, then deepen understanding through coherent chapters and worked examples; do not use short-form pacing as a substitute for depth. Every scene should add a new concept, evidence, example or meaningful visual transformation.
                 1. SHAPE: hook, tension, core, proof, close. Time plan for about %d s: hook %d s, tension %d s, core %d s, proof %d s, close %d s.
                 2. HOOK in the first seconds. Pick the type that fits the topic: contrarian ("what you were told about X is wrong"), outcome
                    ("by the end you will be able to ..."), mystery (a strange fact or event) or stakes ("this one mistake costs people ...").
@@ -631,23 +735,47 @@ public final class TutorialPrompts {
 
     public static String conceptsSystemPrompt() {
         return """
-                You are a creative director pitching video concepts to a creator before anything is made.
+                You are a research-informed creative director pitching video concepts to a creator before anything is made.
                 Pitch exactly 3 concepts for the topic. They must be genuinely different from each other (different hook type AND different
                 angle), not three versions of the same idea. Every premise must be true and checkable; do not invent statistics.
+
+                """ + EDUCATION_CONTENT_PLAYBOOK + """
+
+                PLATFORM-AWARE EDITORIAL RULES (apply to concept choice, not as a promise of virality):
+                - Design for Instagram Reels and YouTube Shorts first unless the user names another destination. Neither platform has a single guaranteed viral formula; recommendations are personalized and outcomes depend on audience, competition, topic demand and viewer response.
+                - Choose an audience-specific problem or curiosity with broad entry appeal. Translate jargon into a familiar consequence, then deliver the real technical idea accurately. Prefer "why does X happen?", a counterintuitive misconception, a visible before/after, a tiny real-world failure, a diagnostic puzzle, or a useful decision over a generic topic announcement.
+                - The opening must work in the first frame and first spoken sentence: concrete, specific, immediately relevant, and honestly paid off by the video. No "wait until the end", fake controversy, misleading claims, long intros or empty hype.
+                - Build a short narrative with tension and resolution: hook -> stakes/problem -> visual proof or example -> explanation -> takeaway. For longer videos, allow deeper causal explanation, trade-offs and a worked example; do not stretch a Short into a lecture.
+                - Favor moments that earn completion and rewatch through clarity, a satisfying transformation, a compact demonstration or a puzzle whose answer becomes clear. Add a natural save/send-worthy takeaway, but never ask for engagement in place of providing value.
+                - Originality is mandatory: create a fresh explanation, example, point of view and visuals. Do not base the idea on copied creator material or a trend that does not fit the topic.
+                - Treat accuracy, context, safety and trust as constraints. On medical, financial, political or current-event topics, avoid unsupported claims, inflammatory framing and false certainty; cite or qualify claims in the script where appropriate.
+                - Make concepts production-aware: specify what can be shown immediately, what changes on screen, and which visual proves the claim. Equations, code, data and graphs must be rendered accurately by programmatic overlays rather than generated as image text.
+                - Concepts must differ in both hook and teaching mechanic: e.g. misconception test, real-world story, visual experiment, comparison, or step-by-step diagnosis. Do not simply rename the same explainer three times.
+                - Use the visual engines already integrated in AI Story Studio, selecting by teaching purpose rather than forcing every engine into every video:
+                  * MANIM for JEE/NEET maths and physics when a graph, trajectory, vector, wave, geometry construction or algebra derivation is the proof. Prefer validated templates.
+                  * THREE_JS for genuine spatial ideas such as planetary motion, molecular geometry, atomic structure, crystal lattices, 3D coordinate geometry, layers or data structures.
+                  * MOTION_CANVAS for ordered mechanisms, request/data flow, cycles, animated comparisons, formula reveals, force diagrams, quizzes and step-by-step processes when the renderer reports available.
+                  * NATIVE_DIAGRAM for precise code, flowcharts, comparisons, labels and reliable fallback visuals.
+                   * Do NOT use WAN, ComfyUI, generated still images, or image-to-video for Concept Explainer lessons. Every concept-video visual must be built with the integrated programmatic renderers.
+                 - In visualIdea, name the visual proof and likely engine family (Manim, Three.js, Motion Canvas, or native diagram). Mix engines across scenes only when the learning goal benefits; do not route every scene to the same engine.
                 Return JSON only:
                 {"concepts":[{"title":"short working title",
                               "hookType":"contrarian|outcome|mystery|stakes",
                               "hook":"the exact opening line, one sentence",
                               "angle":"the one idea, misconception or story the video is built on",
                               "approach":"story-first | myth-buster | guided discovery | compare and contrast | build from scratch | analogy-first | mistake-driven | numbers-first",
-                              "visualIdea":"what the viewer mostly sees",
-                              "whyItWorks":"one sentence"}]}
+                              "visualIdea":"what the viewer mostly sees, including the first-frame hook and the key visual change",
+                              "whyItWorks":"one sentence grounded in audience value, clarity, payoff or shareability"}]}
                 """;
     }
 
     public static String conceptsUserPrompt(String topic, String language, String duration, String difficulty, String audience,
                                             String outcome, String tone, String trackNotes) {
         StringBuilder sb = new StringBuilder("Topic: ").append(topic).append("\nLength: ").append(duration).append("\nLevel: ").append(difficulty);
+        sb.append("\n\n").append(educationLane(topic, difficulty, audience, duration, null));
+        sb.append("\nPublishing objective: create an original, accurate, audience-first video optimized for Reels/Shorts discovery and viewer satisfaction; do not promise virality.");
+        sb.append("\nAudience-first packaging: name the target viewer and their reason to care; start with the specific payoff/problem; show evidence or a worked example early; end with a memorable, useful takeaway.");
+        sb.append("\nDo not optimize for watch time by delaying the answer artificially. Earn attention with useful progression and resolve the hook honestly.");
         sb.append("\nNarration language: ").append(language).append(" (on-screen text will be English)");
         if (audience != null && !audience.isBlank()) sb.append("\nAudience: ").append(audience);
         if (outcome != null && !outcome.isBlank()) sb.append("\nAfter watching they should: ").append(outcome);

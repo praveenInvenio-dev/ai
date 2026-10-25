@@ -261,11 +261,11 @@ export function createStudio(THREE, opts) {
     const group = new THREE.Group(); scene.add(group);
     const count = Math.max(3, Math.min(5, labels.length || 4));
     const names = pickLabels(['Item 1', 'Item 2', 'Item 3', 'Item 4', 'Top item'], count);
-    const blockH = 0.48, gap = 0.08, baseY = -1.55;
+    const blockH = 0.62, gap = 0.10, baseY = -1.72;
     const blocks = [];
     for (let i = 0; i < count; i++) {
       const color = i === count - 1 ? 0xfbbf24 : COLORS[i % COLORS.length];
-      const geometry = new THREE.BoxGeometry(2.15, blockH, 0.95);
+      const geometry = new THREE.BoxGeometry(2.75, blockH, 1.08);
       const material = mat(color, i === count - 1
         ? { emissive: 0x8a5a00, emissiveIntensity: 0.55, metalness: 0.28, roughness: 0.28 }
         : { metalness: 0.18, roughness: 0.34 });
@@ -274,21 +274,21 @@ export function createStudio(THREE, opts) {
       const edge = new THREE.LineSegments(new THREE.EdgesGeometry(geometry),
         new THREE.LineBasicMaterial({ color: i === count - 1 ? 0xfff0ad : 0xdbeafe }));
       edge.position.copy(block.position);
-      const tag = label(names[i], 0.72);
-      tag.position.set(-0.15, block.position.y, 0.54);
+      const tag = label(names[i], 0.88);
+      tag.position.set(-0.15, block.position.y, 0.62);
       const contents = [block, edge, tag];
       add(contents, i);
       contents.forEach(o => group.add(o));
       blocks.push({ block, edge, tag, baseY: block.position.y, top: i === count - 1 });
     }
-    const floor = new THREE.GridHelper(8, 12, 0x29435f, 0x15283d);
+    const floor = new THREE.GridHelper(7, 10, 0x29435f, 0x15283d);
     floor.position.y = -1.92; add([floor], 0); group.add(floor);
 
     // The arrows are visible as the narration introduces the two operations.
-    const pushArrow = new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), new THREE.Vector3(1.75, 2.0, 0.1), 1.0, 0x38bdf8, 0.28, 0.18);
-    const pushLabel = label('PUSH', 0.72); pushLabel.position.set(2.25, 2.55, 0);
-    const popArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-2.15, -0.1, 0.1), 1.0, 0xfbbf24, 0.28, 0.18);
-    const popLabel = label('POP', 0.72); popLabel.position.set(-2.4, 0.9, 0);
+    const pushArrow = new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), new THREE.Vector3(2.25, 2.0, 0.1), 0.85, 0x38bdf8, 0.25, 0.16);
+    const pushLabel = label('PUSH', 0.86); pushLabel.position.set(2.65, 2.55, 0);
+    const popArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-2.35, -0.1, 0.1), 0.85, 0xfbbf24, 0.25, 0.16);
+    const popLabel = label('POP', 0.86); popLabel.position.set(-2.65, 0.9, 0);
     add([pushArrow, pushLabel, popArrow, popLabel], Math.max(1, count - 2));
     [pushArrow, pushLabel, popArrow, popLabel].forEach(o => group.add(o));
 
@@ -303,8 +303,8 @@ export function createStudio(THREE, opts) {
       }
     });
     return {
-      fit: 5.6,
-      cam: (t) => { camera.position.set(4.2 + Math.sin(t * 0.12) * 0.35, 2.0, 8.5); camera.lookAt(0, 0.1, 0); }
+      fit: 4.6,
+      cam: (t) => { camera.position.set(3.0 + Math.sin(t * 0.08) * 0.12, 1.55, 6.9); camera.lookAt(0, 0.05, 0); }
     };
   }
 

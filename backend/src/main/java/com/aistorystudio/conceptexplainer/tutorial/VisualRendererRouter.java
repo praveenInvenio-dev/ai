@@ -119,6 +119,7 @@ public final class VisualRendererRouter {
             case MANIM -> "MANIM_HTTP";
             case RIVE -> "RIVE_EXPORT";
             case THREE_JS -> "THREE_JS_EXPORT";
+            case PIXIJS -> "PIXIJS_EXPORT";
             case MOTION_CANVAS -> "MOTION_CANVAS_EXPORT";
             case NATIVE_DIAGRAM -> "NATIVE_DIAGRAM";
         };

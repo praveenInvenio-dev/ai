@@ -86,12 +86,12 @@ public final class RenderQa {
                 if (mean != null && mean < -38) out.add(new Finding(Severity.WARN, "quiet", String.format(Locale.ROOT,
                         "The audio is very quiet (average %.0f dB). Raise the voice or music level.", mean), 0));
             }
-            // black frames (the first / last half second may fade from or to black on purpose)
+            // black frames: tolerate only a tiny encoding/fade transition at the edges; multi-second black lead-ins/outros are defects
             Matcher b = BLACK.matcher(log);
             while (b.find()) {
                 double st = Double.parseDouble(b.group(1)), en = Double.parseDouble(b.group(2)), len = Double.parseDouble(b.group(3));
                 boolean atEdge = st < 0.6 || (duration > 0 && en > duration - 0.6);
-                if (atEdge && len < 1.5) continue;
+                if (atEdge && len < 0.18) continue;
                 out.add(new Finding(len >= 3 ? Severity.ERROR : Severity.WARN, "black", String.format(Locale.ROOT,
                         "Black picture for %.1f s at %s - a scene may not have rendered.", len, clock(st)), st));
             }
