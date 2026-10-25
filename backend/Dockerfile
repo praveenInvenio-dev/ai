@@ -8,26 +8,12 @@ RUN mvn -B clean package -DskipTests
 
 FROM eclipse-temurin:21-jre-jammy
 
-# Static ffmpeg build instead of `apt-get install ffmpeg`: apt pulls ~30
-# transitive packages through dpkg (audio/video codec libs, X11 libs, etc.),
-# which is a lot of small filesystem writes for something we only need one
-# binary from. A single static tarball is faster, smaller, and avoids piling
-# more dpkg transactions on top of any host-side disk/storage issues.
-# TARGETARCH is set automatically by Docker/buildx (amd64 on most machines,
-# arm64 on Apple Silicon Macs) so this works on both without extra flags.
-ARG TARGETARCH
+# Install FFmpeg from Ubuntu's maintained package repository. This avoids
+# downloading a third-party static archive that may return HTML/error content
+# instead of a valid .tar.xz file.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates xz-utils curl fontconfig libfreetype6 \
-    && ARCH_NAME=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "amd64") \
-    && curl -fsSL -o /tmp/ffmpeg.tar.xz \
-       "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${ARCH_NAME}-static.tar.xz" \
-    && mkdir -p /tmp/ffmpeg-extract \
-    && tar -xJf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg-extract --strip-components=1 \
-    && mv /tmp/ffmpeg-extract/ffmpeg /tmp/ffmpeg-extract/ffprobe /usr/local/bin/ \
-    && chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe \
-    && apt-get purge -y xz-utils curl \
-    && apt-get autoremove -y \
-    && rm -rf /tmp/ffmpeg* /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends ffmpeg ca-certificates fontconfig libfreetype6 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=build /build/target/*.jar app.jar
