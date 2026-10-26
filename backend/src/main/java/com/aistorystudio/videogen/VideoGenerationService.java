@@ -195,6 +195,39 @@ public class VideoGenerationService {
             return;
         }
         job.setStatus(VideoGenJobStatus.RUNNING);
+        // The characters ticked in the H3 character panel go to EVERY H3 clip of this job (Ref2VA), whatever the
+        // prompt calls them. Closed automatically when the job ends.
+        List<com.aistorystudio.provider.H3ReferenceScope.Ref> castRefs = castReferences(job);
+        try (var refScope = com.aistorystudio.provider.H3ReferenceScope.open(castRefs)) {
+            if (!castRefs.isEmpty()) log.info("Video generation job {}: H3 character references {}", jobId,
+                    castRefs.stream().map(com.aistorystudio.provider.H3ReferenceScope.Ref::name).toList());
+            runJob(job, jobId, prompt, negativePrompt, durationSeconds, seed, narrationText, voiceProfileId, workflow, h3);
+            if (!castRefs.isEmpty() && job.getWorkflowUsed() != null) {
+                job.setWorkflowUsed(job.getWorkflowUsed() + " · references: " + String.join(", ",
+                        castRefs.stream().map(com.aistorystudio.provider.H3ReferenceScope.Ref::name).toList()));
+            }
+        }
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aistorystudio.cast.CharacterCastStore characterCast;
+
+    private List<com.aistorystudio.provider.H3ReferenceScope.Ref> castReferences(VideoGenJob job) {
+        List<com.aistorystudio.provider.H3ReferenceScope.Ref> out = new java.util.ArrayList<>();
+        if (characterCast == null || job.getCastIds().isEmpty()) return out;
+        for (String id : job.getCastIds()) {
+            if (out.size() >= com.aistorystudio.cast.CharacterCastStore.MAX_PER_CLIP) break;
+            characterCast.get(id).ifPresent(c -> {
+                Path p = characterCast.resolvePath(c.activeReferencePath());
+                if (p != null && Files.isRegularFile(p)) out.add(new com.aistorystudio.provider.H3ReferenceScope.Ref(c.name, c.masterPrompt, p));
+                else log.warn("Video generation job {}: {} has no ready reference image - skipped", job.getId(), c.name);
+            });
+        }
+        return out;
+    }
+
+    private void runJob(VideoGenJob job, UUID jobId, String prompt, String negativePrompt, double durationSeconds, Long seed,
+                        String narrationText, UUID voiceProfileId, String workflow, H3SpeechInput h3) {
         try {
             String resolvedWorkflow = resolveWorkflow(workflow, job.getStartingImagePath() != null);
             boolean nativeH3Audio = resolvedWorkflow.toLowerCase(Locale.ROOT).contains("minimax-h3");

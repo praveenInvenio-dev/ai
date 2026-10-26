@@ -426,7 +426,7 @@ export class ApiService {
   createVideoGenerationJob(
     image: File | null, prompt: string, negativePrompt: string, durationSeconds: number,
     narrationText?: string, voiceProfileId?: string, workflow?: string,
-    h3?: { sceneId?: string; dialogueText?: string; audioDirection?: string; useSceneVoices?: boolean; speechEngine?: SpeechEngine }
+    h3?: { sceneId?: string; dialogueText?: string; audioDirection?: string; useSceneVoices?: boolean; speechEngine?: SpeechEngine; castIds?: string[] }
   ): Observable<{ jobId: string }> {
     const form = new FormData();
     if (image) { form.append('image', image, image.name); }
@@ -441,6 +441,7 @@ export class ApiService {
     if (h3?.audioDirection) { form.append('audioDirection', h3.audioDirection); }
     if (h3?.useSceneVoices) { form.append('useSceneVoices', 'true'); }
     if (h3?.speechEngine) { form.append('speechEngine', h3.speechEngine); }
+    for (const id of h3?.castIds ?? []) { form.append('castIds', id); }
     return this.http.post<{ jobId: string }>(`${this.base}/video-generation/jobs`, form);
   }
 

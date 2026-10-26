@@ -55,8 +55,10 @@ public class VideoGenerationController {
             @RequestParam(value = "audioDirection", required = false) String audioDirection,
             @RequestParam(value = "useSceneVoices", required = false, defaultValue = "false") boolean useSceneVoices,
             // H3 (H3 speaks) or INDIC_TTS (IndicF5 voice speaks; H3 animates + ambience)
-            @RequestParam(value = "speechEngine", required = false, defaultValue = "H3") String speechEngine) {
+            @RequestParam(value = "speechEngine", required = false, defaultValue = "H3") String speechEngine,
+            @RequestParam(value = "castIds", required = false) java.util.List<String> castIds) {
         VideoGenJob job = service.createJob(image, prompt);
+        job.setCastIds(castIds);
         // Fired from this controller bean (not a self-invocation inside the
         // service), which is what lets @Async actually intercept the call -
         // see the note on generateAsync().

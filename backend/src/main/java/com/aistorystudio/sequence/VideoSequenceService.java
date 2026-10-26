@@ -687,7 +687,7 @@ public class VideoSequenceService {
                 // several chained shots instead of being cut.
                 Path finalH3 = dir(s).resolve(String.format(Locale.ROOT, "scene-%02d-h3.mp4", sc.index + 1));
                 Path work = Files.createTempDirectory("sequence-h3-" + s.id + "-" + sc.index + "-");
-                try {
+                try (var refs = com.aistorystudio.provider.H3ReferenceScope.open(h3References(s))) {
                     H3SceneRenderer.Result r = h3SceneRenderer.render(h3Spec(s, sc, seconds),
                             new H3SceneRenderer.Options(file(s, sc.keyframeFile), s.horizontal() ? 1920 : 1080,
                                     s.horizontal() ? 1080 : 1920, work, () -> s.cancelRequested));
@@ -947,8 +947,25 @@ public class VideoSequenceService {
 
     // ----------------------------------------------------------------- prompts
 
+    /** The story's characters that have a reference image (max 2, hero first) - sent with every H3 clip. */
+    private List<com.aistorystudio.provider.H3ReferenceScope.Ref> h3References(VideoSequence s) {
+        List<com.aistorystudio.provider.H3ReferenceScope.Ref> out = new ArrayList<>();
+        for (Character c : orderedCharacters(s)) {
+            if (out.size() >= 2) break;
+            String ref = referenceImageFor(s, c);
+            if (ref != null) out.add(new com.aistorystudio.provider.H3ReferenceScope.Ref(c.getName(), c.getCanonicalDescription(), Path.of(ref)));
+        }
+        return out;
+    }
+
     private String keyframePrompt(VideoSequence s, SequenceScene sc, List<Character> chars) {
         StringBuilder b = new StringBuilder();
+        // Identity is decided in this frame: a tiny figure in a wide shot gets re-invented when the video zooms in.
+        if (!chars.isEmpty() && referenceImageFor(s, chars.get(0)) != null) {
+            b.append("Medium shot. ").append(chars.get(0).getName())
+             .append(" is in the foreground, large and clearly visible (at least a third of the frame), facing the camera, and looks EXACTLY like the reference image: ")
+             .append("same face, hair colour and texture, skin tone, age, outfit, colours, print and accessories. ");
+        }
         if (!chars.isEmpty()) {
             b.append(chars.stream().map(c -> c.getName() + " (" + cut(c.getCanonicalDescription(), 380) + ")")
                     .reduce((a, c) -> a + " and " + c).orElse("")).append(". ");

@@ -51,6 +51,8 @@ public class CharacterCastStore {
     /** named = the clip prompt mentions the character; false = attached because it is pinned (alwaysInClip). */
     public record Resolved(CastCharacter character, Path image, boolean named) {}
 
+    public boolean isInjectionEnabled() { return injectionEnabled; }
+
     public synchronized List<CastCharacter> list() {
         load();
         List<CastCharacter> out = new ArrayList<>(cache);

@@ -210,8 +210,13 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
       </div>
 
       <div class="field" *ngIf="workflow === 'MINIMAX_H3' && mode !== 'story'">
-        <app-h3-cast-panel></app-h3-cast-panel>
-        <p class="muted small">Name a character in the prompt (e.g. "Asha waves at Ravi") and H3 receives that character's locked reference automatically.</p>
+        <app-h3-cast-panel (castChange)="onH3Cast($event)"></app-h3-cast-panel>
+        <div class="cast-pick" *ngIf="h3Cast.length">
+          <strong class="small">Use as reference in this video (max 2):</strong>
+          <label *ngFor="let c of h3Cast" class="small"><input type="checkbox" [checked]="castPicked.has(c.id)" (change)="toggleCastPick(c.id)" /> {{ c.name }}</label>
+        </div>
+        <p class="muted small" *ngIf="!h3Cast.length">Add a character above (image + name). Its locked reference is then sent to H3 with this video.</p>
+        <p class="muted small" *ngIf="h3Cast.length && !castPicked.size">No character ticked: H3 will invent the character from the prompt.</p>
       </div>
       <div class="field audio-panel" *ngIf="workflow === 'MINIMAX_H3' && mode !== 'story'">
         <label>Native H3 speech &amp; sound</label>
@@ -278,6 +283,8 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
     </section>
   `,
   styles: [`
+    .cast-pick { display: flex; flex-wrap: wrap; gap: .4rem 1rem; align-items: center; margin: .5rem 0; }
+    .cast-pick label { display: inline-flex; gap: .3rem; align-items: center; }
     .page-head { margin-bottom: 1.6rem; max-width: 720px; }
     .panel { max-width: 760px; display: flex; flex-direction: column; gap: 1.2rem; }
     .workflow-field { padding: .9rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
@@ -358,6 +365,22 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   storyCharacterName = '';
   /** Enabled cast characters with a ready, locked reference (from the H3 character panel). */
   storyCast: CastCharacter[] = [];
+  /** Text/Image-to-video with H3: ready cast characters, and the ones ticked for this video (sent explicitly). */
+  h3Cast: CastCharacter[] = [];
+  castPicked = new Set<string>();
+  private castInit = false;
+  onH3Cast(list: CastCharacter[]) {
+    this.h3Cast = list;
+    for (const id of [...this.castPicked]) if (!list.some(c => c.id === id)) this.castPicked.delete(id);
+    if (!this.castInit && list.length) {
+      this.castInit = true;
+      for (const c of [...list.filter(c => c.alwaysInClip), ...list]) { if (this.castPicked.size >= 2) break; this.castPicked.add(c.id); }
+    }
+  }
+  toggleCastPick(id: string) {
+    if (this.castPicked.has(id)) this.castPicked.delete(id);
+    else if (this.castPicked.size < 2) this.castPicked.add(id);
+  }
   private readonly cast = inject(CharacterCastService);
   castNames(): string { return this.storyCast.map((c) => c.name).join(', '); }
   storyCharacterFile?: File;
@@ -645,7 +668,8 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
         dialogueText: this.dialogueText || undefined,
         audioDirection: this.audioDirection || undefined,
         useSceneVoices: !!this.loadedSceneId && !this.sceneAudioEdited,
-        speechEngine: this.useIndicTts ? 'INDIC_TTS' : 'H3'
+        speechEngine: this.useIndicTts ? 'INDIC_TTS' : 'H3',
+        castIds: [...this.castPicked].filter(id => this.h3Cast.some(c => c.id === id))
       } : undefined)
       .subscribe({
         next: res => {

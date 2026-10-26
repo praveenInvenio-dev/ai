@@ -29,6 +29,11 @@ public class VideoGenJob {
     private volatile String fileExtension;
     private volatile Long seedUsed;
     private volatile String workflowUsed;
+    /** H3 character-reference cast ids chosen on the page (explicit, no name matching needed). */
+    private volatile java.util.List<String> castIds = java.util.List.of();
+
+    public java.util.List<String> getCastIds() { return castIds; }
+    public void setCastIds(java.util.List<String> ids) { this.castIds = ids == null ? java.util.List.of() : java.util.List.copyOf(ids); }
 
     public VideoGenJob(UUID id) {
         this.id = id;

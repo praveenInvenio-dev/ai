@@ -499,6 +499,31 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                 log.warn("H3 cast lookup failed, continuing without references: {}", e.getMessage());
             }
         }
+        // Story productions: the sequence's library characters (locked reference images) fill the free slots, so a
+        // story clip gets its hero even when nobody used the character panel.
+        if (h3 && characterCast != null && characterCast.isInjectionEnabled() && !blank(h3Ref2vaDiffusionModel) && !ref2vaBroken
+                && !H3ReferenceScope.current().isEmpty()) {
+            // Explicit references (chosen for this job / this story) come first; name-matched or pinned cast fills the rest.
+            java.util.List<com.aistorystudio.cast.CharacterCastStore.Resolved> fromCast = cast;
+            java.util.List<com.aistorystudio.cast.CharacterCastStore.Resolved> merged = new java.util.ArrayList<>();
+            for (H3ReferenceScope.Ref r : H3ReferenceScope.current()) {
+                if (merged.size() >= com.aistorystudio.cast.CharacterCastStore.MAX_PER_CLIP) break;
+                if (r.image() == null || !Files.isRegularFile(r.image())) continue;
+                boolean dup = merged.stream().anyMatch(x -> x.character().name.equalsIgnoreCase(r.name()) || x.image().equals(r.image()));
+                if (dup) continue;
+                var c = new com.aistorystudio.cast.CastCharacter();
+                c.id = "library:" + r.name();
+                c.name = r.name();
+                c.masterPrompt = r.description() == null ? "" : (r.description().length() > 400 ? r.description().substring(0, 400) : r.description());
+                boolean named = request.prompt() != null && request.prompt().toLowerCase(java.util.Locale.ROOT).contains(r.name().toLowerCase(java.util.Locale.ROOT));
+                merged.add(new com.aistorystudio.cast.CharacterCastStore.Resolved(c, r.image(), named));
+            }
+            for (var x : fromCast) {
+                if (merged.size() >= com.aistorystudio.cast.CharacterCastStore.MAX_PER_CLIP) break;
+                if (merged.stream().noneMatch(m -> m.character().name.equalsIgnoreCase(x.character().name) || m.image().equals(x.image()))) merged.add(x);
+            }
+            cast = merged;
+        }
         String characterReferenceImageFilename = null;
         String characterReferenceImageFilename2 = null;
         String castPromptPrefix = "";
