@@ -48,7 +48,9 @@ export async function generateScript({ topic, domain, platform, log, progress, s
       let { scene: clean, warnings } = sanitizeScene(raw, { plan: plan[i], heading });
       let issues = [...lintScene(clean.sentences, { sentenceMaxWords: platform.sentenceMaxWords, role: plan[i].role, lang }), ...varietyIssues(clean, lastTypes, plan[i].role)];
 
-      if (issues.length) {
+      // Each rewrite is a full extra LLM call (often the slowest part of a job): only for problems the viewer would
+      // notice - too-long sentences, wrong script, markdown, repeated visuals. Style nits are logged, not rewritten.
+      if (issues.some(isSerious)) {
         log(`Narration lint (${issues.length}): ${issues.slice(0, 3).join(' | ')} — asking for a rewrite`, 'warn');
         try {
           raw = await chatJson({
@@ -86,3 +88,6 @@ function varietyIssues(scene, lastTypes, role) {
   }
   return [];
 }
+
+const SERIOUS = [/words \(max/, /not written in/, /markdown/, /Visuals repeat/];
+function isSerious(issue) { return SERIOUS.some((re) => re.test(issue)); }

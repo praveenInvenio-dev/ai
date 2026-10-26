@@ -83,10 +83,11 @@ export const config = {
 
   render: {
     // Remotion refuses a concurrency above the core count, so clamp instead of failing the job.
-    concurrency: Math.min(os.cpus().length, Math.max(1, int(env.RENDER_CONCURRENCY, Math.max(1, Math.floor(os.cpus().length / 2))))),
+    // Default: all cores but one (max 8) - rendering is CPU-bound and was the slowest stage at cpus/2.
+    concurrency: Math.min(os.cpus().length, Math.max(1, int(env.RENDER_CONCURRENCY, Math.min(8, Math.max(1, os.cpus().length - 1))))),
     intermediateCrf: int(env.RENDER_CRF, 10),        // near-lossless: the final FFmpeg pass is the only real compression
     finalCrf: int(env.FINAL_CRF, 18),
-    finalPreset: env.FINAL_PRESET || 'slow',
+    finalPreset: env.FINAL_PRESET || 'medium',   // 'slow' = ~2x longer encode for ~3 % smaller file at the same quality
     jpegQuality: int(env.RENDER_JPEG_QUALITY, 95),
     // WebGL backend for the 3D primitives (three.js). swangle = SwiftShader, works on any CPU-only container;
     // 'angle' / 'angle-egl' use the GPU when the container has one.

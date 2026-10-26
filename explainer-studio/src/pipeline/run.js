@@ -27,7 +27,15 @@ export async function runJob({ store, job, signal }) {
   const dir = store.dir(job.id);
   const tmp = path.join(dir, 'tmp');
   const log = (msg, level = 'info') => store.log(job, msg, level);
-  const stage = (name, progress) => store.update(job, { stage: name, progress });
+  // Per-stage timing, printed at the end so a slow job shows WHERE the time went.
+  const timings = [];
+  let stageName = null, stageT = Date.now();
+  const stage = (name, progress) => {
+    const now = Date.now();
+    if (stageName) timings.push(`${stageName} ${Math.round((now - stageT) / 1000)}s`);
+    stageName = name; stageT = now;
+    store.update(job, { stage: name, progress });
+  };
   const progress = (p) => store.update(job, { progress: Math.max(job.progress, Math.min(0.99, p)) });
   const t0 = Date.now();
 
@@ -124,6 +132,8 @@ export async function runJob({ store, job, signal }) {
       },
     });
     log(`Done in ${Math.round((Date.now() - t0) / 1000)}s · ${(stat.size / 1048576).toFixed(1)} MB`, 'info');
+    if (stageName) timings.push(`${stageName} ${Math.round((Date.now() - stageT) / 1000)}s`);
+    log(`Time per stage: ${timings.join(' · ')} (render concurrency ${config.render.concurrency})`, 'info');
   } catch (e) {
     if (e.name === 'AbortError' || signal?.aborted) {
       store.update(job, { status: 'cancelled', stage: 'cancelled' });
