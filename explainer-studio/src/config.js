@@ -63,6 +63,10 @@ export const config = {
     // AI Story Studio's Indian-language voice services (compose profiles "indicspeak" and "indic").
     indicSpeakUrl: (env.INDICSPEAK_TTS_URL || '').replace(/\/$/, ''),
     indicF5Url: (env.INDICF5_TTS_URL || '').replace(/\/$/, ''),
+    // The rest of AI Story Studio's voices (same list as Concept Explainer): see src/tts/studio-voices.js.
+    studioUrl: (env.STUDIO_TTS_URL || '').replace(/\/$/, ''),
+    chatterboxUrl: (env.CHATTERBOX_TTS_URL || '').replace(/\/$/, ''),
+    backendUrl: (env.BACKEND_URL || '').replace(/\/$/, ''),
     piperBin: env.PIPER_BIN || 'piper',
     voicesDir: env.PIPER_VOICES_DIR || path.join(ROOT, 'voices'),
     kokoroScript: env.KOKORO_SCRIPT || path.join(ROOT, 'scripts', 'kokoro_tts.py'),

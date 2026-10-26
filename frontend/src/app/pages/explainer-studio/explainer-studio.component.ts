@@ -96,6 +96,17 @@ export class ExplainerStudioComponent implements OnInit, OnDestroy, AfterViewChe
     const avail = this.voicesFor().find((v) => v.available);
     this.voice = (def && this.voicesFor().some((v) => v.id === def && v.available) ? def : avail?.id) ?? def ?? '';
   }
+  /** Voices of the selected language grouped by engine, most natural first. */
+  voiceGroups() {
+    const order: [string, string][] = [['indicf5', 'IndicF5 — most natural (tts-indic)'], ['edge', 'Edge neural — needs internet'], ['indicspeak', 'Indic-Speak'],
+      ['kokoro', 'Kokoro'], ['chatterbox', 'Chatterbox'], ['profile', 'My voices (Voice Lab)'], ['piper', 'Piper — offline, basic']];
+    const list = this.voicesFor();
+    const groups = order.map(([k, label]) => ({ label, voices: list.filter((v) => v.engine === k) }));
+    const known = new Set(order.map(([k]) => k));
+    groups.push({ label: 'Other', voices: list.filter((v) => !known.has(v.engine)) });
+    return groups.filter((g) => g.voices.length);
+  }
+  studioOk(name: string) { return this.health()?.tts?.studio?.[name]; }
   noVoice() { return this.language !== 'en' && !this.voicesFor().some((v) => v.available); }
   langLabel(id?: string) { const l = this.meta()?.languages.find((x) => x.id === (id || 'en')); return l ? (l.id === 'en' ? l.label : `${l.label} · ${l.native}`) : 'English'; }
   serviceOk(name: string) { return this.health()?.tts?.services?.[name]; }

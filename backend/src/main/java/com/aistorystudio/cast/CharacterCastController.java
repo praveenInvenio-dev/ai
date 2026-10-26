@@ -38,7 +38,8 @@ public class CharacterCastController {
     public ResponseEntity<?> update(@PathVariable String id, @RequestBody Map<String, Object> body) {
         return run(() -> service.update(id,
                 (String) body.get("name"), (String) body.get("masterPrompt"), (String) body.get("aliases"),
-                body.get("enabled") instanceof Boolean b ? b : null));
+                body.get("enabled") instanceof Boolean b ? b : null,
+                body.get("alwaysInClip") instanceof Boolean p ? p : null));
     }
 
     @PostMapping(value = "/{id}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -48,6 +49,9 @@ public class CharacterCastController {
 
     @PostMapping("/{id}/reference")
     public ResponseEntity<?> generate(@PathVariable String id) { return run(() -> service.generateReference(id, false)); }
+
+    @PostMapping("/{id}/describe")
+    public ResponseEntity<?> describe(@PathVariable String id) { return run(() -> service.autoDescribe(id)); }
 
     @PostMapping("/{id}/use-upload")
     public ResponseEntity<?> useUpload(@PathVariable String id) { return run(() -> service.useUploadAsReference(id)); }

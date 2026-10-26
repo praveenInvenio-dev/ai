@@ -80,4 +80,15 @@ class CharacterCastStoreTest {
         assertEquals(3, again.list().size());
         assertEquals(List.of("Dadi"), again.findByName("asha").orElseThrow().aliases);
     }
+
+    @Test
+    void pinnedCharacterFillsFreeSlotsEvenWhenNotNamed() {
+        CharacterCastStore s = withCast(storage());
+        CastCharacter asha = s.get("Asha").orElseThrow();
+        asha.alwaysInClip = true;
+        s.save(asha);
+        assertEquals(List.of("Asha"), names(s.resolve("The toddler laughs at the tractor.")));
+        assertEquals(List.of("Ravi", "Asha"), names(s.resolve("Ravi waves.")));
+        assertEquals(List.of("Ravi", "Mr. Gupta"), names(s.resolve("Ravi and Mr. Gupta wave.")));
+    }
 }

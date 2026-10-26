@@ -31,7 +31,7 @@ import { CastCharacter, CharacterCastService } from './character-cast.service';
           <input type="text" [(ngModel)]="newAliases" placeholder="e.g. Dadi, Grandma" />
         </label>
       </div>
-      <label>Master prompt <span class="muted small">(fixed description sent with the reference on every clip)</span>
+      <label>Master prompt <span class="muted small">(fixed description sent with the reference on every clip — leave empty and the vision model writes it from the image)</span>
         <textarea rows="3" maxlength="800" [(ngModel)]="newPrompt" placeholder="e.g. 8-year-old Indian girl, two black braids with red ribbons, round face, yellow kurta with blue border, brown sandals, small silver nose stud"></textarea>
       </label>
       <div class="file-row">
@@ -73,9 +73,11 @@ import { CastCharacter, CharacterCastService } from './character-cast.service';
           <p class="error small" *ngIf="c.referenceStatus === 'FAILED'">{{ c.referenceError }}</p>
           <div class="actions">
             <label class="check inline"><input type="checkbox" [ngModel]="c.enabled" (ngModelChange)="toggle(c, $event)" /> use in H3</label>
+            <label class="check inline" title="Attach to every clip, even when the scene says 'the toddler' instead of the name"><input type="checkbox" [ngModel]="c.alwaysInClip" (ngModelChange)="pin(c, $event)" /> in every clip (hero)</label>
             <ng-container *ngIf="!c.locked">
               <button type="button" class="link" (click)="act(svc.generate(c.id))" [disabled]="c.referenceStatus === 'GENERATING'">{{ c.referenceStatus === 'READY' ? 'Regenerate' : 'Generate reference' }}</button>
               <button type="button" class="link" (click)="act(svc.useUpload(c.id))" [disabled]="c.referenceStatus === 'GENERATING'">Use upload as-is</button>
+              <button type="button" class="link" (click)="act(svc.describe(c.id))" title="Rewrite the master prompt from the image (vision model)">Auto-describe</button>
               <button type="button" class="link" *ngIf="c.referenceStatus === 'READY'" (click)="act(svc.lock(c.id, true))">Lock</button>
               <label class="link file-link">Replace image<input type="file" accept="image/png,image/jpeg,image/webp" (change)="replace(c, $event)" /></label>
             </ng-container>
@@ -183,6 +185,7 @@ export class H3CastPanelComponent implements OnInit, OnDestroy {
     obs.subscribe({ next: () => this.load(), error: (e) => (this.error = e?.error?.error || 'Action failed.') });
   }
   toggle(c: CastCharacter, enabled: boolean) { this.act(this.svc.update(c.id, { enabled })); }
+  pin(c: CastCharacter, alwaysInClip: boolean) { this.act(this.svc.update(c.id, { alwaysInClip })); }
   replace(c: CastCharacter, e: Event) {
     const f = (e.target as HTMLInputElement).files?.[0];
     if (f) this.act(this.svc.replaceImage(c.id, f));

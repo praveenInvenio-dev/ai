@@ -19,6 +19,10 @@ export class JobStore {
   async init() {
     await fs.mkdir(jobsDir(), { recursive: true });
     const ids = await fs.readdir(jobsDir());
+    // Why did the previous run end? (written by server.js on crash / Docker stop; absent = killed without warning)
+    let why = 'the process was killed without warning - most often out of memory. Check: docker inspect --format "{{.State.OOMKilled}}" $(docker compose ps -q explainer-studio)  and  docker compose logs --tail 200 explainer-studio';
+    const exitFile = path.join(config.dataDir, 'last-exit.json');
+    try { why = JSON.parse(await fs.readFile(exitFile, 'utf8')).reason || why; await fs.rm(exitFile, { force: true }); } catch { /* no record */ }
     const cutoff = Date.now() - config.retentionDays * 86_400_000;
     for (const id of ids) {
       const f = path.join(this.dir(id), 'job.json');
@@ -27,7 +31,7 @@ export class JobStore {
         if (job.createdAt < cutoff) { await fs.rm(this.dir(id), { recursive: true, force: true }); continue; }
         if (['queued', 'running'].includes(job.status)) {
           job.status = 'failed';
-          job.error = 'Server restarted while this job was running.';
+          job.error = `Server restarted while this job was running: ${why}`;
           job.logs.push({ t: Date.now(), level: 'error', msg: job.error });
         }
         this.jobs.set(id, job);

@@ -8,6 +8,43 @@ set -euo pipefail
 # Image engine is Qwen Image 2.1 only (no SDXL / IPAdapter any more).
 # Video uses ComfyUI-VideoHelperSuite (VHS_VideoCombine) for the Wan graphs.
 
+
+# -----------------------------------------------------------------------------
+# Safe model download. An interrupted download used to leave a PARTIAL file that every later start treated as
+# "present" ([ -s file ]), so ComfyUI failed with "Tensor ... extends past the end of the file". Now every
+# .safetensors file is checked (header vs. size; reads only the header) and a truncated one is RESUMED.
+# A failed download is a warning, not a failed container start.
+# -----------------------------------------------------------------------------
+safetensors_ok() {
+  python3 - "$1" <<'PY' 2>/dev/null
+import json, os, struct, sys
+f = sys.argv[1]
+size = os.path.getsize(f)
+with open(f, 'rb') as h:
+    n = struct.unpack('<Q', h.read(8))[0]
+    if n <= 0 or n > 200_000_000 or 8 + n > size:
+        sys.exit(1)
+    header = json.loads(h.read(n))
+end = max((v['data_offsets'][1] for k, v in header.items() if k != '__metadata__'), default=0)
+sys.exit(0 if size >= 8 + n + end else 1)
+PY
+}
+model_ok() { [ -s "$1" ] && { case "$1" in *.safetensors) safetensors_ok "$1" ;; *) true ;; esac; }; }
+getmodel() {
+  local dst="$1" url="$2" label="${3:-$(basename "$1")}"
+  mkdir -p "$(dirname "$dst")"
+  model_ok "$dst" && return 0
+  if [ -s "$dst" ]; then echo "[AI Story Studio] $label is incomplete/corrupt - resuming the download..."; else echo "[AI Story Studio] Downloading $label..."; fi
+  curl -fL --retry 5 --retry-delay 3 --continue-at - "$url" -o "$dst" || true
+  if ! model_ok "$dst"; then
+    echo "[AI Story Studio] $label still incomplete - downloading it again from the start..."
+    rm -f "$dst"
+    curl -fL --retry 5 --retry-delay 3 "$url" -o "$dst" || true
+  fi
+  model_ok "$dst" || echo "[AI Story Studio] WARNING: $label could not be downloaded completely. Run ./verify-models.sh --fix later."
+  return 0
+}
+
 CN_DIR=/root/ComfyUI/custom_nodes
 mkdir -p "$CN_DIR"
 VHS_DIR="$CN_DIR/ComfyUI-VideoHelperSuite"
@@ -35,30 +72,10 @@ UPSCALE_FILE="$UPSCALE_DIR/RealESRGAN_x2.pth"
 mkdir -p "$(dirname "$QWEN_DIFFUSION")" "$(dirname "$QWEN_TEXT")" "$(dirname "$QWEN_VAE")" "$UPSCALE_DIR"
 
 if [ "${DOWNLOAD_16GB_IMAGE_MODELS:-true}" = "true" ]; then
-  if [ ! -s "$QWEN_DIFFUSION" ]; then
-    echo "[AI Story Studio] Downloading Qwen Image 2.1 INT8 diffusion model (~6.8GB)..."
-    curl -fL --retry 3 --retry-delay 3 --continue-at - \
-      "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors?download=true" \
-      -o "$QWEN_DIFFUSION"
-  fi
-  if [ ! -s "$QWEN_TEXT" ]; then
-    echo "[AI Story Studio] Downloading Qwen3-VL 8B INT8 text encoder (~8.7GB)..."
-    curl -fL --retry 3 --retry-delay 3 --continue-at - \
-      "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors?download=true" \
-      -o "$QWEN_TEXT"
-  fi
-  if [ ! -s "$QWEN_VAE" ]; then
-    echo "[AI Story Studio] Downloading Qwen Image 2.1 BF16 VAE (~644MB)..."
-    curl -fL --retry 3 --retry-delay 3 --continue-at - \
-      "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors?download=true" \
-      -o "$QWEN_VAE"
-  fi
-  if [ ! -s "$UPSCALE_FILE" ]; then
-    echo "[AI Story Studio] Downloading RealESRGAN x2 upscaler (~67MB)..."
-    curl -fL --retry 3 --retry-delay 3 --continue-at - \
-      "https://huggingface.co/ai-forever/Real-ESRGAN/resolve/main/RealESRGAN_x2.pth?download=true" \
-      -o "$UPSCALE_FILE"
-  fi
+  getmodel "$QWEN_DIFFUSION" "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors?download=true" "Qwen Image 2.1 INT8 diffusion model (~6.8GB)"
+  getmodel "$QWEN_TEXT" "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors?download=true" "Qwen3-VL 8B INT8 text encoder (~8.7GB)"
+  getmodel "$QWEN_VAE" "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors?download=true" "Qwen Image 2.1 BF16 VAE (~644MB)"
+  getmodel "$UPSCALE_FILE" "https://huggingface.co/ai-forever/Real-ESRGAN/resolve/main/RealESRGAN_x2.pth?download=true" "RealESRGAN x2 upscaler (~67MB)"
 fi
 
 # Qwen Image 2.1 support landed in current ComfyUI releases. Fail clearly on an
@@ -78,7 +95,7 @@ fi
 H3_DIR=/root/ComfyUI/models
 if [ "${DOWNLOAD_H3_MODELS:-true}" = "true" ]; then
   mkdir -p "$H3_DIR/diffusion_models" "$H3_DIR/text_encoders" "$H3_DIR/vae" "$H3_DIR/loras"
-  h3get() { local dst="$1" url="$2"; if [ ! -s "$dst" ]; then echo "[AI Story Studio] Downloading H3 $(basename "$dst")..."; curl -fL --retry 5 --retry-delay 3 --continue-at - "$url" -o "$dst"; fi; }
+  h3get() { getmodel "$1" "$2" "H3 $(basename "$1")"; }
   h3get "$H3_DIR/diffusion_models/minimax_h3_fl2va_pruned_w6a8.safetensors" "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_w6a8.safetensors?download=true"
   h3get "$H3_DIR/diffusion_models/minimax_h3_ref2va_pruned_w6a8.safetensors" "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_w6a8.safetensors?download=true"
   h3get "$H3_DIR/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors" "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors?download=true"

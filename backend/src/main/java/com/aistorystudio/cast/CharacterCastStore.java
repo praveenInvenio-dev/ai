@@ -48,7 +48,8 @@ public class CharacterCastStore {
         this.injectionEnabled = enabled;
     }
 
-    public record Resolved(CastCharacter character, Path image) {}
+    /** named = the clip prompt mentions the character; false = attached because it is pinned (alwaysInClip). */
+    public record Resolved(CastCharacter character, Path image, boolean named) {}
 
     public synchronized List<CastCharacter> list() {
         load();
@@ -100,7 +101,8 @@ public class CharacterCastStore {
      * Only enabled characters with a READY reference image are returned.
      */
     public synchronized List<Resolved> resolve(String prompt) {
-        if (!injectionEnabled || prompt == null || prompt.isBlank()) return List.of();
+        if (!injectionEnabled) return List.of();
+        if (prompt == null) prompt = "";
         load();
         record Hit(CastCharacter c, int at) {}
         List<Hit> hits = new ArrayList<>();
@@ -128,8 +130,16 @@ public class CharacterCastStore {
         for (Hit h : hits) {
             if (out.size() >= MAX_PER_CLIP) break;
             Path p = storage.resolve(h.c().activeReferencePath());
-            if (p != null && Files.isRegularFile(p)) out.add(new Resolved(h.c(), p));
+            if (p != null && Files.isRegularFile(p)) out.add(new Resolved(h.c(), p, true));
             else log.warn("H3 cast: reference image for '{}' is missing on disk ({})", h.c().name, p);
+        }
+        // Pinned characters fill the remaining slots: a scene written as "the toddler laughs" still gets the hero.
+        for (CastCharacter c : cache.stream().sorted(Comparator.comparingLong(x -> x.createdAt)).toList()) {
+            if (out.size() >= MAX_PER_CLIP) break;
+            if (!c.alwaysInClip || !c.enabled || c.activeReferencePath() == null) continue;
+            if (out.stream().anyMatch(r -> r.character().id.equals(c.id))) continue;
+            Path p = storage.resolve(c.activeReferencePath());
+            if (p != null && Files.isRegularFile(p)) out.add(new Resolved(c, p, false));
         }
         return out;
     }

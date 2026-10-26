@@ -33,7 +33,7 @@ export async function synthesizeAll({ scenes, voiceId, platform, domain, workDir
       let attempt = 0;
       for (;;) {
         try {
-          await synthesize(engine, { text: spoken, voice, params, outFile: raw, signal });
+          await synthesize(engine, { text: spoken, voice, params, outFile: raw, signal, lang });
           await cleanSpeech(raw, clean, { signal });
           break;
         } catch (e) {

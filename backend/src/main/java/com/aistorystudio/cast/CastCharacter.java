@@ -31,6 +31,8 @@ public class CastCharacter {
     public boolean locked;
     /** Disabled characters stay in the library but are not sent to H3. */
     public boolean enabled = true;
+    /** Attach to every H3 clip even when the clip's prompt does not name the character (e.g. the story's hero). */
+    public boolean alwaysInClip;
     /** Character-library copy used by Story-to-H3 keyframes (Qwen) - reused while the reference is unchanged. */
     public String libraryCharacterId;
     public String librarySyncedReference;

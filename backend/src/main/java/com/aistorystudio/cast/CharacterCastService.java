@@ -57,12 +57,15 @@ public class CharacterCastService {
         c.aliases = parseAliases(aliases, n);
         c.createdAt = System.currentTimeMillis();
         c.uploadPath = storeUpload(c.id, file);
+        // The first character is the story's hero until the user says otherwise.
+        c.alwaysInClip = store.list().stream().noneMatch(o -> o.alwaysInClip);
+        if (c.masterPrompt.isBlank()) c.masterPrompt = describe(c);
         store.save(c);
         if (generate) return generateReference(c.id, false);
         return useUploadAsReference(c.id);
     }
 
-    public CastCharacter update(String id, String name, String masterPrompt, String aliases, Boolean enabled) {
+    public CastCharacter update(String id, String name, String masterPrompt, String aliases, Boolean enabled, Boolean alwaysInClip) {
         CastCharacter c = get(id);
         if (name != null) {
             String n = cleanName(name);
@@ -75,6 +78,7 @@ public class CharacterCastService {
         }
         if (aliases != null) c.aliases = parseAliases(aliases, c.name);
         if (enabled != null) c.enabled = enabled;
+        if (alwaysInClip != null) c.alwaysInClip = alwaysInClip;
         store.save(c);
         return c;
     }
@@ -98,6 +102,34 @@ public class CharacterCastService {
         c.librarySyncedReference = c.referencePath;
         store.save(c);
         return c;
+    }
+
+    /** (Re)writes the master prompt from the uploaded image with the vision model. */
+    public CastCharacter autoDescribe(String id) {
+        CastCharacter c = get(id);
+        if (c.locked) throw new IllegalStateException("Unlock " + c.name + " before rewriting the master prompt.");
+        String d = describe(c);
+        if (d.isBlank()) throw new IllegalStateException("The vision model could not describe the image (is a vision model pulled in Ollama?). Write the master prompt by hand.");
+        c.masterPrompt = d;
+        store.save(c);
+        return c;
+    }
+
+    /**
+     * Precise look description from the upload: hair (colour, texture, length), skin tone, eyes, age, outfit with
+     * colours and print, accessories. This is what H3 reads next to the reference image on every clip.
+     */
+    private String describe(CastCharacter c) {
+        try {
+            Path p = store.resolvePath(c.uploadPath);
+            String name = p.getFileName().toString().toLowerCase(Locale.ROOT);
+            String mime = name.endsWith(".png") ? "image/png" : name.endsWith(".webp") ? "image/webp" : "image/jpeg";
+            String d = gateway.vision().describeCharacterImage(Files.readAllBytes(p), mime);
+            return d == null ? "" : cleanPrompt(d.replaceAll("\\s+", " "));
+        } catch (Exception e) {
+            log.info("H3 cast: auto-description unavailable for {}: {}", c.name, e.getMessage());
+            return "";
+        }
     }
 
     public CastCharacter setLocked(String id, boolean locked) {

@@ -6,7 +6,7 @@ export type CastStatus = 'NONE' | 'GENERATING' | 'READY' | 'FAILED';
 export interface CastCharacter {
   id: string; name: string; aliases: string[]; masterPrompt: string;
   uploadPath: string; referencePath?: string; referenceStatus: CastStatus; referenceError?: string;
-  referenceIsUpload: boolean; locked: boolean; enabled: boolean;
+  referenceIsUpload: boolean; locked: boolean; enabled: boolean; alwaysInClip: boolean;
   libraryCharacterId?: string; librarySyncedReference?: string; createdAt: number; updatedAt: number;
 }
 
@@ -23,7 +23,8 @@ export class CharacterCastService {
     f.append('generate', String(generate)); f.append('file', file, file.name);
     return this.http.post<CastCharacter>(this.base, f);
   }
-  update(id: string, patch: { name?: string; masterPrompt?: string; aliases?: string; enabled?: boolean }) {
+  describe(id: string) { return this.http.post<CastCharacter>(`${this.base}/${id}/describe`, {}); }
+  update(id: string, patch: { name?: string; masterPrompt?: string; aliases?: string; enabled?: boolean; alwaysInClip?: boolean }) {
     return this.http.put<CastCharacter>(`${this.base}/${id}`, patch);
   }
   replaceImage(id: string, file: File) {

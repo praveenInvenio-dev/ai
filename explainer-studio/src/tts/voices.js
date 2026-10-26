@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
+import { studioVoices } from './studio-voices.js';
 
 /**
  * Voice catalog. Every voice has a `lang` (see shared/languages.js) and an `engine`:
@@ -27,7 +28,7 @@ const F5 = {
   ml: [['ml-in-sobhana', 'Sobhana', 'F'], ['ml-in-midhun', 'Midhun', 'M']], gu: [['gu-in-dhwani', 'Dhwani', 'F'], ['gu-in-niranjan', 'Niranjan', 'M']],
 };
 
-export const VOICES = [
+const STATIC_VOICES = [
   { id: 'ryan', label: 'Ryan — warm US male (Piper)', engine: 'piper', model: 'en_US-ryan-high', lang: 'en', base: B },
   { id: 'lessac', label: 'Lessac — clear US female (Piper)', engine: 'piper', model: 'en_US-lessac-high', lang: 'en', base: B },
   { id: 'jenny', label: 'Jenny — friendly UK female (Piper)', engine: 'piper', model: 'en_GB-jenny_dioco-medium', lang: 'en', base: B },
@@ -42,7 +43,17 @@ export const VOICES = [
   ...Object.entries(SPEAK).flatMap(([lang, list]) => list.map(([n, g]) => ({
     id: `isp_${lang}_${n.toLowerCase()}`, label: `${n} — ${lang === 'en' ? 'Indian English ' : ''}${G[g]} · Indic-Speak`, engine: 'indicspeak', voice: `speak:${lang}-${n}`, lang, base: B }))),
 ];
-export const getVoice = (id) => VOICES.find((v) => v.id === id) || VOICES[0];
+/**
+ * All voices = this image's own (Piper/Kokoro + direct Indic sidecars) + the studio's other services (refreshed every
+ * minute). A sidecar voice reachable both directly and through the studio tts service is listed once (direct wins).
+ */
+export function allVoices() {
+  const direct = new Set(STATIC_VOICES.filter((v) => v.voice && voiceAvailable(v)).map((v) => v.voice));
+  return [...STATIC_VOICES, ...studioVoices.filter((v) => !direct.has(v.voice))];
+}
+/** Kept for callers that iterate the catalogue. */
+export const VOICES = new Proxy([], { get: (_, k) => { const a = allVoices(); const v = a[k]; return typeof v === 'function' ? v.bind(a) : v; } });
+export const getVoice = (id) => allVoices().find((v) => v.id === id) || STATIC_VOICES[0];
 
 /** Last health-probe result per HTTP engine: true / false / undefined (not probed yet = assume up if configured). */
 export const serviceUp = {};
@@ -50,6 +61,7 @@ const engineUrl = () => ({ kokoro: config.tts.kokoroUrl, indicspeak: config.tts.
 
 /** Can this voice speak in THIS deployment right now? */
 export function voiceAvailable(v) {
+  if (v.engine === 'studio' || v.engine === 'chatterbox' || v.engine === 'profile') return true; // listed only while up
   if (v.engine === 'indicspeak' || v.engine === 'indicf5') return !!engineUrl()[v.engine] && serviceUp[v.engine] !== false;
   if (v.engine === 'kokoro') {
     if (config.tts.kokoroUrl) return serviceUp.kokoro !== false;
@@ -58,19 +70,20 @@ export function voiceAvailable(v) {
   return fs.existsSync(path.join(config.tts.voicesDir, `${v.model}.onnx`));
 }
 
-/** Engine preference: IndicF5 sounds most natural, Indic-Speak covers every Indian language. */
-const ENGINE_ORDER = { en: ['kokoro', 'piper', 'indicspeak'], indic: ['indicf5', 'indicspeak'] };
+/** Default-voice preference by naturalness: IndicF5 > Edge neural > Indic-Speak > Chatterbox > Piper. */
+const ENGINE_ORDER = { en: ['kokoro', 'chatterbox', 'piper', 'edge', 'indicspeak'], indic: ['indicf5', 'edge', 'indicspeak', 'chatterbox', 'piper'] };
+const kind = (v) => v.kind || v.engine;
 
 /** Voice used when a request names none, or one that cannot speak this language / is not running. */
 export function defaultVoiceId(lang = 'en') {
-  const forLang = VOICES.filter((v) => v.lang === lang);
+  const forLang = allVoices().filter((v) => v.lang === lang);
   const pref = forLang.find((v) => v.id === config.tts.defaultVoice && voiceAvailable(v));
   if (pref) return pref.id;
   for (const eng of ENGINE_ORDER[lang === 'en' ? 'en' : 'indic']) {
-    const v = forLang.find((x) => x.engine === eng && voiceAvailable(x));
+    const v = forLang.find((x) => kind(x) === eng && voiceAvailable(x));
     if (v) return v.id;
   }
-  return (forLang[0] || VOICES[0]).id;
+  return (forLang[0] || STATIC_VOICES[0]).id;
 }
 
 /** Probe the HTTP voice services every 30 s so the UI only offers voices that can speak right now. */

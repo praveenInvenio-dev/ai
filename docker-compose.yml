@@ -475,6 +475,11 @@ services:
       # Indian-language voices (start them with COMPOSE_PROFILES=indicspeak and/or indic).
       INDICSPEAK_TTS_URL: ${EXPLAINER_INDICSPEAK_TTS_URL:-http://tts-indicspeak:5006}
       INDICF5_TTS_URL: ${EXPLAINER_INDICF5_TTS_URL:-http://tts-indic:5003}
+      # Every other voice the studio has (same list as Concept Explainer): Piper Hindi/Telugu/Malayalam, Edge neural
+      # Indian voices, IndicF5/Indic-Speak via the tts service, Chatterbox (English + Hindi), Voice Lab clones.
+      STUDIO_TTS_URL: ${EXPLAINER_STUDIO_TTS_URL:-http://tts:5002}
+      CHATTERBOX_TTS_URL: ${EXPLAINER_CHATTERBOX_TTS_URL:-http://tts-chatterbox:5004}
+      BACKEND_URL: ${EXPLAINER_BACKEND_URL:-http://backend:8080}
       DEFAULT_VOICE: ${EXPLAINER_DEFAULT_VOICE:-kokoro_michael}
       PUBLIC_MEDIA_BASE: /explainer-media
       MAX_CONCURRENT_JOBS: ${EXPLAINER_MAX_CONCURRENT_JOBS:-1}
@@ -518,6 +523,8 @@ services:
       context: ./backend
     environment:
       STUDIO_H3_CAST_ENABLED: ${STUDIO_H3_CAST_ENABLED:-true}
+      # true = if the Ref2VA model is broken, render clips WITHOUT the character reference (different face) instead of failing
+      STUDIO_H3_CAST_FALLBACK: ${STUDIO_H3_CAST_FALLBACK:-false}
       <<: *app-env
       STUDIO_VISUAL_RENDERER_BASE_URL: http://visual-renderer:5020
     volumes:

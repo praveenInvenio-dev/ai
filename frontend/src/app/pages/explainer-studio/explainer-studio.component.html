@@ -10,6 +10,8 @@
     <li [class]="serviceOk('kokoro') ? 'ok' : 'wait'">Kokoro {{ serviceOk('kokoro') ? 'on' : 'off' }}</li>
     <li [class]="serviceOk('indicf5') ? 'ok' : 'wait'" title="tts-indic (COMPOSE_PROFILES=indic)">IndicF5 {{ serviceOk('indicf5') ? 'on' : 'off' }}</li>
     <li [class]="serviceOk('indicspeak') ? 'ok' : 'wait'" title="tts-indicspeak (COMPOSE_PROFILES=indicspeak)">Indic-Speak {{ serviceOk('indicspeak') ? 'on' : 'off' }}</li>
+    <li [class]="studioOk('tts') ? 'ok' : 'wait'" title="tts service: Piper + Edge neural + proxied Indic voices">Studio voices {{ studioOk('tts') ? 'on' : 'off' }}</li>
+    <li [class]="studioOk('chatterbox') ? 'ok' : 'wait'" title="tts-chatterbox (COMPOSE_PROFILES=chatterbox): English + Hindi">Chatterbox {{ studioOk('chatterbox') ? 'on' : 'off' }}</li>
     <li class="ok">Queue {{ health()?.queue?.running ?? 0 }}/{{ health()?.queue?.concurrency ?? 1 }} · {{ health()?.queue?.queued ?? 0 }} waiting</li>
   </ul>
 </header>
@@ -75,7 +77,11 @@
         </label>
         <label>Voice
           <select [(ngModel)]="voice">
-            @for (v of voicesFor(); track v.id) { <option [value]="v.id" [disabled]="!v.available">{{ v.label }}{{ v.available ? '' : ' (service off)' }}</option> }
+            @for (g of voiceGroups(); track g.label) {
+              <optgroup [label]="g.label">
+                @for (v of g.voices; track v.id) { <option [value]="v.id" [disabled]="!v.available">{{ v.label }}{{ v.available ? '' : ' (service off)' }}</option> }
+              </optgroup>
+            }
           </select>
         </label>
         @if (noVoice()) {

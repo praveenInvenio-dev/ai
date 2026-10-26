@@ -1,3 +1,4 @@
+import { synthStudio } from './studio-voices.js';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -104,4 +105,5 @@ export async function synthKokoro({ text, voice, params, outFile, signal }) {
 }
 
 export const synthesize = (engine, opts) => (engine === 'kokoro' ? synthKokoro(opts)
-  : engine === 'indicspeak' || engine === 'indicf5' ? synthIndicHttp(opts) : synthPiper(opts));
+  : engine === 'indicspeak' || engine === 'indicf5' ? synthIndicHttp(opts)
+  : engine === 'studio' || engine === 'chatterbox' || engine === 'profile' ? synthStudio(opts) : synthPiper(opts));

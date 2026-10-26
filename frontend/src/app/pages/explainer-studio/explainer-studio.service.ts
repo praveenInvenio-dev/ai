@@ -19,7 +19,7 @@ export interface ExHealth {
   remotionBundle: boolean;
   queue: { running: number; queued: number; concurrency: number };
   renderer?: { browser: string; gl: string };
-  tts?: { kokoroService: string | null; services?: Record<string, boolean> };
+  tts?: { kokoroService: string | null; services?: Record<string, boolean>; studio?: Record<string, boolean | null> };
 }
 export interface ExRequest { topic: string; domain: string; platform: string; aspect: string; fps: number; theme: string; voice: string; language: string; model?: string }
 export interface ExLog { t: number; level: string; msg: string }

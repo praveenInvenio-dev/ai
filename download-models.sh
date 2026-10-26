@@ -6,12 +6,23 @@
 # Skip a block with: SKIP_H3=1 SKIP_WAN14B=1 SKIP_LIGHTNING=1 ./download-models.sh
 set -e
 DC="docker compose exec -T comfyui"
+# Exit 0 when a .safetensors file is complete (header + every tensor fits inside the file).
+SAFE_OK='import json,os,struct,sys
+f=sys.argv[1]; size=os.path.getsize(f)
+h=open(f,"rb"); n=struct.unpack("<Q",h.read(8))[0]
+if n<=0 or n>200_000_000 or 8+n>size: sys.exit(1)
+hd=json.loads(h.read(n)); end=max((v["data_offsets"][1] for k,v in hd.items() if k!="__metadata__"),default=0)
+sys.exit(0 if size>=8+n+end else 1)'
 dl() {
   local dir="$1" file="$2" url="$3" target="/root/ComfyUI/models/$dir/$file"
   $DC mkdir -p "/root/ComfyUI/models/$dir"
   if $DC test -s "$target"; then
-    echo "[AI Story Studio] already present: $dir/$file"
-    return 0
+    # A partial file from an interrupted run is NOT "present": check .safetensors headers vs. size.
+    if [[ "$file" != *.safetensors ]] || $DC python3 -c "$SAFE_OK" "$target"; then
+      echo "[AI Story Studio] already present: $dir/$file"
+      return 0
+    fi
+    echo "[AI Story Studio] incomplete/corrupt, resuming: $dir/$file"
   fi
   echo "[AI Story Studio] downloading: $dir/$file"
   # Prefer curl because it handles Hugging Face Xet/redirects reliably in the
@@ -24,6 +35,9 @@ dl() {
     $DC wget -c --tries=5 "$url" -O "$target"
   fi
   $DC test -s "$target" || { echo "ERROR: download produced no file: $target" >&2; return 1; }
+  if [[ "$file" == *.safetensors ]] && ! $DC python3 -c "$SAFE_OK" "$target"; then
+    echo "ERROR: $dir/$file is still incomplete after downloading - re-run this script (it resumes)." >&2; return 1
+  fi
 }
 HF=https://huggingface.co
 

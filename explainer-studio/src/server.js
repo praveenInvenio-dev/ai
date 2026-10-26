@@ -1,3 +1,5 @@
+import path from 'node:path';
+import fsSync from 'node:fs';
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
@@ -5,7 +7,8 @@ import fs from 'node:fs';
 import { config, jobsDir } from './config.js';
 import { PLATFORMS, ASPECTS, FPS_OPTIONS, THEME_IDS } from './presets.js';
 import { DOMAINS, DOMAIN_IDS } from './domains/index.js';
-import { VOICES, voiceAvailable, defaultVoiceId, startVoiceProbe, serviceUp } from './tts/voices.js';
+import { VOICES, allVoices, voiceAvailable, defaultVoiceId, startVoiceProbe, serviceUp } from './tts/voices.js';
+import { startStudioVoiceRefresh, studioStatus } from './tts/studio-voices.js';
 import { LANGUAGES, LANGUAGE_IDS } from './shared/languages.js';
 import { TYPES } from './shared/catalog.js';
 import { ollamaStatus } from './llm/ollama.js';
@@ -39,7 +42,7 @@ app.get('/api/meta', wrap(async (_req, res) => {
     aspects: Object.keys(ASPECTS), fps: FPS_OPTIONS, themes: THEME_IDS,
     domains: DOMAIN_IDS.map((id) => ({ id, label: DOMAINS[id].label })),
     languages: LANGUAGE_IDS.map((id) => ({ id, label: LANGUAGES[id].label, native: LANGUAGES[id].native, defaultVoice: defaultVoiceId(id) })),
-    voices: VOICES.map((v) => ({ id: v.id, label: v.label, engine: v.engine, lang: v.lang, available: voiceAvailable(v) })),
+    voices: allVoices().map((v) => ({ id: v.id, label: v.label, engine: v.kind || v.engine, lang: v.lang, available: voiceAvailable(v) })),
     defaultVoice: defaultVoiceId('en'),
     primitives: TYPES,
     model: config.ollama.model,
@@ -48,7 +51,7 @@ app.get('/api/meta', wrap(async (_req, res) => {
 
 app.get('/api/health', wrap(async (_req, res) => {
   const ollama = await ollamaStatus();
-  res.json({ ok: true, ollama, remotionBundle: bundleReady(), queue: queue.stats(), renderer: { browser: config.render.browserExecutable ? 'local' : 'remotion-download', gl: config.render.gl }, tts: { kokoroService: config.tts.kokoroUrl || null, services: Object.fromEntries(Object.entries({ kokoro: config.tts.kokoroUrl, indicspeak: config.tts.indicSpeakUrl, indicf5: config.tts.indicF5Url }).filter(([, u]) => u).map(([k]) => [k, serviceUp[k] !== false])) } });
+  res.json({ ok: true, ollama, remotionBundle: bundleReady(), queue: queue.stats(), renderer: { browser: config.render.browserExecutable ? 'local' : 'remotion-download', gl: config.render.gl }, tts: { kokoroService: config.tts.kokoroUrl || null, services: Object.fromEntries(Object.entries({ kokoro: config.tts.kokoroUrl, indicspeak: config.tts.indicSpeakUrl, indicf5: config.tts.indicF5Url }).filter(([, u]) => u).map(([k]) => [k, serviceUp[k] !== false])), studio: studioStatus } });
 }));
 
 // ── jobs ────────────────────────────────────────────────────────────────────
@@ -61,7 +64,7 @@ function parseRequest(b = {}) {
   const theme = THEME_IDS.includes(b.theme) ? b.theme : 'dracula';
   const domain = DOMAINS[b.domain] ? b.domain : 'general';
   const language = LANGUAGES[b.language] ? b.language : 'en';
-  const want = VOICES.find((v) => v.id === b.voice);
+  const want = allVoices().find((v) => v.id === b.voice);
   // A voice only speaks its own language (an IndicF5 Tamil voice cannot read Hindi): fall back to that language's default.
   const voice = want && want.lang === language && voiceAvailable(want) ? want.id : defaultVoiceId(language);
   const model = typeof b.model === 'string' && /^[\w.:/-]{1,80}$/.test(b.model) ? b.model : undefined;
@@ -141,13 +144,27 @@ app.use((err, _req, res, _next) => {
 });
 
 startVoiceProbe();
+startStudioVoiceRefresh();
 const server = app.listen(config.port, () => {
   console.log(`API listening on :${config.port} · Ollama ${config.ollama.host} (${config.ollama.model}) · queue concurrency ${config.queue.concurrency}`);
   getBundle((m) => console.log(m)).then(() => console.log('Remotion bundle ready.')).catch((e) => console.error('Remotion bundle failed:', e.message));
 });
 
+// ── why did the last run end? Recorded so an interrupted job can say WHY instead of just "server restarted" ──
+const recordExit = (reason) => {
+  try { fsSync.writeFileSync(path.join(config.dataDir, 'last-exit.json'), JSON.stringify({ at: Date.now(), reason: String(reason).slice(0, 800) })); } catch { /* best effort */ }
+};
+process.on('uncaughtException', (e) => {
+  console.error('FATAL uncaught exception:', e);
+  recordExit(`the API crashed: ${e?.stack || e}`);
+  process.exit(1);
+});
+// A stray rejected promise must not kill every running job: log it, keep serving.
+process.on('unhandledRejection', (e) => console.error('Unhandled promise rejection (ignored, server keeps running):', e));
+
 const shutdown = () => {
   console.log('Shutting down…');
+  recordExit('the container was stopped or recreated by Docker (docker compose up / --build / restart, or a COMPOSE_PROFILES change). Start jobs after the stack is up.');
   queue.abortAll();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 8000).unref();

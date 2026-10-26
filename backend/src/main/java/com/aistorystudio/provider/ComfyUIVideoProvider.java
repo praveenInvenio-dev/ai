@@ -377,10 +377,54 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                     "Timed out waiting for a free ComfyUI video slot after " + queueWait.toSeconds() + "s");
         }
         try {
-            return doGenerate(request);
+            try {
+                return doGenerate(request);
+            } catch (IllegalStateException e) {
+                // A broken/partial Ref2VA download must not stop the whole story: if this clip only used Ref2VA
+                // for named-character references, mark Ref2VA as broken and render the clip with the normal H3
+                // model instead (no references, everything else identical).
+                if (castFallbackWithoutReferences && castUsedRef2va.get() && isCorruptModelError(e.getMessage(), h3Ref2vaDiffusionModel)) {
+                    ref2vaBroken = true;
+                    log.error("H3 Ref2VA model file is corrupt/incomplete ({}). Character references are OFF until it is "
+                            + "re-downloaded (./verify-models.sh --fix). Retrying this clip without references.", h3Ref2vaDiffusionModel);
+                    return doGenerate(request);
+                }
+                throw explainCorruptModel(e);
+            } finally {
+                castUsedRef2va.remove();
+            }
         } finally {
             slot.release();
         }
+    }
+
+    /**
+     * Off by default: a clip that silently drops the character reference renders a DIFFERENT person, which is worse
+     * than a clear error. STUDIO_H3_CAST_FALLBACK=true re-renders such clips without references instead.
+     */
+    @org.springframework.beans.factory.annotation.Value("${studio.h3.cast.fallback:false}")
+    private boolean castFallbackWithoutReferences;
+
+    /** True once a Ref2VA load failed with a truncated-file error; cleared by a backend restart. */
+    private volatile boolean ref2vaBroken;
+    /** Whether the current thread's clip routed to Ref2VA because of cast references. */
+    private final ThreadLocal<Boolean> castUsedRef2va = ThreadLocal.withInitial(() -> false);
+
+    static boolean isCorruptModelError(String msg, String modelFile) {
+        if (msg == null) return false;
+        boolean corrupt = msg.contains("extends past the end of the file") || msg.contains("corrupt/incomplete")
+                || msg.contains("HeaderTooLarge") || msg.contains("incomplete metadata");
+        return corrupt && (modelFile == null || modelFile.isBlank() || msg.contains(modelFile));
+    }
+
+    /** Turn ComfyUI's "safetensors file is corrupt" into an instruction the user can act on. */
+    private static IllegalStateException explainCorruptModel(IllegalStateException e) {
+        String msg = e.getMessage();
+        if (!isCorruptModelError(msg, null)) return e;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("models/[\\w./-]+\\.safetensors").matcher(msg);
+        String file = m.find() ? m.group() : "the model file named above";
+        return new IllegalStateException("A ComfyUI model file is only partly downloaded: " + file + ". "
+                + "Repair it with ./verify-models.sh --fix (resumes the download), then try again. Original error: " + msg, e);
     }
 
     private VideoGenerationResult doGenerate(VideoGenerationRequest request) {
@@ -448,7 +492,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                 : null;
         // ── H3 character cast: every clip that names a cast character gets that character's LOCKED reference ──
         java.util.List<com.aistorystudio.cast.CharacterCastStore.Resolved> cast = java.util.List.of();
-        if (h3 && characterCast != null && !blank(h3Ref2vaDiffusionModel)) {
+        if (h3 && characterCast != null && !blank(h3Ref2vaDiffusionModel) && !ref2vaBroken) {
             try {
                 cast = characterCast.resolve(request.prompt());
             } catch (RuntimeException e) {
@@ -468,6 +512,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                 startingImageFilename = null;
             }
             castPromptPrefix = castPrompt(cast, startingImageFilename != null);
+            castUsedRef2va.set(true);
             log.info("H3 cast: clip uses reference(s) for {}", cast.stream().map(r -> r.character().name).toList());
         } else if (request.characterReferenceImagePath() != null) {
             characterReferenceImageFilename = uploadReferenceImage(Path.of(request.characterReferenceImagePath()));
@@ -625,7 +670,8 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         StringBuilder b = new StringBuilder("CHARACTER REFERENCES: ");
         for (int i = 0; i < cast.size(); i++) {
             var c = cast.get(i).character();
-            b.append("Reference image ").append(i + 1).append(" shows ").append(c.name);
+            b.append("Reference image ").append(i + 1).append(" shows ").append(c.name)
+             .append(cast.get(i).named() ? "" : ", the main character of this clip (the person the prompt calls the child/boy/girl/man/woman/hero)");
             if (c.masterPrompt != null && !c.masterPrompt.isBlank()) b.append(" - ").append(c.masterPrompt.trim().replaceAll("\\s+", " "));
             b.append(". ");
         }
