@@ -1,6 +1,9 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { forkJoin, Observable, of, switchMap, map } from 'rxjs';
+import { H3CastPanelComponent } from '../../shared/h3-cast-panel/h3-cast-panel.component';
+import { CastCharacter, CharacterCastService } from '../../shared/h3-cast-panel/character-cast.service';
 import { ApiService, VideoGenerationStatus, VideoGenerationJob, CameraPreset, SequenceView } from '../../services/api.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
@@ -15,7 +18,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
 @Component({
   selector: 'app-video-generation',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, H3CastPanelComponent],
   template: `
     <header class="page-head">
       <h1>Video generation</h1>
@@ -58,24 +61,16 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
       <section class="story-production" *ngIf="mode === 'story'">
         <div class="story-production-head">
           <strong>AI story production</strong>
-          <span class="muted small">Story idea + one character reference → 5-second H3 shots → automatic merge</span>
+          <span class="muted small">Story idea + named character references → 5-second H3 shots → automatic merge</span>
         </div>
         <p class="warning" *ngIf="showStoryProviderWarning">Story drafting and character-reference planning are available independently. H3 rendering will require the local video provider to be available after you review the story.</p>
         <p class="muted">
-          Enter a story idea and upload one character reference. AI Story Studio writes the complete story internally, creates short scenes with narration/dialogue, camera movement, ambience, timed SFX and music, renders each as a 5-second MiniMax H3 clip, then merges the clips automatically. You do not need to open Create Story, approve keyframes, or start rendering a second time.
+          Enter a story idea and add your characters (name + image + master prompt, up to 2 per scene). AI Story Studio writes the complete story internally, creates short scenes with narration/dialogue, camera movement, ambience, timed SFX and music, renders each as a 5-second MiniMax H3 clip, then merges the clips automatically. You do not need to open Create Story, approve keyframes, or start rendering a second time.
         </p>
-        <div class="story-options character-reference-input">
-          <div class="field">
-            <label for="storyCharacterName">Main character name</label>
-            <input id="storyCharacterName" type="text" [(ngModel)]="storyCharacterName" placeholder="e.g. Advik" />
-          </div>
-          <div class="field">
-            <label for="storyCharacterPhoto">Character reference photo (required)</label>
-            <input id="storyCharacterPhoto" type="file" accept="image/png,image/jpeg,image/webp" (change)="onStoryCharacterSelected($event)" />
-            <p class="muted small">This locked reference is reused to keep the main character's face and appearance consistent across all shots.</p>
-            <img *ngIf="storyCharacterPreviewUrl" [src]="storyCharacterPreviewUrl" class="preview" alt="Main character reference preview" />
-          </div>
-        </div>
+        <app-h3-cast-panel [startOpen]="true" (castChange)="storyCast = $event"></app-h3-cast-panel>
+        <p class="muted small" *ngIf="storyCast.length">
+          Story will star: <strong>{{ castNames() }}</strong>. The writer is told to use these exact names, and every 5-second H3 clip that names them gets their locked reference image (up to 2 per clip).
+        </p>
         <div class="story-options">
           <div class="field">
             <label for="storyDuration">Story length</label>
@@ -214,6 +209,10 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
                step="0.5" [(ngModel)]="durationSeconds">
       </div>
 
+      <div class="field" *ngIf="workflow === 'MINIMAX_H3' && mode !== 'story'">
+        <app-h3-cast-panel></app-h3-cast-panel>
+        <p class="muted small">Name a character in the prompt (e.g. "Asha waves at Ravi") and H3 receives that character's locked reference automatically.</p>
+      </div>
       <div class="field audio-panel" *ngIf="workflow === 'MINIMAX_H3' && mode !== 'story'">
         <label>Native H3 speech &amp; sound</label>
         <label class="check" style="display:flex;gap:.5rem;align-items:flex-start">
@@ -243,7 +242,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
       </div>
 
       <button class="btn btn-primary" (click)="submit()"
-              [disabled]="submitting || (mode !== 'story' && !status?.available) || (mode === 'i2v' && !selectedFile) || (mode === 'story' && (!storyCharacterFile || !storyCharacterName.trim())) || !prompt.trim()">
+              [disabled]="submitting || (mode !== 'story' && !status?.available) || (mode === 'i2v' && !selectedFile) || (mode === 'story' && !storyCast.length) || !prompt.trim()">
         {{ submitting ? (mode === 'story' ? storyStatusText || 'Starting story production…' : 'Working...') : (mode === 'story' ? 'Generate full H3 story video' : 'Generate video') }}
       </button>
 
@@ -357,6 +356,10 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   private storyPollHandle?: ReturnType<typeof setInterval>;
   storyDurationSeconds = 60;
   storyCharacterName = '';
+  /** Enabled cast characters with a ready, locked reference (from the H3 character panel). */
+  storyCast: CastCharacter[] = [];
+  private readonly cast = inject(CharacterCastService);
+  castNames(): string { return this.storyCast.map((c) => c.name).join(', '); }
   storyCharacterFile?: File;
   storyCharacterPreviewUrl?: string;
   storyGenre = 'Cinematic adventure';
@@ -658,8 +661,8 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   }
 
   private submitStoryVideo(): void {
-    if (!this.storyCharacterFile || !this.storyCharacterName.trim()) {
-      this.error = 'Upload a character reference and enter the character name first.';
+    if (!this.storyCast.length) {
+      this.error = 'Add at least one character with a ready reference first.';
       return;
     }
     this.submitting = true;
@@ -668,21 +671,17 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     this.storySequence = undefined;
     this.storyResultUrl = '';
     this.storyProgress = 0;
-    this.storyStatusText = 'Saving the locked character reference…';
+    this.storyStatusText = 'Syncing locked character references…';
     this.stopStoryPolling();
 
-    this.api.uploadCharacterLibrary(
-      this.storyCharacterFile,
-      this.storyCharacterName.trim(),
-      `Locked main-character reference for a ${this.storyGenre.toLowerCase()} story. Preserve the exact face, hair, skin tone, age, outfit and proportions across every scene; allow only scene-appropriate expressions, poses and movement.`
-    ).subscribe({
-      next: character => {
+    forkJoin(this.storyCast.map((c) => this.libraryIdFor(c))).subscribe({
+      next: (characterIds) => {
         this.storyStatusText = 'Preparing the story workspace…';
         this.api.createProject(
           `H3 Story Video - ${this.prompt.trim().slice(0, 48)}`,
           `Automated ${this.storyDurationSeconds}-second ${this.storyGenre} MiniMax H3 video from Story-to-Video.`
         ).subscribe({
-          next: project => this.createAndRenderStoryDraft(project.id, character.characterId),
+          next: project => this.createAndRenderStoryDraft(project.id, characterIds),
           error: err => {
             this.submitting = false;
             this.error = err?.error?.message || 'Could not create a story workspace.';
@@ -691,13 +690,23 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
       },
       error: err => {
         this.submitting = false;
-        this.error = err?.error?.message || 'Could not save the character reference.';
+        this.error = err?.error?.message || err?.error?.error || 'Could not save the character references.';
       }
     });
   }
 
+  /** Character-library copy of a cast reference (used for Qwen keyframes); reused while the reference is unchanged. */
+  private libraryIdFor(c: CastCharacter): Observable<string> {
+    if (c.libraryCharacterId && c.librarySyncedReference === c.referencePath) return of(c.libraryCharacterId);
+    return this.cast.referenceFile(c).pipe(
+      switchMap((file) => this.api.uploadCharacterLibrary(file, c.name,
+        `${c.masterPrompt || c.name}. Locked reference: preserve the exact face, hair, skin tone, age, outfit and proportions across every scene; allow only scene-appropriate expressions, poses and movement.`)),
+      switchMap((lib) => this.cast.linkLibrary(c.id, lib.characterId).pipe(map(() => lib.characterId))),
+    );
+  }
+
   /** Story-to-H3 is a one-click production flow, not the Create Story approval workflow. */
-  private createAndRenderStoryDraft(projectId: string, characterId: string): void {
+  private createAndRenderStoryDraft(projectId: string, characterIds: string[]): void {
     const sceneCount = Math.max(6, Math.round(this.storyDurationSeconds / 5));
     const styleDirections: Record<string, string> = {
       HUMOROUS_EXPLAINER: 'Narration style: humorous and playful with tasteful character-appropriate humor, expressive timing and short pauses after comic beats. At most one small joke per scene.',
@@ -711,7 +720,7 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     const productionBrief = [
       `STORY PREMISE (expand this into a complete original story): ${this.prompt.trim()}`,
       `Create a complete ${this.storyDurationSeconds}-second ${this.storyGenre.toLowerCase()} story in ${this.storyLanguage}; visual style ${this.storyVisualStyle}. Plan exactly about ${sceneCount} story beats, one per five-second H3 clip.`,
-      `MAIN CHARACTER: ${this.storyCharacterName.trim()}. This character's uploaded locked reference image is authoritative. Keep identity, face, hair, outfit, age and proportions consistent. Other supporting characters may be introduced only when the plot needs them.`,
+      `CHARACTERS (use these EXACT names every time a character appears, acts or speaks - never a nickname, pronoun-only reference or a new name for them; each name is bound to a locked reference image): ${this.storyCast.map((c) => `${c.name}${c.masterPrompt ? ' - ' + c.masterPrompt : ''}`).join(' | ')}. ${this.storyCast[0].name} is the main character. Name the on-screen character(s) in every scene's visual and motion prompt. Keep at most two of these characters in any one scene. Other supporting characters may appear only when the plot needs them.`,
       'STRUCTURE: beginning, goal, conflict, escalating complication, climax, consequence and satisfying resolution. Every scene must advance the plot; no disconnected montage.',
       style,
       'FIVE-SECOND SCENE CONTRACT: Each scene must fit one five-second H3 shot. Keep each scene to one clear visual action and at most one short spoken line of about 6-9 words. Do not put long narration paragraphs into a five-second scene. If the requested story length is 30, 60, 180 or 300 seconds, plan the corresponding 6, 12, 36 or 60 scenes.',
@@ -731,11 +740,12 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
       tone: style,
       visualStyle: this.storyVisualStyle,
       language: this.storyLanguage,
-      qualityProfile: 'QUALITY'
+      qualityProfile: 'QUALITY',
+      characterIds
     }).subscribe({
       next: draft => {
         this.storyStatusText = 'Story created. Starting H3 clips automatically…';
-        this.api.produceEpisodeVideo(draft.episodeId, 'H3', this.storyOrientation, [characterId], 5, true).subscribe({
+        this.api.produceEpisodeVideo(draft.episodeId, 'H3', this.storyOrientation, characterIds, 5, true).subscribe({
           next: sequence => {
             this.storySequence = sequence;
             this.updateStoryProgress(sequence);

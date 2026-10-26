@@ -60,6 +60,9 @@ export const config = {
     // instead of the in-image Python model, so nothing extra has to be downloaded into this image.
     kokoroUrl: (env.KOKORO_TTS_URL || '').replace(/\/$/, ''),
     defaultVoice: env.DEFAULT_VOICE || '',
+    // AI Story Studio's Indian-language voice services (compose profiles "indicspeak" and "indic").
+    indicSpeakUrl: (env.INDICSPEAK_TTS_URL || '').replace(/\/$/, ''),
+    indicF5Url: (env.INDICF5_TTS_URL || '').replace(/\/$/, ''),
     piperBin: env.PIPER_BIN || 'piper',
     voicesDir: env.PIPER_VOICES_DIR || path.join(ROOT, 'voices'),
     kokoroScript: env.KOKORO_SCRIPT || path.join(ROOT, 'scripts', 'kokoro_tts.py'),

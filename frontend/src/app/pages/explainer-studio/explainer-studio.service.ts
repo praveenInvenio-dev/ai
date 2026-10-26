@@ -9,7 +9,8 @@ export interface ExMeta {
   platforms: { id: string; label: string; group: 'short' | 'long'; targetSec: number; defaultAspect: string; scenes: number }[];
   aspects: string[]; fps: number[]; themes: string[];
   domains: { id: string; label: string }[];
-  voices: { id: string; label: string; engine: string; available: boolean }[];
+  languages: { id: string; label: string; native: string; defaultVoice: string }[];
+  voices: { id: string; label: string; engine: string; lang: string; available: boolean }[];
   defaultVoice: string; primitives: string[]; model: string;
 }
 export interface ExHealth {
@@ -18,9 +19,9 @@ export interface ExHealth {
   remotionBundle: boolean;
   queue: { running: number; queued: number; concurrency: number };
   renderer?: { browser: string; gl: string };
-  tts?: { kokoroService: string | null };
+  tts?: { kokoroService: string | null; services?: Record<string, boolean> };
 }
-export interface ExRequest { topic: string; domain: string; platform: string; aspect: string; fps: number; theme: string; voice: string; model?: string }
+export interface ExRequest { topic: string; domain: string; platform: string; aspect: string; fps: number; theme: string; voice: string; language: string; model?: string }
 export interface ExLog { t: number; level: string; msg: string }
 export interface ExResult {
   title: string; durationSeconds: number; sizeMB: number; video: string; thumbnail: string; srt: string; vtt: string; elapsedSeconds: number;

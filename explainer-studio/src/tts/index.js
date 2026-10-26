@@ -14,9 +14,9 @@ import { readWav, bytesToMs } from '../media/wav.js';
  * (b) per-sentence prosody, (c) controlled pauses, (d) cheap retries.
  * Mutates each sentence: { spoken, audioFile, speechMs, pauseMs }.
  */
-export async function synthesizeAll({ scenes, voiceId, platform, domain, workDir, log, progress, signal }) {
+export async function synthesizeAll({ scenes, voiceId, platform, domain, workDir, log, progress, signal, lang = 'en' }) {
   const voice = getVoice(voiceId);
-  const engine = voice.engine === 'kokoro' ? 'kokoro' : config.tts.engine === 'kokoro' ? 'kokoro' : 'piper';
+  const engine = voice.engine === 'piper' && config.tts.engine === 'kokoro' ? 'kokoro' : voice.engine;
   log(`TTS engine: ${engine} · voice: ${voice.label}`, 'tts');
   const total = scenes.reduce((a, s) => a + s.sentences.length, 0);
   let done = 0, idx = 0;
@@ -25,7 +25,7 @@ export async function synthesizeAll({ scenes, voiceId, platform, domain, workDir
     for (const [i, s] of scene.sentences.entries()) {
       signal?.throwIfAborted();
       const isLastOfScene = i === scene.sentences.length - 1;
-      const spoken = normalizeForSpeech(s.text, { pronunciations: domain.pronunciations });
+      const spoken = normalizeForSpeech(s.text, { pronunciations: lang === 'en' ? domain.pronunciations : {}, lang });
       const params = shapeSentence({ text: s.text, index: idx, isFirstOfVideo: si === 0 && i === 0, isLastOfScene, emphasis: s.emphasis, base: voice.base });
       const raw = path.join(workDir, `raw_${String(idx).padStart(3, '0')}.wav`);
       const clean = path.join(workDir, `s_${String(idx).padStart(3, '0')}.wav`);

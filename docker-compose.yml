@@ -472,6 +472,9 @@ services:
       OLLAMA_MODEL: ${EXPLAINER_OLLAMA_MODEL:-llama3.1}
       OLLAMA_NUM_CTX: ${EXPLAINER_OLLAMA_NUM_CTX:-8192}
       KOKORO_TTS_URL: ${EXPLAINER_KOKORO_TTS_URL:-http://tts-kokoro:5006}
+      # Indian-language voices (start them with COMPOSE_PROFILES=indicspeak and/or indic).
+      INDICSPEAK_TTS_URL: ${EXPLAINER_INDICSPEAK_TTS_URL:-http://tts-indicspeak:5006}
+      INDICF5_TTS_URL: ${EXPLAINER_INDICF5_TTS_URL:-http://tts-indic:5003}
       DEFAULT_VOICE: ${EXPLAINER_DEFAULT_VOICE:-kokoro_michael}
       PUBLIC_MEDIA_BASE: /explainer-media
       MAX_CONCURRENT_JOBS: ${EXPLAINER_MAX_CONCURRENT_JOBS:-1}
@@ -514,6 +517,7 @@ services:
     build:
       context: ./backend
     environment:
+      STUDIO_H3_CAST_ENABLED: ${STUDIO_H3_CAST_ENABLED:-true}
       <<: *app-env
       STUDIO_VISUAL_RENDERER_BASE_URL: http://visual-renderer:5020
     volumes:

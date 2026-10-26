@@ -72,7 +72,8 @@ export function buildTimeline({ outline, scenes, platform, meta = {} }) {
 /** Distribute a sentence's speech time across its words, weighted by length (+ a little for punctuation). */
 export function wordTimings(text, startMs, speechMs) {
   const tokens = text.split(/\s+/).filter(Boolean);
-  const weights = tokens.map((t) => Math.max(2, t.replace(/[^\w]/g, '').length) + (/[,;:]$/.test(t) ? 1.2 : 0) + (/[.!?]$|\.\.\.$/.test(t) ? 1.6 : 0));
+  // Unicode-aware: Indic words are letters + combining vowel signs (\p{M}); an ASCII \w would weigh them all as 2.
+  const weights = tokens.map((t) => Math.max(2, t.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length) + (/[,;:]$/.test(t) ? 1.2 : 0) + (/[.!?।॥]$|\.\.\.$/.test(t) ? 1.6 : 0));
   const sum = weights.reduce((a, b) => a + b, 0);
   let t = startMs;
   return tokens.map((w, i) => {

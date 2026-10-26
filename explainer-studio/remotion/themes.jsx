@@ -1,7 +1,8 @@
 import React, { createContext, useContext } from 'react';
 
-const font = '"Inter","Helvetica Neue",Arial,"DejaVu Sans",sans-serif';
-const mono = '"Fira Code","JetBrains Mono",Consolas,"DejaVu Sans Mono",monospace';
+// Indian scripts: Noto (fonts-noto-core in the image) after Inter, so Latin keeps the Inter look.
+const font = '"Inter","Helvetica Neue",Arial,"DejaVu Sans","Noto Sans Devanagari","Noto Sans Bengali","Noto Sans Tamil","Noto Sans Telugu","Noto Sans Kannada","Noto Sans Malayalam","Noto Sans Gujarati","Noto Sans Gurmukhi","Noto Sans Oriya",sans-serif';
+const mono = '"Fira Code","JetBrains Mono",Consolas,"DejaVu Sans Mono","Noto Sans Devanagari","Noto Sans Bengali","Noto Sans Tamil","Noto Sans Telugu","Noto Sans Kannada","Noto Sans Malayalam","Noto Sans Gujarati","Noto Sans Gurmukhi","Noto Sans Oriya",monospace';
 
 export const themes = {
   dracula: {

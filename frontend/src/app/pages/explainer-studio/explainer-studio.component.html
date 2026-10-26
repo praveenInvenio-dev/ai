@@ -7,7 +7,9 @@
   <ul class="pills" aria-label="Service status">
     <li [class]="ollamaOk() ? 'ok' : 'bad'">Ollama · {{ ollamaOk() ? (models().length + ' models') : 'unreachable' }}</li>
     <li [class]="health()?.remotionBundle ? 'ok' : 'wait'">Renderer {{ health()?.remotionBundle ? 'ready' : 'warming up…' }}</li>
-    <li [class]="health()?.tts?.kokoroService ? 'ok' : 'wait'">Kokoro {{ health()?.tts?.kokoroService ? 'linked' : 'off' }}</li>
+    <li [class]="serviceOk('kokoro') ? 'ok' : 'wait'">Kokoro {{ serviceOk('kokoro') ? 'on' : 'off' }}</li>
+    <li [class]="serviceOk('indicf5') ? 'ok' : 'wait'" title="tts-indic (COMPOSE_PROFILES=indic)">IndicF5 {{ serviceOk('indicf5') ? 'on' : 'off' }}</li>
+    <li [class]="serviceOk('indicspeak') ? 'ok' : 'wait'" title="tts-indicspeak (COMPOSE_PROFILES=indicspeak)">Indic-Speak {{ serviceOk('indicspeak') ? 'on' : 'off' }}</li>
     <li class="ok">Queue {{ health()?.queue?.running ?? 0 }}/{{ health()?.queue?.concurrency ?? 1 }} · {{ health()?.queue?.queued ?? 0 }} waiting</li>
   </ul>
 </header>
@@ -63,14 +65,22 @@
         }
       </div>
       <div class="selects">
+        <label class="wide">Language
+          <select [ngModel]="language" (ngModelChange)="setLanguage($event)">
+            @for (l of meta()?.languages ?? []; track l.id) { <option [value]="l.id">{{ l.id === 'en' ? l.label : l.label + ' · ' + l.native }}</option> }
+          </select>
+        </label>
         <label>Subject
           <select [(ngModel)]="domain">@for (d of meta()?.domains ?? []; track d.id) { <option [value]="d.id">{{ d.label }}</option> }</select>
         </label>
         <label>Voice
           <select [(ngModel)]="voice">
-            @for (v of meta()?.voices ?? []; track v.id) { <option [value]="v.id" [disabled]="!v.available">{{ v.label }}{{ v.available ? '' : ' (not installed)' }}</option> }
+            @for (v of voicesFor(); track v.id) { <option [value]="v.id" [disabled]="!v.available">{{ v.label }}{{ v.available ? '' : ' (service off)' }}</option> }
           </select>
         </label>
+        @if (noVoice()) {
+          <p class="hint">No {{ langLabel(language) }} voice is running. Start one: <code>COMPOSE_PROFILES=indic</code> (IndicF5) or <code>indicspeak</code> (Indic-Speak), then reload.</p>
+        }
         <label>Ollama model
           <select [(ngModel)]="model">
             @if (!models().length) { <option [value]="model">{{ model || 'default' }}</option> }
@@ -147,7 +157,7 @@
         <li [class.on]="j.id === activeId()">
           <button type="button" class="open" (click)="open(j)">
             <b>{{ j.result?.title || j.topic }}</b>
-            <small>{{ j.request.platform }} · {{ j.request.aspect }} · {{ j.createdAt | date: 'MMM d, HH:mm' }}</small>
+            <small>{{ j.request.platform }} · {{ j.request.aspect }} · {{ langLabel(j.request.language) }} · {{ j.createdAt | date: 'MMM d, HH:mm' }}</small>
             <small [class]="'st-' + j.status">{{ j.status }}@if (j.status === 'running') { · {{ (j.progress * 100).toFixed(0) }}% }</small>
           </button>
           <button type="button" class="del" [attr.aria-label]="'Delete ' + j.topic" (click)="remove(j)">×</button>

@@ -8,9 +8,9 @@ export function getLayout(width, height) {
   if (portrait) {
     return {
       portrait, width, height,
-      header: { x: width * 0.06, y: height * 0.045, w: width * 0.88, h: height * 0.085 },
-      content: { x: width * 0.06, y: height * 0.145, w: width * 0.88, h: height * 0.50 },
-      captions: { x: width * 0.04, y: height * 0.665, w: width * 0.92, h: height * 0.12 },
+      header: { x: width * 0.06, y: height * 0.045, w: width * 0.88, h: height * 0.045 },
+      content: { x: width * 0.05, y: height * 0.11, w: width * 0.90, h: height * 0.555 },
+      captions: { x: width * 0.04, y: height * 0.675, w: width * 0.92, h: height * 0.11 },
       tech: { x: width * 0.06, y: height * 0.795, w: width * 0.88, h: height * 0.06 },
       gap: width * 0.03,
     };

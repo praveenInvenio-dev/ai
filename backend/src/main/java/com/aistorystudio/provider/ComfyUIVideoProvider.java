@@ -120,6 +120,15 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
     private final com.aistorystudio.system.ResourceMonitorService resourceMonitor;
     private final int minVramMb;
 
+    /** H3 character cast (named, locked reference images). Optional: setter-injected so the constructor and
+     *  every existing test stay unchanged, and absent in contexts that do not scan the cast package. */
+    private com.aistorystudio.cast.CharacterCastStore characterCast;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCharacterCast(com.aistorystudio.cast.CharacterCastStore characterCast) {
+        this.characterCast = characterCast;
+    }
+
     public ComfyUIVideoProvider(
             WebClient.Builder webClientBuilder,
             @Value("${studio.comfyui.baseUrl:http://comfyui:8188}") String baseUrl,
@@ -437,9 +446,32 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         String startingImageFilename = hasStartingImage
                 ? uploadStartingImage(Path.of(request.startingImagePath()))
                 : null;
-        String characterReferenceImageFilename = request.characterReferenceImagePath() != null
-                ? uploadReferenceImage(Path.of(request.characterReferenceImagePath()))
-                : null;
+        // ── H3 character cast: every clip that names a cast character gets that character's LOCKED reference ──
+        java.util.List<com.aistorystudio.cast.CharacterCastStore.Resolved> cast = java.util.List.of();
+        if (h3 && characterCast != null && !blank(h3Ref2vaDiffusionModel)) {
+            try {
+                cast = characterCast.resolve(request.prompt());
+            } catch (RuntimeException e) {
+                log.warn("H3 cast lookup failed, continuing without references: {}", e.getMessage());
+            }
+        }
+        String characterReferenceImageFilename = null;
+        String characterReferenceImageFilename2 = null;
+        String castPromptPrefix = "";
+        if (!cast.isEmpty()) {
+            characterReferenceImageFilename = uploadMediaWithPrefix(cast.get(0).image(), "h3-cast-");
+            if (cast.size() > 1) characterReferenceImageFilename2 = uploadMediaWithPrefix(cast.get(1).image(), "h3-cast-");
+            // H3 takes two reference images: two characters fill both slots, so the start image is left out
+            // (the prompt still describes the scene); one character leaves slot 2 for the start image.
+            if (characterReferenceImageFilename2 != null && startingImageFilename != null) {
+                log.info("H3 cast: 2 characters referenced, start image not used as a reference for this clip.");
+                startingImageFilename = null;
+            }
+            castPromptPrefix = castPrompt(cast, startingImageFilename != null);
+            log.info("H3 cast: clip uses reference(s) for {}", cast.stream().map(r -> r.character().name).toList());
+        } else if (request.characterReferenceImagePath() != null) {
+            characterReferenceImageFilename = uploadReferenceImage(Path.of(request.characterReferenceImagePath()));
+        }
 
         // Unique per job, not a shared incrementing counter: VHS_VideoCombine's
         // own auto-numbering is scanned from disk per-run, and any leftover
@@ -461,7 +493,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                 workflowName, h3 ? h3Profile : "wan", width, height, length,
                 request.steps() > 0 ? request.steps() : (h3 ? h3Steps : defaultSteps));
         String effectiveH3Workflow = workflowName;
-        if (h3 && request.steps() > 0 && request.steps() <= 8 && startingImageFilename != null
+        if (h3 && cast.isEmpty() && request.steps() > 0 && request.steps() <= 8 && startingImageFilename != null
                 && characterReferenceImageFilename == null && voiceReferenceAudioPathBlank(request.voiceReferenceAudioPath())) {
             effectiveH3Workflow = "minimax-h3-image-to-video-turbo";
         }
@@ -469,8 +501,12 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                 ? fillWanA14bTemplate(request.prompt(), request.negativePrompt(), seed, width, height, length,
                     startingImageFilename, filenamePrefix)
                 : workflowName.startsWith("minimax-h3")
-                ? fillMiniMaxH3Template(effectiveH3Workflow, request.prompt(), seed, width, height, length,
-                    request.steps() > 0 ? request.steps() : h3Steps, startingImageFilename, request.voiceReferenceAudioPath(), characterReferenceImageFilename)
+                ? (cast.isEmpty()
+                    ? fillMiniMaxH3Template(effectiveH3Workflow, request.prompt(), seed, width, height, length,
+                        request.steps() > 0 ? request.steps() : h3Steps, startingImageFilename, request.voiceReferenceAudioPath(), characterReferenceImageFilename)
+                    : fillMiniMaxH3CastTemplate(castPromptPrefix + (request.prompt() == null ? "" : request.prompt()), seed, width, height, length,
+                        request.steps() > 0 ? request.steps() : h3Steps, startingImageFilename, request.voiceReferenceAudioPath(),
+                        characterReferenceImageFilename, characterReferenceImageFilename2))
                 : fillWanTemplate(workflowName, request.prompt(),
                     request.negativePrompt() == null ? "" : request.negativePrompt(),
                     seed, width, height, length, defaultFps,
@@ -514,7 +550,7 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
         byte[] videoBytes = pollForVideo(promptId);
         log.info("ComfyUI video ready in {}s ({} bytes, promptId={})",
                 (System.currentTimeMillis() - start) / 1000, videoBytes.length, promptId);
-        return new VideoGenerationResult(videoBytes, "mp4", seed, effectiveH3Workflow);
+        return new VideoGenerationResult(videoBytes, "mp4", seed, cast.isEmpty() ? effectiveH3Workflow : "minimax-h3-reference-cast-to-video");
     }
 
     /** Builds the video-specific placeholder maps and delegates the actual
@@ -531,6 +567,23 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
      * prompt, so drop such nodes and every input that points at them (e.g. start image +
      * voice audio without a separate character sheet).
      */
+    /** After pruning, renumber dynamic slots (ref_image_0, ref_image_2 → ref_image_0, ref_image_1) so the
+     *  autogrow input never has a gap. */
+    private static void compactRefSlots(com.fasterxml.jackson.databind.node.ObjectNode in, String prefix) {
+        java.util.TreeMap<Integer, JsonNode> slots = new java.util.TreeMap<>();
+        java.util.List<String> keys = new java.util.ArrayList<>();
+        in.fieldNames().forEachRemaining(k -> {
+            if (k.startsWith(prefix)) {
+                try { slots.put(Integer.parseInt(k.substring(prefix.length())), in.get(k)); keys.add(k); }
+                catch (NumberFormatException ignored) { }
+            }
+        });
+        if (slots.isEmpty()) return;
+        keys.forEach(in::remove);
+        int i = 0;
+        for (JsonNode v : slots.values()) in.set(prefix + (i++), v);
+    }
+
     private String pruneEmptyMediaInputs(String workflowJson) {
         try {
             var root = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(workflowJson);
@@ -556,6 +609,8 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
                         }
                     });
                     drop.forEach(in::remove);
+                    compactRefSlots(in, "ref_images.ref_image_");
+                    compactRefSlots(in, "ref_audios.ref_audio_");
                 }
             });
             return mapper.writeValueAsString(root);
@@ -563,6 +618,46 @@ public class ComfyUIVideoProvider implements VideoGenerationProvider {
             log.warn("Could not prune empty media inputs from H3 workflow: {}", e.getMessage());
             return workflowJson;
         }
+    }
+
+    /** "Reference image 1 shows Asha: …" - tells H3 which reference is which named character. */
+    private static String castPrompt(java.util.List<com.aistorystudio.cast.CharacterCastStore.Resolved> cast, boolean startImageIsRef) {
+        StringBuilder b = new StringBuilder("CHARACTER REFERENCES: ");
+        for (int i = 0; i < cast.size(); i++) {
+            var c = cast.get(i).character();
+            b.append("Reference image ").append(i + 1).append(" shows ").append(c.name);
+            if (c.masterPrompt != null && !c.masterPrompt.isBlank()) b.append(" - ").append(c.masterPrompt.trim().replaceAll("\\s+", " "));
+            b.append(". ");
+        }
+        if (startImageIsRef) b.append("Reference image ").append(cast.size() + 1).append(" is the scene's starting frame for setting and composition. ");
+        b.append("Every referenced character must look exactly like their reference image in every frame: same face, hairstyle, ")
+         .append("hair colour, skin tone, body, outfit, colours and accessories. Do not redesign, restyle or swap them.\n\n");
+        return b.toString();
+    }
+
+    private String fillMiniMaxH3CastTemplate(String positive, long seed, int width, int height, int length, int steps,
+                                             String startingImageFilename, String voiceReferenceAudioPath,
+                                             String castImage1, String castImage2) {
+        String uploadedVoiceFilename = voiceReferenceAudioPath != null && !voiceReferenceAudioPath.isBlank()
+                ? uploadMedia(Path.of(voiceReferenceAudioPath)) : null;
+        Map<String, String> text = new LinkedHashMap<>();
+        text.put("{{POSITIVE_PROMPT}}", positive == null ? "" : positive);
+        text.put("{{STARTING_IMAGE}}", startingImageFilename == null ? "" : startingImageFilename);
+        text.put("{{VOICE_REFERENCE_AUDIO}}", uploadedVoiceFilename == null ? "" : uploadedVoiceFilename);
+        text.put("{{CHARACTER_REFERENCE_IMAGE}}", castImage1 == null ? "" : castImage1);
+        text.put("{{CHARACTER_REFERENCE_IMAGE_2}}", castImage2 == null ? "" : castImage2);
+        text.put("{{FILENAME_PREFIX}}", "ai-story-studio-minimax-h3-cast-" + UUID.randomUUID());
+        text.put("{{H3_DIFFUSION_MODEL}}", h3Ref2vaDiffusionModel);
+        text.put("{{H3_TEXT_ENCODER}}", h3TextEncoder);
+        text.put("{{H3_VIDEO_VAE}}", h3VideoVae);
+        text.put("{{H3_AUDIO_VAE}}", h3AudioVae);
+        Map<String, Number> numeric = new LinkedHashMap<>();
+        numeric.put("{{SEED}}", seed);
+        numeric.put("{{WIDTH}}", width);
+        numeric.put("{{HEIGHT}}", height);
+        numeric.put("{{LENGTH}}", length);
+        numeric.put("{{STEPS}}", steps);
+        return pruneEmptyMediaInputs(WorkflowTemplateFiller.fill(mapper, "minimax-h3-reference-cast-to-video", text, numeric));
     }
 
     private String fillMiniMaxH3Template(String workflowName, String positive, long seed, int width, int height, int length, int steps, String startingImageFilename, String voiceReferenceAudioPath, String characterReferenceImageFilename) {

@@ -12,6 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg curl ca-certificates tini fonts-inter fonts-firacode fonts-dejavu-core fonts-liberation \
+      fonts-noto-core \
     && rm -rf /var/lib/apt/lists/*
 
 RUN set -u; mkdir -p /opt/piper/voices; \

@@ -15,6 +15,7 @@ const EXAMPLES = [
   { topic: 'Why methane is tetrahedral', domain: 'chemistry_neet' },
   { topic: 'Volume of a cylinder, visually', domain: 'math_jee' },
   { topic: 'How UPI moves money in two seconds', domain: 'general' },
+  { topic: 'Photosynthesis — explained in Hindi', domain: 'biology_neet', language: 'hi' },
 ];
 const STAGES = [
   { id: 'script', label: 'Script' }, { id: 'voice', label: 'Voice' }, { id: 'timeline', label: 'Sync' },
@@ -53,6 +54,7 @@ export class ExplainerStudioComponent implements OnInit, OnDestroy, AfterViewChe
   fps = 30;
   theme = 'dracula';
   voice = '';
+  language = 'en';
   model = '';
 
   busy = computed(() => ['queued', 'running'].includes(this.state()?.status ?? ''));
@@ -68,7 +70,7 @@ export class ExplainerStudioComponent implements OnInit, OnDestroy, AfterViewChe
     this.api.meta().subscribe({
       next: (m) => {
         this.meta.set(m);
-        this.voice = m.defaultVoice || m.voices.find((v) => v.available)?.id || m.voices[0]?.id || '';
+        this.voice = m.defaultVoice || m.voices.find((v) => v.available && v.lang === 'en')?.id || m.voices[0]?.id || '';
         this.model = m.model;
       },
       error: () => this.error.set('Explainer Studio service is not reachable. Check: docker compose ps explainer-studio'),
@@ -83,10 +85,24 @@ export class ExplainerStudioComponent implements OnInit, OnDestroy, AfterViewChe
   }
 
   tp(id: string) { return THEMES[id] ?? THEMES['dracula']; }
+  /** Voices that speak the selected language, available ones first. */
+  voicesFor() {
+    const list = (this.meta()?.voices ?? []).filter((v) => v.lang === this.language);
+    return [...list.filter((v) => v.available), ...list.filter((v) => !v.available)];
+  }
+  setLanguage(id: string) {
+    this.language = id;
+    const def = this.meta()?.languages.find((l) => l.id === id)?.defaultVoice;
+    const avail = this.voicesFor().find((v) => v.available);
+    this.voice = (def && this.voicesFor().some((v) => v.id === def && v.available) ? def : avail?.id) ?? def ?? '';
+  }
+  noVoice() { return this.language !== 'en' && !this.voicesFor().some((v) => v.available); }
+  langLabel(id?: string) { const l = this.meta()?.languages.find((x) => x.id === (id || 'en')); return l ? (l.id === 'en' ? l.label : `${l.label} · ${l.native}`) : 'English'; }
+  serviceOk(name: string) { return this.health()?.tts?.services?.[name]; }
   short(l: string) { return l.replace(/\s*\(.*\)/, ''); }
   dur(s: number) { return s < 120 ? `${s}s` : `${Math.round(s / 60)} min`; }
   tag(l: ExLog) { return TAGS[l.level] ?? 'job'; }
-  pick(e: { topic: string; domain: string }) { this.topic = e.topic; this.domain = e.domain; }
+  pick(e: { topic: string; domain: string; language?: string }) { this.topic = e.topic; this.domain = e.domain; if (e.language) this.setLanguage(e.language); }
   setPlatform(id: string, aspect: string) { this.platform = id; this.aspect = aspect; }
 
   stageClass(id: string) {
@@ -110,7 +126,7 @@ export class ExplainerStudioComponent implements OnInit, OnDestroy, AfterViewChe
   generate() {
     if (this.busy() || this.topic.trim().length < 3) return;
     this.error.set('');
-    const req: ExRequest = { topic: this.topic.trim(), domain: this.domain, platform: this.platform, aspect: this.aspect, fps: this.fps, theme: this.theme, voice: this.voice, ...(this.model ? { model: this.model } : {}) };
+    const req: ExRequest = { topic: this.topic.trim(), domain: this.domain, platform: this.platform, aspect: this.aspect, fps: this.fps, theme: this.theme, voice: this.voice, language: this.language, ...(this.model ? { model: this.model } : {}) };
     this.api.create(req).subscribe({
       next: ({ id }) => { this.portrait.set(req.aspect === '9:16'); this.watch(id); },
       error: (e) => this.error.set(e.error?.error || 'Could not start the job.'),

@@ -43,8 +43,13 @@ const SPELL = new Set(['CPU', 'GPU', 'API', 'HTTP', 'HTTPS', 'URL', 'HTML', 'CSS
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-export function normalizeForSpeech(input, { pronunciations = {} } = {}) {
+export function normalizeForSpeech(input, { pronunciations = {}, lang = 'en' } = {}) {
   let t = String(input).replace(/[`*_#]/g, '').replace(/\s+/g, ' ').trim();
+  // Indian languages: the English number/unit/operator expansion would inject English words into, say, Tamil.
+  // The Indic voices read digits and the native script themselves; only tidy punctuation that trips them up.
+  if (lang && lang !== 'en') {
+    return t.replace(/\s*[—–]\s*/g, ', ').replace(/["“”‘’«»]/g, '').replace(/\s*\.\.\.\s*/g, '... ').replace(/\s+/g, ' ').trim();
+  }
 
   // 1) domain pronunciations, longest token first
   const keys = Object.keys(pronunciations).sort((a, b) => b.length - a.length);

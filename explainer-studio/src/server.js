@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import { config, jobsDir } from './config.js';
 import { PLATFORMS, ASPECTS, FPS_OPTIONS, THEME_IDS } from './presets.js';
 import { DOMAINS, DOMAIN_IDS } from './domains/index.js';
-import { VOICES, voiceAvailable, defaultVoiceId } from './tts/voices.js';
+import { VOICES, voiceAvailable, defaultVoiceId, startVoiceProbe, serviceUp } from './tts/voices.js';
+import { LANGUAGES, LANGUAGE_IDS } from './shared/languages.js';
 import { TYPES } from './shared/catalog.js';
 import { ollamaStatus } from './llm/ollama.js';
 import { JobStore } from './pipeline/jobs.js';
@@ -37,8 +38,9 @@ app.get('/api/meta', wrap(async (_req, res) => {
     platforms: Object.values(PLATFORMS).map((p) => ({ id: p.id, label: p.label, group: p.group, targetSec: p.targetSec, defaultAspect: p.aspect, scenes: p.plan.length })),
     aspects: Object.keys(ASPECTS), fps: FPS_OPTIONS, themes: THEME_IDS,
     domains: DOMAIN_IDS.map((id) => ({ id, label: DOMAINS[id].label })),
-    voices: VOICES.map((v) => ({ id: v.id, label: v.label, engine: v.engine, available: voiceAvailable(v) })),
-    defaultVoice: defaultVoiceId(),
+    languages: LANGUAGE_IDS.map((id) => ({ id, label: LANGUAGES[id].label, native: LANGUAGES[id].native, defaultVoice: defaultVoiceId(id) })),
+    voices: VOICES.map((v) => ({ id: v.id, label: v.label, engine: v.engine, lang: v.lang, available: voiceAvailable(v) })),
+    defaultVoice: defaultVoiceId('en'),
     primitives: TYPES,
     model: config.ollama.model,
   });
@@ -46,7 +48,7 @@ app.get('/api/meta', wrap(async (_req, res) => {
 
 app.get('/api/health', wrap(async (_req, res) => {
   const ollama = await ollamaStatus();
-  res.json({ ok: true, ollama, remotionBundle: bundleReady(), queue: queue.stats(), renderer: { browser: config.render.browserExecutable ? 'local' : 'remotion-download', gl: config.render.gl }, tts: { kokoroService: config.tts.kokoroUrl || null } });
+  res.json({ ok: true, ollama, remotionBundle: bundleReady(), queue: queue.stats(), renderer: { browser: config.render.browserExecutable ? 'local' : 'remotion-download', gl: config.render.gl }, tts: { kokoroService: config.tts.kokoroUrl || null, services: Object.fromEntries(Object.entries({ kokoro: config.tts.kokoroUrl, indicspeak: config.tts.indicSpeakUrl, indicf5: config.tts.indicF5Url }).filter(([, u]) => u).map(([k]) => [k, serviceUp[k] !== false])) } });
 }));
 
 // ── jobs ────────────────────────────────────────────────────────────────────
@@ -58,10 +60,12 @@ function parseRequest(b = {}) {
   const fps = FPS_OPTIONS.includes(Number(b.fps)) ? Number(b.fps) : 30;
   const theme = THEME_IDS.includes(b.theme) ? b.theme : 'dracula';
   const domain = DOMAINS[b.domain] ? b.domain : 'general';
+  const language = LANGUAGES[b.language] ? b.language : 'en';
   const want = VOICES.find((v) => v.id === b.voice);
-  const voice = want && voiceAvailable(want) ? want.id : defaultVoiceId();
+  // A voice only speaks its own language (an IndicF5 Tamil voice cannot read Hindi): fall back to that language's default.
+  const voice = want && want.lang === language && voiceAvailable(want) ? want.id : defaultVoiceId(language);
   const model = typeof b.model === 'string' && /^[\w.:/-]{1,80}$/.test(b.model) ? b.model : undefined;
-  return { topic, platform, aspect, fps, theme, domain, voice, mode: 'full', ...(model ? { model } : {}) };
+  return { topic, platform, aspect, fps, theme, domain, language, voice, mode: 'full', ...(model ? { model } : {}) };
 }
 
 app.post('/api/jobs', wrap(async (req, res) => {
@@ -79,7 +83,7 @@ app.post('/api/jobs/:id/rerender', wrap(async (req, res) => {
   const patch = parseRequest({ ...old.request, ...req.body, topic: old.request.topic });
   const id = crypto.randomUUID();
   // Reuse the saved script + narration by copying them into the new job folder.
-  const job = store.create(id, { ...patch, mode: 'rerender', model: old.request.model, voice: old.request.voice, domain: old.request.domain, platform: old.request.platform, sourceJob: old.id });
+  const job = store.create(id, { ...patch, mode: 'rerender', model: old.request.model, language: old.request.language || 'en', voice: old.request.voice, domain: old.request.domain, platform: old.request.platform, sourceJob: old.id });
   for (const f of ['timeline.json', 'script.json', 'narration.wav']) fs.copyFileSync(`${store.dir(old.id)}/${f}`, `${store.dir(id)}/${f}`);
   queue.enqueue(id);
   store.log(job, `Re-render of ${old.id.slice(0, 8)} with new visual settings.`);
@@ -136,6 +140,7 @@ app.use((err, _req, res, _next) => {
   res.status(status).json({ error: err.message || 'internal error' });
 });
 
+startVoiceProbe();
 const server = app.listen(config.port, () => {
   console.log(`API listening on :${config.port} · Ollama ${config.ollama.host} (${config.ollama.model}) · queue concurrency ${config.queue.concurrency}`);
   getBundle((m) => console.log(m)).then(() => console.log('Remotion bundle ready.')).catch((e) => console.error('Remotion bundle failed:', e.message));

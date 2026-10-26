@@ -6,6 +6,7 @@ import { DOMAINS } from '../domains/index.js';
 import { ollamaStatus } from '../llm/ollama.js';
 import { generateScript } from '../llm/generate.js';
 import { synthesizeAll } from '../tts/index.js';
+import { LANGUAGES } from '../shared/languages.js';
 import { buildTimeline, toSubtitles, toChapters } from '../timeline/build.js';
 import { assembleWav } from '../media/wav.js';
 import { masterVoice, muxFinal, pickMusic, probeDurationMs } from '../media/ffmpeg.js';
@@ -51,17 +52,19 @@ export async function runJob({ store, job, signal }) {
       if (!st.reachable) throw new Error(`Cannot reach Ollama at ${config.ollama.host} (${st.error}). Is it running? In Docker on Linux, set OLLAMA_HOST=0.0.0.0 on the host.`);
       if (!st.modelPresent) throw new Error(`Model "${model}" is not pulled. Run: ollama pull ${model}`);
       log(`Ollama ready · model ${model}`, 'llm');
-      const gen = await generateScript({ topic: req.topic, domain, platform, log, progress, signal, model });
+      const lang = req.language || 'en';
+      if (lang !== 'en') log(`Language: ${LANGUAGES[lang]?.label || lang}`, 'llm');
+      const gen = await generateScript({ topic: req.topic, domain, platform, log, progress, signal, model, lang });
       outline = gen.outline;
       await fs.writeFile(path.join(dir, 'script.json'), JSON.stringify(gen, null, 2));
 
       // ── 2. TTS ────────────────────────────────────────────────────────────
       stage('voice', 0.26);
-      await synthesizeAll({ scenes: gen.scenes, voiceId: req.voice, platform, domain, workDir: tmp, log, progress, signal });
+      await synthesizeAll({ scenes: gen.scenes, voiceId: req.voice, platform, domain, workDir: tmp, log, progress, signal, lang });
 
       // ── 3. Timeline + master narration ───────────────────────────────────
       stage('timeline', 0.47);
-      const built = buildTimeline({ outline, scenes: gen.scenes, platform, meta: { topic: req.topic, domain: domain.id, voice: req.voice } });
+      const built = buildTimeline({ outline, scenes: gen.scenes, platform, meta: { topic: req.topic, domain: domain.id, voice: req.voice, language: lang } });
       timeline = built.timeline;
       const spliced = path.join(tmp, 'narration_spliced.wav');
       const { totalMs } = await assembleWav(built.segments, spliced);

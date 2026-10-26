@@ -1,4 +1,5 @@
 import { catalogPrompt, SLOT_HELP, EXAMPLE_SCENE } from '../shared/catalog.js';
+import { languageBlock } from '../shared/languages.js';
 
 /**
  * The voice. This block is the difference between "text-to-speech reading an essay" and
@@ -20,10 +21,10 @@ VOICE — you are a friendly senior who is genuinely excited about this topic, e
 - techNote = a SHORT on-screen technical subtitle (<= 60 chars, symbols allowed) that precisely states the rule, formula or code fact for that sentence. Add it only to sentences that teach a hard fact.
 `.trim();
 
-export function outlineSystem() {
+export function outlineSystem(lang = 'en') {
   return `You are the showrunner of a hit educational animation channel. You plan videos that people finish and send to friends.
 You output ONLY a JSON object matching the requested schema. No markdown, no commentary.
-${TUTOR_STYLE}`;
+${TUTOR_STYLE}${languageBlock(lang)}`;
 }
 
 export function outlineUser({ topic, domain, platform, plan }) {
@@ -46,12 +47,12 @@ Return JSON with:
 - titleOptions: 3 alternative titles
 - onScreenHook, ctaLine
 - analogy: ONE everyday analogy to reuse across the whole video
-- logline: ONE sentence the whole video proves
+- logline: ONE sentence the whole video proves (concrete, testable — not "X is important")
 - hashtags: 5 relevant tags without '#'
 - scenes: array of exactly ${plan.length} objects {heading (<= 5 words, specific), goal (one sentence: what the viewer understands after this scene), keyVisual (one sentence: what is on screen and what moves)}`;
 }
 
-export function sceneSystem({ domain }) {
+export function sceneSystem({ domain, lang = 'en' }) {
   return `You write ONE scene of an educational animated video: the narration AND the visuals that sync with it.
 You output ONLY a JSON object. No markdown, no commentary.
 
@@ -72,12 +73,15 @@ SYNC RULES (this is how narration and animation stay locked together):
 - Introduce the objects in the first sentence(s) of the scene so the viewer sees them BEFORE they are explained.
 - Use 1-3 elements per scene. Fewer, clearer, well-animated beats more clutter. Do not leave a scene without motion unless the role is "recap".
 - Numbers, ids, labels must be short. No emoji.
+- VARIETY: every scene must LOOK different. Rotate primitives across the video: a concrete model of the thing (flow, threads, icons, molecule, plot…), a comparison (race), one memorable number (stat), a punchline card (kinetic), real code when the topic names a language/library/tool (code).
+- Pick the visual that PROVES the sentence, not one that decorates it. "Faster" → race. "4 times" → stat. A definition → kinetic. A process → flow/icons.
+- If the topic names a programming language, framework or tool, at least one scene must show a short REAL snippet in that language (code primitive, 3-7 lines) - the viewer came for that.
 
 EXAMPLE (output shape and the quality of narration to match; different topic content):
-${JSON.stringify(EXAMPLE_SCENE)}`;
+${JSON.stringify(EXAMPLE_SCENE)}${languageBlock(lang)}${lang !== 'en' ? '\n(The example is English only to show the JSON shape; YOUR sentences must be in the language above.)' : ''}`;
 }
 
-export function sceneUser({ topic, domain, platform, outline, index, plan, prev, next }) {
+export function sceneUser({ topic, domain, platform, outline, index, plan, prev, next, usedBefore = [] }) {
   const s = plan[index];
   const o = outline.scenes[index];
   return `TOPIC: ${topic}
@@ -93,6 +97,7 @@ ROLE GUIDE: ${s.guide}
 ${index === 0 ? `This is the opening. The viewer sees this text on screen: "${outline.onScreenHook}". Your first sentence must hit within 3 seconds.` : `Previous scene ended with: "${prev ?? ''}". Continue naturally (no recap, no greeting).`}
 ${next ? `Next scene is "${next}" — you may end with a one-line bridge.` : `This is the final scene. ${platform.group === 'short' ? `Loop back to the opening question and end on a line that invites a send, in the spirit of: "${outline.ctaLine}".` : `End with a clear handoff, in the spirit of: "${outline.ctaLine}".`}`}
 
+${usedBefore.length ? `VISUALS ALREADY USED (scene by scene): ${usedBefore.map((t, k) => `${k + 1}=[${t.join(', ') || '—'}]`).join(' ')}. Make THIS scene look different: do not reuse the previous scene's main primitive unless the role is "recap".` : ''}
 Return JSON: {"sentences":[{text,phase,techNote?,emphasis?}], "elements":[…]}`;
 }
 

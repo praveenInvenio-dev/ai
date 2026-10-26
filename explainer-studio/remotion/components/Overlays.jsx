@@ -27,24 +27,16 @@ export const Background = () => {
   );
 };
 
-export const Header = ({ L, title, phase, topic }) => {
+/** Title only. (The Visualise / Animate / Explain step pills were removed: they read as UI buttons on a phone.) */
+export const Header = ({ L, title }) => {
   const t = useTheme();
   const { header: r, portrait, width } = L;
-  const fs = portrait ? width * 0.034 : L.height * 0.032;
-  const order = ['visualise', 'animate', 'explain'];
+  const fs = portrait ? width * 0.036 : L.height * 0.032;
+  if (!title) return null;
   return (
-    <div style={{ position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, display: 'flex', flexDirection: portrait ? 'column' : 'row', alignItems: portrait ? 'flex-start' : 'center', justifyContent: 'space-between', gap: fs * 0.6, fontFamily: t.font }}>
-      <div style={{ color: t.text, fontWeight: 800, fontSize: fs * 1.1, letterSpacing: -0.2, maxWidth: portrait ? '100%' : '58%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{topic}</div>
-      <div style={{ display: 'flex', gap: fs * 0.5 }}>
-        {order.map((p, i) => {
-          const on = p === phase, passed = order.indexOf(phase) > i;
-          return (
-            <div key={p} style={{ padding: `${fs * 0.22}px ${fs * 0.75}px`, borderRadius: 999, fontSize: fs * 0.78, fontWeight: 700, border: `2px solid ${on ? t.accent2 : t.panelBorder}`, background: on ? hexA(t.accent2, 0.22) : passed ? hexA(t.accent, 0.12) : 'transparent', color: on ? t.text : t.muted, boxShadow: on && t.glow ? `0 0 16px ${hexA(t.accent2, t.glow)}` : 'none' }}>
-              {PHASE_LABELS[p]}
-            </div>
-          );
-        })}
-      </div>
+    <div style={{ position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, display: 'flex', alignItems: 'center', gap: fs * 0.55, fontFamily: t.font }}>
+      <div style={{ width: fs * 0.32, height: fs * 1.25, borderRadius: fs, background: `linear-gradient(180deg, ${t.accent}, ${t.accent2})`, flexShrink: 0 }} />
+      <div style={{ color: t.text, fontWeight: 800, fontSize: fs * 1.05, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', opacity: 0.92 }}>{title}</div>
     </div>
   );
 };
@@ -78,14 +70,16 @@ export const Captions = ({ L, sentences, nowMs, chunk }) => {
           // Each word springs up the moment it is spoken (karaoke bounce), then settles.
           const wp = words[gi].startMs <= nowMs ? spring({ frame: ((nowMs - words[gi].startMs) / 1000) * fps, fps, config: { damping: 10, stiffness: 260 } }) : 0;
           const lift = isActive ? (1 - wp) * fs * 0.12 : 0;
-          return <span key={gi} style={{ color: isActive ? t.captionActive : t.captionFg, opacity: gi > active ? 0.55 : 1, marginRight: fs * 0.26, display: 'inline-block', transform: `translateY(${lift.toFixed(2)}px) scale(${isActive ? 1 + 0.09 * Math.min(1, wp) : 1})`, textShadow: isActive && t.glow ? `0 0 ${fs * 0.35}px ${hexA(t.captionActive, t.glow)}` : undefined }}>{w.w}</span>;
+          // The thick text stroke + the active-word scale both eat into the space between words, so the gap is
+          // sized for them (was fs*0.26 → words visibly ran together: "Twothreads.One").
+          return <span key={gi} style={{ color: isActive ? t.captionActive : t.captionFg, opacity: gi > active ? 0.55 : 1, margin: `0 ${fs * (portrait ? 0.24 : 0.16)}px`, display: 'inline-block', transformOrigin: '50% 60%', transform: `translateY(${lift.toFixed(2)}px) scale(${isActive ? 1 + 0.06 * Math.min(1, wp) : 1})`, textShadow: isActive && t.glow ? `0 0 ${fs * 0.35}px ${hexA(t.captionActive, t.glow)}` : undefined }}>{w.w}</span>;
         })}
       </div>
     </div>
   );
 };
 
-export const TechNote = ({ L, text, label = 'TECH', sinceMs = 1e9 }) => {
+export const TechNote = ({ L, text, label = 'TECH', sinceMs = 1e9, durMs = 3000 }) => {
   const t = useTheme();
   const { fps } = useVideoConfig();
   const { tech: r, portrait } = L;
@@ -96,7 +90,9 @@ export const TechNote = ({ L, text, label = 'TECH', sinceMs = 1e9 }) => {
   const fs = Math.max(base * 0.62, Math.min(base, avail / (text.length * 0.6)));
   const p = spring({ frame: Math.max(0, (sinceMs / 1000) * fps), fps, config: { damping: 16, stiffness: 150 } });
   // Typewriter reveal of the note itself (≈ 45 chars/s), so the fact "writes itself" as it is spoken.
-  const shown = Math.max(1, Math.min(text.length, Math.floor((sinceMs / 1000) * 45)));
+  // Typewriter finishes within ~35 % of its sentence, so a note is never cut off half-typed ("new Th…").
+  const cps = Math.max(45, text.length / Math.max(0.4, (durMs * 0.35) / 1000));
+  const shown = Math.max(1, Math.min(text.length, Math.floor((sinceMs / 1000) * cps)));
   return (
     <div style={{ position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: p, transform: `translateY(${(1 - p) * 18}px)` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: fs * 0.7, maxWidth: '100%', padding: `${fs * 0.35}px ${fs * 0.9}px`, borderRadius: fs * 0.5, background: t.code.bg, border: `2px solid ${t.accent}`, boxShadow: t.glow ? `0 0 ${fs}px ${hexA(t.accent, t.glow * 0.6)}` : '0 6px 20px rgba(0,0,0,.12)', fontFamily: t.mono, fontSize: fs, color: t.text, fontWeight: 600, lineHeight: 1.25 }}>

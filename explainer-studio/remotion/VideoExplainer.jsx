@@ -95,8 +95,8 @@ export const VideoExplainer = ({ timeline, themeId = 'dracula' }) => {
   return (
     <ThemeCtx.Provider value={theme}>
       <AbsoluteFill style={{ fontFamily: theme.font, color: theme.text }}>
-        <Atmosphere energy={inTrans ? Math.sin(Math.PI * tp) : 0} />
-        <Header L={L} phase={phase} topic={timeline.meta.topic || timeline.meta.title} />
+        <Atmosphere energy={inTrans ? Math.sin(Math.PI * tp) : 0} seed={sceneIdx} />
+        <Header L={L} title={timeline.meta.title || timeline.meta.topic} />
 
         {prev && (
           <Freeze frame={prevFreezeFrame}>
@@ -118,9 +118,9 @@ export const VideoExplainer = ({ timeline, themeId = 'dracula' }) => {
         {inTrans && <SceneSweep p={Math.min(1, sinceStart / TRANS_MS)} />}
 
         <HookOverlay L={L} text={timeline.meta.onScreenHook} nowMs={nowMs} />
-        {!showCta && <TechNote L={L} text={techNote} sinceMs={nowMs - cur.startMs} />}
+        {!showCta && <TechNote L={L} text={techNote} sinceMs={nowMs - cur.startMs} durMs={cur.endMs - cur.startMs} />}
         <EndCard L={L} text={timeline.meta.ctaLine} nowMs={nowMs} totalMs={timeline.totalMs} />
-        <Captions L={L} sentences={flatSentences} nowMs={nowMs} chunk={L.portrait ? Math.min(timeline.meta.captionChunk || 3, 3) : Math.max(timeline.meta.captionChunk || 9, 7)} />
+        {!(showCta && timeline.meta.ctaLine) && <Captions L={L} sentences={flatSentences} nowMs={nowMs} chunk={L.portrait ? Math.min(timeline.meta.captionChunk || 3, 3) : Math.max(timeline.meta.captionChunk || 9, 7)} />}
         <ProgressBar L={L} nowMs={nowMs} totalMs={timeline.totalMs} />
       </AbsoluteFill>
     </ThemeCtx.Provider>

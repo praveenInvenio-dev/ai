@@ -12,17 +12,21 @@ import { hexA } from '../primitives/common.jsx';
  *  - static film grain: breaks up 8-bit banding in dark gradients so the H.264 encode stays clean
  * `energy` (0..1) brightens everything a little during transitions / emphasis.
  */
-export const Atmosphere = ({ energy = 0 }) => {
+export const Atmosphere = ({ energy = 0, seed = 0 }) => {
   const t = useTheme();
   const frame = useCurrentFrame();
   const { width, height, fps } = useVideoConfig();
   const sec = frame / fps;
   const minDim = Math.min(width, height);
 
+  // Each scene gets its own arrangement + colour order of the light pools (eased in by the scene transition).
+  const LAYOUTS = [[[0.18, 0.12], [0.86, 0.78], [0.72, 0.18]], [[0.82, 0.1], [0.14, 0.7], [0.5, 0.95]], [[0.5, 0.05], [0.9, 0.5], [0.1, 0.9]], [[0.1, 0.4], [0.7, 0.15], [0.85, 0.85]]];
+  const PALETTES = [[t.accent, t.accent2, t.info], [t.accent2, t.info, t.accent], [t.info, t.accent, t.accent2], [t.accent, t.good, t.accent2]];
+  const lay = LAYOUTS[seed % LAYOUTS.length], pal = PALETTES[seed % PALETTES.length];
   const blobs = [
-    { c: t.accent, seed: 'a', r: 0.62, base: [0.18, 0.12] },
-    { c: t.accent2, seed: 'b', r: 0.55, base: [0.86, 0.78] },
-    { c: t.info, seed: 'c', r: 0.45, base: [0.72, 0.18] },
+    { c: pal[0], seed: 'a', r: 0.62, base: lay[0] },
+    { c: pal[1], seed: 'b', r: 0.55, base: lay[1] },
+    { c: pal[2], seed: 'c', r: 0.45, base: lay[2] },
   ];
   const particles = useMemo(
     () => Array.from({ length: 34 }, (_, i) => ({ i, x: (i * 0.6180339) % 1, y: (i * 0.4142135 + 0.13) % 1, s: 0.6 + ((i * 7) % 5) / 5, c: i % 3 === 0 ? 'accent2' : 'accent' })),

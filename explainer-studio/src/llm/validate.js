@@ -87,6 +87,20 @@ function sanitizeProps(type, p = {}) {
       if (items.length < 2) items = [{ icon: 'lightbulb', label: 'Idea' }, { icon: 'check', label: 'Result' }];
       return { items, connect: p.connect !== false };
     }
+    case 'race': {
+      let lanes = arr(p.lanes).map((l, i) => ({ label: str(l?.label, `Option ${i + 1}`, 22), value: clamp(num(l?.value, (i + 1) * 2), 0.1, 1e6) })).slice(0, 4);
+      if (lanes.length < 2) lanes = [{ label: 'Before', value: 8 }, { label: 'After', value: 2 }];
+      return { title: str(p.title, '', 40), lanes, unit: str(p.unit, '', 8) };
+    }
+    case 'stat': {
+      const out = { from: num(p.from, 0), prefix: str(p.prefix, '', 4), suffix: str(p.suffix, '', 8), decimals: clamp(Math.round(num(p.decimals, 0)), 0, 2), label: str(p.label, '', 48) };
+      if (Number.isFinite(Number(p.max))) out.max = Number(p.max);
+      return out;
+    }
+    case 'kinetic': {
+      const lines = arr(p.lines).map((l) => String(l).split(/\s+/).slice(0, 5).join(' ').slice(0, 40)).filter(Boolean).slice(0, 3);
+      return { lines: lines.length ? lines : ['Here\'s the idea'], highlight: str(p.highlight, '', 24) };
+    }
     case 'molecule3d': {
       const atoms = arr(p.atoms).map((a, i) => ({ id: ID.test(a?.id) ? a.id : `a${i}`, el: str(a?.el, 'C', 3), x: clamp(num(a?.x, 20 + i * 25), 0, 100), y: clamp(num(a?.y, 50), 0, 100), z: clamp(num(a?.z, 50), 0, 100) })).slice(0, 16);
       const ids = new Set(atoms.map((a) => a.id));

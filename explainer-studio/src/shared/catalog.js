@@ -89,6 +89,21 @@ export const CATALOG = {
     props: { items: `[{icon,label}] (2-5, label max 2 words). icon one of: ${Object.keys(PLANNER_ICONS).join(', ')}`, connect: 'true|false — line between icons (default true)' },
     state: { reveal: 'number — how many icons are visible (animates)', active: 'number — 0-based index of the icon being talked about' },
   },
+  race: {
+    desc: 'Before/after RACE: 2-4 bars fill at speeds set by their value (lower value = finishes first), each with a live stopwatch; the winner flashes. Use for any "slow way vs fast way" comparison.',
+    props: { title: 'string (max 5 words, optional)', lanes: '[{label (max 3 words), value: number (time/cost, lower wins)}] 2-4', unit: 'string e.g. "s", "ms", " steps"' },
+    state: { go: '0|1 — 1 (re)starts the race on that sentence (starts by itself if omitted)' },
+  },
+  stat: {
+    desc: 'One BIG number that counts to its value on cue, with a label and a burst: "4x", "86%", "300,000 km/s". Use for the single most memorable number.',
+    props: { from: 'number start value', max: 'number (optional, draws a progress ring)', prefix: 'string', suffix: 'string e.g. "x", "%"', decimals: '0-2', label: 'string (max 6 words)' },
+    state: { value: 'number — counts to it (animates)' },
+  },
+  kinetic: {
+    desc: 'Kinetic typography: 1-3 short lines whose words slam in; one key word gets a marker highlight. Use for the punchline/definition, NOT for whole sentences of narration.',
+    props: { lines: 'string[] 1-3 lines, max 4 words each', highlight: 'one word from the lines' },
+    state: { reveal: 'number — lines visible (animates)' },
+  },
   molecule3d: {
     desc: 'Real 3D ball-and-stick molecule that slowly rotates. Prefer over "molecule" whenever the 3D shape matters (tetrahedral CH4, bent H2O, pyramidal NH3, benzene ring).',
     props: { atoms: '[{id,el,x,y,z}] x,y,z in 0..100 (z = depth, 50 = centre)', bonds: '[[atomIdA,atomIdB,order 1..3]]' },

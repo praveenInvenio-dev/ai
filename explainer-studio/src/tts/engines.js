@@ -40,6 +40,44 @@ export async function synthPiper({ text, voice, params, outFile, signal }) {
   });
 }
 
+/**
+ * AI Story Studio's Indian-language sidecars share one contract: POST {text, voice, speed} → audio/wav.
+ * tts-indicspeak (voice "speak:hi-Kavya") and tts-indic / IndicF5 (voice "indic:hi-in-swara").
+ */
+export async function synthIndicHttp({ text, voice, params, outFile, signal }) {
+  const url = voice.engine === 'indicf5' ? config.tts.indicF5Url : config.tts.indicSpeakUrl;
+  const name = voice.engine === 'indicf5' ? 'IndicF5 (tts-indic, profile "indic")' : 'Indic-Speak (tts-indicspeak, profile "indicspeak")';
+  if (!url) throw new Error(`${name} is not configured for Explainer Studio.`);
+  const speed = Math.min(1.25, Math.max(0.8, 1 / params.lengthScale));
+  // The first call can load a multi-GB model; the services answer 503 while loading - wait and retry, do not fail.
+  for (let attempt = 0; ; attempt++) {
+    const sig = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(Math.max(config.tts.timeoutMs, 300_000))]);
+    let res;
+    try {
+      res = await fetch(`${url}/api/tts`, { method: 'POST', headers: { 'content-type': 'application/json' }, signal: sig,
+        body: JSON.stringify({ text, voice: voice.voice, speed: +speed.toFixed(3) }) });
+    } catch (e) {
+      if (signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+      throw new Error(`${name} unreachable at ${url} (${e.message}).`);
+    }
+    if (res.status === 503 && attempt < 20) {
+      await new Promise((resolve, reject) => {
+        const t = setTimeout(resolve, 15_000);
+        signal?.addEventListener('abort', () => { clearTimeout(t); reject(Object.assign(new Error('aborted'), { name: 'AbortError' })); }, { once: true });
+      });
+      continue;
+    }
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      let msg = body;
+      try { msg = JSON.parse(body).error || body; } catch { /* plain text */ }
+      throw new Error(`${name} HTTP ${res.status}: ${String(msg).slice(0, 240)}`);
+    }
+    fs.writeFileSync(outFile, Buffer.from(await res.arrayBuffer()));
+    return;
+  }
+}
+
 /** AI Story Studio's own Kokoro sidecar: POST {text, voice, speed} → audio/wav. No model inside this image. */
 export async function synthKokoroHttp({ text, voice, params, outFile, signal }) {
   const speed = Math.min(1.3, Math.max(0.7, 1 / params.lengthScale));
@@ -65,4 +103,5 @@ export async function synthKokoro({ text, voice, params, outFile, signal }) {
   await runCli(config.tts.pythonBin, [config.tts.kokoroScript, '--voice', voice.voice, '--speed', speed, '--out', outFile, '--model-dir', config.tts.kokoroModelDir], { stdinText: text, signal, timeoutMs: 120_000 });
 }
 
-export const synthesize = (engine, opts) => (engine === 'kokoro' ? synthKokoro(opts) : synthPiper(opts));
+export const synthesize = (engine, opts) => (engine === 'kokoro' ? synthKokoro(opts)
+  : engine === 'indicspeak' || engine === 'indicf5' ? synthIndicHttp(opts) : synthPiper(opts));
