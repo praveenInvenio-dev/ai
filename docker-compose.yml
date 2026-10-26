@@ -459,6 +459,38 @@ services:
     networks:
       - ai-story-studio-net
 
+  # Explainer Studio (LEARN → Explainer Studio): topic → Ollama script → per-sentence TTS → Remotion + three.js
+  # motion graphics → FFmpeg master. Same Playwright base image as visual-renderer (Chromium included, no
+  # browser download). Voices: the tts-kokoro service when COMPOSE_PROFILES includes kokoro, Piper otherwise.
+  explainer-studio:
+    build:
+      context: ./explainer-studio
+      args:
+        WITH_PIPER: ${EXPLAINER_WITH_PIPER:-1}
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${EXPLAINER_OLLAMA_MODEL:-llama3.1}
+      OLLAMA_NUM_CTX: ${EXPLAINER_OLLAMA_NUM_CTX:-8192}
+      KOKORO_TTS_URL: ${EXPLAINER_KOKORO_TTS_URL:-http://tts-kokoro:5006}
+      DEFAULT_VOICE: ${EXPLAINER_DEFAULT_VOICE:-kokoro_michael}
+      PUBLIC_MEDIA_BASE: /explainer-media
+      MAX_CONCURRENT_JOBS: ${EXPLAINER_MAX_CONCURRENT_JOBS:-1}
+      RENDER_CONCURRENCY: ${EXPLAINER_RENDER_CONCURRENCY:-2}
+      FINAL_CRF: ${EXPLAINER_FINAL_CRF:-18}
+      REMOTION_GL: ${EXPLAINER_REMOTION_GL:-swangle}
+      RETENTION_DAYS: ${EXPLAINER_RETENTION_DAYS:-14}
+    volumes:
+      - explainer-data:/app/data
+      - ./explainer-studio/music:/app/assets/music:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    shm_size: "2gb"
+    expose:
+      - "4000"
+    restart: unless-stopped
+    networks:
+      - ai-story-studio-net
+
   video-worker:
     build:
       context: ./video-worker
@@ -530,6 +562,7 @@ services:
       - ai-story-studio-net
 
 volumes:
+  explainer-data:
   kokoro-cache:
   video-worker-models:
   rumik-cache:

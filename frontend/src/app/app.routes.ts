@@ -21,6 +21,7 @@ export const routes: Routes = [
   { path: 'funny-skits', loadComponent: () => import('./pages/funny-skit/funny-skit.component').then(m => m.FunnySkitComponent) },
   { path: 'concept-explainer', loadComponent: () => import('./pages/concept-explainer/concept-explainer.component').then(m => m.ConceptExplainerComponent) },
   { path: 'concept-studio', loadComponent: () => import('./pages/concept-explainer/concept-explainer.component').then(m => m.ConceptExplainerComponent) },
+  { path: 'explainer-studio', loadComponent: () => import('./pages/explainer-studio/explainer-studio.component').then(m => m.ExplainerStudioComponent) },
   { path: 'video-generation', loadComponent: () => import('./pages/video-generation/video-generation.component').then(m => m.VideoGenerationComponent) },
   { path: 'video-sequence', loadComponent: () => import('./pages/video-sequence/video-sequence.component').then(m => m.VideoSequenceComponent) },
   { path: 'wan-workflow', redirectTo: 'video-generation' },

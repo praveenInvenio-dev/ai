@@ -1,0 +1,158 @@
+<header class="head">
+  <div>
+    <p class="eyebrow">LEARN · MOTION EXPLAINERS</p>
+    <h1>Explainer Studio</h1>
+    <p class="sub">Type a concept. Get a narrated motion-graphics video: <b>visualise</b> it, <b>animate</b> it, <b>explain</b> it. Rendered locally with Remotion, three.js and your Ollama.</p>
+  </div>
+  <ul class="pills" aria-label="Service status">
+    <li [class]="ollamaOk() ? 'ok' : 'bad'">Ollama · {{ ollamaOk() ? (models().length + ' models') : 'unreachable' }}</li>
+    <li [class]="health()?.remotionBundle ? 'ok' : 'wait'">Renderer {{ health()?.remotionBundle ? 'ready' : 'warming up…' }}</li>
+    <li [class]="health()?.tts?.kokoroService ? 'ok' : 'wait'">Kokoro {{ health()?.tts?.kokoroService ? 'linked' : 'off' }}</li>
+    <li class="ok">Queue {{ health()?.queue?.running ?? 0 }}/{{ health()?.queue?.concurrency ?? 1 }} · {{ health()?.queue?.queued ?? 0 }} waiting</li>
+  </ul>
+</header>
+
+@if (error()) { <p class="alert" role="alert">{{ error() }}</p> }
+
+<section class="card composer">
+  <label for="ex-topic">What should the video explain?</label>
+  <div class="topic-row">
+    <textarea id="ex-topic" rows="2" maxlength="200" [(ngModel)]="topic" (keydown.control.enter)="generate()" (keydown.meta.enter)="generate()" placeholder="e.g. Why methane is tetrahedral"></textarea>
+    <button type="button" class="btn btn-primary go" (click)="generate()" [disabled]="busy() || topic.trim().length < 3 || !meta()">
+      <span class="dot" [class.live]="busy()"></span>{{ busy() ? 'Working…' : 'Generate video' }}
+    </button>
+  </div>
+  <div class="examples">
+    <span>Try:</span>
+    @for (e of examples; track e.topic) { <button type="button" class="chip" (click)="pick(e)">{{ e.topic }}</button> }
+  </div>
+
+  <div class="grid">
+    <div class="col-format">
+      <h3>Format</h3>
+      <div class="formats">
+        @for (p of meta()?.platforms ?? []; track p.id) {
+          <button type="button" class="opt" [class.on]="platform === p.id" (click)="setPlatform(p.id, p.defaultAspect)">
+            <b>{{ short(p.label) }}</b><small>≈ {{ dur(p.targetSec) }} · {{ p.defaultAspect }} · {{ p.scenes }} scenes</small>
+          </button>
+        }
+      </div>
+    </div>
+    <div class="col-frame">
+      <h3>Aspect</h3>
+      <div class="seg">
+        @for (a of meta()?.aspects ?? []; track a) {
+          <button type="button" class="opt aspect" [class.on]="aspect === a" (click)="aspect = a">
+            <span class="frame" [class.wide]="a === '16:9'"></span>{{ a === '16:9' ? 'Wide' : 'Vertical' }}
+          </button>
+        }
+      </div>
+      <h3>Frame rate</h3>
+      <div class="seg">
+        @for (f of meta()?.fps ?? []; track f) { <button type="button" class="opt" [class.on]="fps === f" (click)="fps = f">{{ f }} fps</button> }
+      </div>
+    </div>
+    <div class="col-look">
+      <h3>Animation theme</h3>
+      <div class="themes">
+        @for (id of meta()?.themes ?? []; track id) {
+          <button type="button" class="opt theme" [class.on]="theme === id" (click)="theme = id">
+            <span class="sw" [style.background]="tp(id).bg"><i [style.background]="tp(id).a"></i><i [style.background]="tp(id).b"></i><em [style.color]="tp(id).fg">Aa</em></span>
+            {{ tp(id).label }}
+          </button>
+        }
+      </div>
+      <div class="selects">
+        <label>Subject
+          <select [(ngModel)]="domain">@for (d of meta()?.domains ?? []; track d.id) { <option [value]="d.id">{{ d.label }}</option> }</select>
+        </label>
+        <label>Voice
+          <select [(ngModel)]="voice">
+            @for (v of meta()?.voices ?? []; track v.id) { <option [value]="v.id" [disabled]="!v.available">{{ v.label }}{{ v.available ? '' : ' (not installed)' }}</option> }
+          </select>
+        </label>
+        <label>Ollama model
+          <select [(ngModel)]="model">
+            @if (!models().length) { <option [value]="model">{{ model || 'default' }}</option> }
+            @for (m of models(); track m) { <option [value]="m">{{ m }}</option> }
+          </select>
+        </label>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="work">
+  <section class="card console" aria-label="Pipeline log">
+    <div class="console-head">
+      <b><span class="dot" [class.live]="busy()" [class.done]="state()?.status === 'done'" [class.fail]="state()?.status === 'failed'"></span>{{ statusTitle() }}</b>
+      <span class="pct">{{ ((state()?.progress ?? 0) * 100).toFixed(0) }}%</span>
+    </div>
+    <div class="bar"><div [style.width.%]="(state()?.progress ?? 0) * 100"></div></div>
+    <ol class="stages">@for (s of stages; track s.id) { <li [class]="stageClass(s.id)">{{ s.label }}</li> }</ol>
+    <div class="log" #logBox>
+      @if (!logs().length) { <p class="muted">Waiting for a job. Ollama's progress, TTS clips and "Rendering Frame X/N" stream here.</p> }
+      @for (l of logs(); track $index) {
+        <div class="line" [class]="'lv-' + l.level"><time>{{ l.t | date: 'HH:mm:ss' }}</time><span class="tag">{{ tag(l) }}</span><span class="msg">{{ l.msg }}</span></div>
+      }
+    </div>
+  </section>
+
+  <section class="card preview" aria-label="Video preview">
+    <div class="screen">
+      @if (state()?.result; as r) {
+        <video [src]="r.video" [poster]="r.thumbnail" controls playsinline preload="metadata" [class.portrait]="portrait()"></video>
+      } @else {
+        <div class="empty">
+          <div class="ghost" [class.portrait]="portrait()"></div>
+          <p><b>{{ state()?.status === 'failed' ? 'Generation failed' : 'Your video appears here' }}</b></p>
+          <p class="muted">{{ state()?.status === 'failed' ? state()?.error : 'Visualise → Animate → Explain, rendered on this machine.' }}</p>
+        </div>
+      }
+    </div>
+    @if (state()?.result; as r) {
+      <div class="result">
+        <h3>{{ r.metadata.title }}</h3>
+        <p class="muted">{{ r.durationSeconds }}s · {{ r.sizeMB }} MB · {{ r.metadata.aspect }} · {{ r.metadata.fps }} fps · built in {{ r.elapsedSeconds }}s</p>
+        <div class="row">
+          <a class="btn btn-primary" [href]="r.video + '?download'">Download MP4</a>
+          <a class="btn" [href]="r.srt + '?download'">.srt</a>
+          <a class="btn" [href]="r.vtt + '?download'">.vtt</a>
+          <a class="btn" [href]="r.thumbnail + '?download'">Thumbnail</a>
+        </div>
+        <div class="row small">
+          <span class="muted">Re-render (same script + voice):</span>
+          <button type="button" class="chip" (click)="rerender({ aspect: portrait() ? '16:9' : '9:16' })">{{ portrait() ? '16:9' : '9:16' }}</button>
+          <button type="button" class="chip" (click)="rerender({ fps: 60 })">60 fps</button>
+          @for (t of meta()?.themes ?? []; track t) { <button type="button" class="chip" (click)="rerender({ theme: t })">{{ tp(t).label }}</button> }
+        </div>
+        <div class="meta-box">
+          <div class="meta-head"><b>Description + chapters</b><button type="button" class="link" (click)="copy(r.metadata.description)">{{ copied() ? 'Copied' : 'Copy' }}</button></div>
+          <pre>{{ r.metadata.description }}</pre>
+          @if (r.metadata.titleOptions.length) {
+            <b>Title options</b>
+            <ul>@for (t of r.metadata.titleOptions; track t) { <li><button type="button" class="link" (click)="copy(t)">{{ t }}</button></li> }</ul>
+          }
+        </div>
+      </div>
+    }
+  </section>
+</div>
+
+@if (history().length) {
+  <section class="history">
+    <h3>Recent</h3>
+    <ul>
+      @for (j of history(); track j.id) {
+        <li [class.on]="j.id === activeId()">
+          <button type="button" class="open" (click)="open(j)">
+            <b>{{ j.result?.title || j.topic }}</b>
+            <small>{{ j.request.platform }} · {{ j.request.aspect }} · {{ j.createdAt | date: 'MMM d, HH:mm' }}</small>
+            <small [class]="'st-' + j.status">{{ j.status }}@if (j.status === 'running') { · {{ (j.progress * 100).toFixed(0) }}% }</small>
+          </button>
+          <button type="button" class="del" [attr.aria-label]="'Delete ' + j.topic" (click)="remove(j)">×</button>
+        </li>
+      }
+    </ul>
+  </section>
+}

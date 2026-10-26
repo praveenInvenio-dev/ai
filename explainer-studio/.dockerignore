@@ -1,0 +1,4 @@
+node_modules
+data
+.ssr.test.bundle.mjs
+*.log

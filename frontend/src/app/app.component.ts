@@ -25,7 +25,8 @@ import { ApiService } from './services/api.service';
           <a routerLink="/voice-lab" routerLinkActive="active"><span>♫</span>Voice lab</a>
           <div class="nav-label">LEARN</div>
           <a routerLink="/concept-explainer" routerLinkActive="active"><span>✦</span>Concept explainer</a>
-          <a routerLink="/concept-studio" routerLinkActive="active"><span>◈</span>Concept Studio <small class="nav-new">NEW</small></a>
+          <a routerLink="/concept-studio" routerLinkActive="active"><span>◈</span>Concept Studio</a>
+          <a routerLink="/explainer-studio" routerLinkActive="active"><span>▶</span>Explainer Studio <small class="nav-new">NEW</small></a>
           <div class="nav-label">PRODUCTION</div>
           <a routerLink="/motion-studio" routerLinkActive="active"><span>✦</span>Motion &amp; effects studio</a>
           <a routerLink="/video-editor" routerLinkActive="active"><span>◫</span>AI video editor</a>

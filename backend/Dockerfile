@@ -6,13 +6,14 @@ RUN mvn -B dependency:go-offline
 COPY src ./src
 RUN mvn -B clean package -DskipTests
 
-FROM eclipse-temurin:21-jre-jammy
+# Static ffmpeg/ffprobe from a multi-arch image (amd64 + arm64). Replaces the johnvansickle.com download,
+# which returned a non-xz page and broke the build ("xz: File format not recognized").
+FROM mwader/static-ffmpeg:7.1 AS ffmpeg
 
-# Install FFmpeg from Ubuntu's maintained package repository. This avoids
-# downloading a third-party static archive that may return HTML/error content
-# instead of a valid .tar.xz file.
+FROM eclipse-temurin:21-jre-jammy
+COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg ca-certificates fontconfig libfreetype6 \
+    && apt-get install -y --no-install-recommends fontconfig libfreetype6 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

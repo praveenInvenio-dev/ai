@@ -1,0 +1,1082 @@
+{
+  "meta": {
+    "title": "Why counter++ breaks with two threads",
+    "onScreenHook": "counter++ is NOT one step",
+    "ctaLine": "Send this to a Java friend who skips the lock",
+    "platformId": "reel",
+    "captionChunk": 3,
+    "topic": "Java Multithreading: Race Conditions",
+    "domain": "cs",
+    "voice": "ryan"
+  },
+  "totalMs": 56264,
+  "totalSeconds": 56.264,
+  "scenes": [
+    {
+      "id": "scene_0",
+      "index": 0,
+      "role": "hook",
+      "heading": "Same time, same counter",
+      "phases": [
+        "visualise"
+      ],
+      "startMs": 0,
+      "endMs": 9303,
+      "startSecond": 0,
+      "endSecond": 9.303,
+      "narrativeScript": "Two threads. One shared counter. Both hit plus one at the exact same time. So... what does the counter say?",
+      "sentences": [
+        {
+          "text": "Two threads. One shared counter. Both hit plus one at the exact same time.",
+          "phase": "visualise",
+          "emphasis": false,
+          "startMs": 650,
+          "endMs": 5870,
+          "words": [
+            {
+              "w": "Two",
+              "startMs": 650,
+              "endMs": 899
+            },
+            {
+              "w": "threads.",
+              "startMs": 899,
+              "endMs": 1614
+            },
+            {
+              "w": "One",
+              "startMs": 1614,
+              "endMs": 1864
+            },
+            {
+              "w": "shared",
+              "startMs": 1864,
+              "endMs": 2362
+            },
+            {
+              "w": "counter.",
+              "startMs": 2362,
+              "endMs": 3077
+            },
+            {
+              "w": "Both",
+              "startMs": 3077,
+              "endMs": 3410
+            },
+            {
+              "w": "hit",
+              "startMs": 3410,
+              "endMs": 3659
+            },
+            {
+              "w": "plus",
+              "startMs": 3659,
+              "endMs": 3991
+            },
+            {
+              "w": "one",
+              "startMs": 3991,
+              "endMs": 4241
+            },
+            {
+              "w": "at",
+              "startMs": 4241,
+              "endMs": 4407
+            },
+            {
+              "w": "the",
+              "startMs": 4407,
+              "endMs": 4656
+            },
+            {
+              "w": "exact",
+              "startMs": 4656,
+              "endMs": 5072
+            },
+            {
+              "w": "same",
+              "startMs": 5072,
+              "endMs": 5405
+            },
+            {
+              "w": "time.",
+              "startMs": 5405,
+              "endMs": 5870
+            }
+          ]
+        },
+        {
+          "text": "So... what does the counter say?",
+          "phase": "visualise",
+          "emphasis": true,
+          "startMs": 6043,
+          "endMs": 8463,
+          "words": [
+            {
+              "w": "So...",
+              "startMs": 6043,
+              "endMs": 6376
+            },
+            {
+              "w": "what",
+              "startMs": 6376,
+              "endMs": 6745
+            },
+            {
+              "w": "does",
+              "startMs": 6745,
+              "endMs": 7114
+            },
+            {
+              "w": "the",
+              "startMs": 7114,
+              "endMs": 7392
+            },
+            {
+              "w": "counter",
+              "startMs": 7392,
+              "endMs": 8038
+            },
+            {
+              "w": "say?",
+              "startMs": 8038,
+              "endMs": 8463
+            }
+          ]
+        }
+      ],
+      "visualElements": [
+        {
+          "id": "s0_el0",
+          "type": "threads",
+          "slot": "a",
+          "props": {
+            "lanes": [
+              {
+                "id": "T1",
+                "label": "Thread 1"
+              },
+              {
+                "id": "T2",
+                "label": "Thread 2"
+              }
+            ],
+            "checkpoints": [
+              "read",
+              "add",
+              "write"
+            ]
+          },
+          "enterMs": 650,
+          "exitMs": 9303,
+          "events": [
+            {
+              "atMs": 2450,
+              "set": {
+                "T1": {
+                  "progress": 0.1,
+                  "status": "running"
+                },
+                "T2": {
+                  "progress": 0.1,
+                  "status": "running"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "s0_el1",
+          "type": "variable",
+          "slot": "b",
+          "props": {
+            "label": "counter",
+            "value": 0
+          },
+          "enterMs": 1050,
+          "exitMs": 9303,
+          "events": []
+        }
+      ]
+    },
+    {
+      "id": "scene_1",
+      "index": 1,
+      "role": "demo",
+      "heading": "Watch the update vanish",
+      "phases": [
+        "animate"
+      ],
+      "startMs": 9303,
+      "endMs": 33630,
+      "startSecond": 9.303,
+      "endSecond": 33.63,
+      "narrativeScript": "Watch what happens when two threads grab the same counter at the exact same time. Thread one reads. It sees zero. But before it writes anything back, thread two jumps in... and reads zero too. Now they both add one — and they're both about to write one. Two increments, and the counter says one. We've just lost an update.",
+      "sentences": [
+        {
+          "text": "Watch what happens when two threads grab the same counter at the exact same time.",
+          "phase": "animate",
+          "emphasis": false,
+          "startMs": 9723,
+          "endMs": 15293,
+          "words": [
+            {
+              "w": "Watch",
+              "startMs": 9723,
+              "endMs": 10135
+            },
+            {
+              "w": "what",
+              "startMs": 10135,
+              "endMs": 10465
+            },
+            {
+              "w": "happens",
+              "startMs": 10465,
+              "endMs": 11041
+            },
+            {
+              "w": "when",
+              "startMs": 11041,
+              "endMs": 11371
+            },
+            {
+              "w": "two",
+              "startMs": 11371,
+              "endMs": 11618
+            },
+            {
+              "w": "threads",
+              "startMs": 11618,
+              "endMs": 12195
+            },
+            {
+              "w": "grab",
+              "startMs": 12195,
+              "endMs": 12524
+            },
+            {
+              "w": "the",
+              "startMs": 12524,
+              "endMs": 12772
+            },
+            {
+              "w": "same",
+              "startMs": 12772,
+              "endMs": 13101
+            },
+            {
+              "w": "counter",
+              "startMs": 13101,
+              "endMs": 13678
+            },
+            {
+              "w": "at",
+              "startMs": 13678,
+              "endMs": 13843
+            },
+            {
+              "w": "the",
+              "startMs": 13843,
+              "endMs": 14090
+            },
+            {
+              "w": "exact",
+              "startMs": 14090,
+              "endMs": 14502
+            },
+            {
+              "w": "same",
+              "startMs": 14502,
+              "endMs": 14832
+            },
+            {
+              "w": "time.",
+              "startMs": 14832,
+              "endMs": 15293
+            }
+          ]
+        },
+        {
+          "text": "Thread one reads. It sees zero.",
+          "phase": "animate",
+          "emphasis": false,
+          "startMs": 15466,
+          "endMs": 17886,
+          "words": [
+            {
+              "w": "Thread",
+              "startMs": 15466,
+              "endMs": 16000
+            },
+            {
+              "w": "one",
+              "startMs": 16000,
+              "endMs": 16267
+            },
+            {
+              "w": "reads.",
+              "startMs": 16267,
+              "endMs": 16854
+            },
+            {
+              "w": "It",
+              "startMs": 16854,
+              "endMs": 17032
+            },
+            {
+              "w": "sees",
+              "startMs": 17032,
+              "endMs": 17388
+            },
+            {
+              "w": "zero.",
+              "startMs": 17388,
+              "endMs": 17886
+            }
+          ]
+        },
+        {
+          "text": "But before it writes anything back, thread two jumps in... and reads zero too.",
+          "phase": "animate",
+          "emphasis": false,
+          "startMs": 18059,
+          "endMs": 23279,
+          "words": [
+            {
+              "w": "But",
+              "startMs": 18059,
+              "endMs": 18302
+            },
+            {
+              "w": "before",
+              "startMs": 18302,
+              "endMs": 18789
+            },
+            {
+              "w": "it",
+              "startMs": 18789,
+              "endMs": 18951
+            },
+            {
+              "w": "writes",
+              "startMs": 18951,
+              "endMs": 19437
+            },
+            {
+              "w": "anything",
+              "startMs": 19437,
+              "endMs": 20085
+            },
+            {
+              "w": "back,",
+              "startMs": 20085,
+              "endMs": 20507
+            },
+            {
+              "w": "thread",
+              "startMs": 20507,
+              "endMs": 20993
+            },
+            {
+              "w": "two",
+              "startMs": 20993,
+              "endMs": 21236
+            },
+            {
+              "w": "jumps",
+              "startMs": 21236,
+              "endMs": 21642
+            },
+            {
+              "w": "in...",
+              "startMs": 21642,
+              "endMs": 21933
+            },
+            {
+              "w": "and",
+              "startMs": 21933,
+              "endMs": 22177
+            },
+            {
+              "w": "reads",
+              "startMs": 22177,
+              "endMs": 22582
+            },
+            {
+              "w": "zero",
+              "startMs": 22582,
+              "endMs": 22906
+            },
+            {
+              "w": "too.",
+              "startMs": 22906,
+              "endMs": 23279
+            }
+          ]
+        },
+        {
+          "text": "Now they both add one — and they're both about to write one.",
+          "phase": "animate",
+          "emphasis": false,
+          "startMs": 23452,
+          "endMs": 28322,
+          "words": [
+            {
+              "w": "Now",
+              "startMs": 23452,
+              "endMs": 23753
+            },
+            {
+              "w": "they",
+              "startMs": 23753,
+              "endMs": 24153
+            },
+            {
+              "w": "both",
+              "startMs": 24153,
+              "endMs": 24554
+            },
+            {
+              "w": "add",
+              "startMs": 24554,
+              "endMs": 24855
+            },
+            {
+              "w": "one",
+              "startMs": 24855,
+              "endMs": 25155
+            },
+            {
+              "w": "—",
+              "startMs": 25155,
+              "endMs": 25356
+            },
+            {
+              "w": "and",
+              "startMs": 25356,
+              "endMs": 25657
+            },
+            {
+              "w": "they're",
+              "startMs": 25657,
+              "endMs": 26258
+            },
+            {
+              "w": "both",
+              "startMs": 26258,
+              "endMs": 26659
+            },
+            {
+              "w": "about",
+              "startMs": 26659,
+              "endMs": 27160
+            },
+            {
+              "w": "to",
+              "startMs": 27160,
+              "endMs": 27360
+            },
+            {
+              "w": "write",
+              "startMs": 27360,
+              "endMs": 27861
+            },
+            {
+              "w": "one.",
+              "startMs": 27861,
+              "endMs": 28322
+            }
+          ]
+        },
+        {
+          "text": "Two increments, and the counter says one. We've just lost an update.",
+          "phase": "animate",
+          "techNote": "counter++ = read → add → write (NOT atomic)",
+          "emphasis": true,
+          "startMs": 28495,
+          "endMs": 33015,
+          "words": [
+            {
+              "w": "Two",
+              "startMs": 28495,
+              "endMs": 28731
+            },
+            {
+              "w": "increments,",
+              "startMs": 28731,
+              "endMs": 29613
+            },
+            {
+              "w": "and",
+              "startMs": 29613,
+              "endMs": 29849
+            },
+            {
+              "w": "the",
+              "startMs": 29849,
+              "endMs": 30086
+            },
+            {
+              "w": "counter",
+              "startMs": 30086,
+              "endMs": 30637
+            },
+            {
+              "w": "says",
+              "startMs": 30637,
+              "endMs": 30952
+            },
+            {
+              "w": "one.",
+              "startMs": 30952,
+              "endMs": 31314
+            },
+            {
+              "w": "We've",
+              "startMs": 31314,
+              "endMs": 31629
+            },
+            {
+              "w": "just",
+              "startMs": 31629,
+              "endMs": 31944
+            },
+            {
+              "w": "lost",
+              "startMs": 31944,
+              "endMs": 32259
+            },
+            {
+              "w": "an",
+              "startMs": 32259,
+              "endMs": 32417
+            },
+            {
+              "w": "update.",
+              "startMs": 32417,
+              "endMs": 33015
+            }
+          ]
+        }
+      ],
+      "visualElements": [
+        {
+          "id": "s1_el0",
+          "type": "threads",
+          "slot": "a",
+          "props": {
+            "lanes": [
+              {
+                "id": "T1",
+                "label": "Thread 1"
+              },
+              {
+                "id": "T2",
+                "label": "Thread 2"
+              }
+            ],
+            "checkpoints": [
+              "read",
+              "add",
+              "write"
+            ]
+          },
+          "enterMs": 9723,
+          "exitMs": 33630,
+          "events": [
+            {
+              "atMs": 15466,
+              "set": {
+                "T1": {
+                  "progress": 0.18,
+                  "status": "running"
+                }
+              }
+            },
+            {
+              "atMs": 16866,
+              "set": {
+                "T1": {
+                  "progress": 0.34,
+                  "note": "read 0"
+                }
+              }
+            },
+            {
+              "atMs": 18359,
+              "set": {
+                "T2": {
+                  "progress": 0.34,
+                  "status": "running",
+                  "note": "read 0"
+                }
+              }
+            },
+            {
+              "atMs": 23452,
+              "set": {
+                "T1": {
+                  "progress": 0.84,
+                  "note": "write 1"
+                },
+                "T2": {
+                  "progress": 0.84,
+                  "note": "write 1"
+                }
+              }
+            },
+            {
+              "atMs": 25252,
+              "set": {
+                "T1": {
+                  "progress": 1,
+                  "status": "done"
+                },
+                "T2": {
+                  "progress": 1,
+                  "status": "conflict"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "s1_el1",
+          "type": "variable",
+          "slot": "b",
+          "props": {
+            "label": "counter",
+            "value": 0
+          },
+          "enterMs": 9723,
+          "exitMs": 33630,
+          "events": [
+            {
+              "atMs": 25252,
+              "set": {
+                "value": 1,
+                "flash": "bad"
+              }
+            }
+          ]
+        },
+        {
+          "id": "s1_el2",
+          "type": "callout",
+          "slot": "c",
+          "props": {
+            "text": "Lost update!",
+            "tone": "bad"
+          },
+          "enterMs": 28495,
+          "exitMs": 33630,
+          "events": []
+        }
+      ]
+    },
+    {
+      "id": "scene_2",
+      "index": 2,
+      "role": "payoff",
+      "heading": "Why it breaks, how to fix",
+      "phases": [
+        "explain"
+      ],
+      "startMs": 33630,
+      "endMs": 55364,
+      "startSecond": 33.63,
+      "endSecond": 55.364,
+      "narrativeScript": "That's a race condition. Counter plus plus is really three steps: read, add, write. The fix? Make them one unbreakable step. Wrap it in a lock. One thread holds the lock, the other waits. Now two increments really give two. Who's guarding your door? Send this to a Java friend who skips the lock.",
+      "sentences": [
+        {
+          "text": "That's a race condition. Counter plus plus is really three steps: read, add, write.",
+          "phase": "explain",
+          "techNote": "counter++ ≠ atomic · read → add → write",
+          "emphasis": false,
+          "startMs": 34050,
+          "endMs": 39270,
+          "words": [
+            {
+              "w": "That's",
+              "startMs": 34050,
+              "endMs": 34414
+            },
+            {
+              "w": "a",
+              "startMs": 34414,
+              "endMs": 34559
+            },
+            {
+              "w": "race",
+              "startMs": 34559,
+              "endMs": 34850
+            },
+            {
+              "w": "condition.",
+              "startMs": 34850,
+              "endMs": 35620
+            },
+            {
+              "w": "Counter",
+              "startMs": 35620,
+              "endMs": 36129
+            },
+            {
+              "w": "plus",
+              "startMs": 36129,
+              "endMs": 36420
+            },
+            {
+              "w": "plus",
+              "startMs": 36420,
+              "endMs": 36711
+            },
+            {
+              "w": "is",
+              "startMs": 36711,
+              "endMs": 36856
+            },
+            {
+              "w": "really",
+              "startMs": 36856,
+              "endMs": 37293
+            },
+            {
+              "w": "three",
+              "startMs": 37293,
+              "endMs": 37656
+            },
+            {
+              "w": "steps:",
+              "startMs": 37656,
+              "endMs": 38107
+            },
+            {
+              "w": "read,",
+              "startMs": 38107,
+              "endMs": 38485
+            },
+            {
+              "w": "add,",
+              "startMs": 38485,
+              "endMs": 38790
+            },
+            {
+              "w": "write.",
+              "startMs": 38790,
+              "endMs": 39270
+            }
+          ]
+        },
+        {
+          "text": "The fix? Make them one unbreakable step. Wrap it in a lock.",
+          "phase": "explain",
+          "techNote": "synchronized | ReentrantLock | AtomicInteger",
+          "emphasis": false,
+          "startMs": 39443,
+          "endMs": 43963,
+          "words": [
+            {
+              "w": "The",
+              "startMs": 39443,
+              "endMs": 39710
+            },
+            {
+              "w": "fix?",
+              "startMs": 39710,
+              "endMs": 40119
+            },
+            {
+              "w": "Make",
+              "startMs": 40119,
+              "endMs": 40475
+            },
+            {
+              "w": "them",
+              "startMs": 40475,
+              "endMs": 40831
+            },
+            {
+              "w": "one",
+              "startMs": 40831,
+              "endMs": 41098
+            },
+            {
+              "w": "unbreakable",
+              "startMs": 41098,
+              "endMs": 42077
+            },
+            {
+              "w": "step.",
+              "startMs": 42077,
+              "endMs": 42575
+            },
+            {
+              "w": "Wrap",
+              "startMs": 42575,
+              "endMs": 42931
+            },
+            {
+              "w": "it",
+              "startMs": 42931,
+              "endMs": 43109
+            },
+            {
+              "w": "in",
+              "startMs": 43109,
+              "endMs": 43287
+            },
+            {
+              "w": "a",
+              "startMs": 43287,
+              "endMs": 43465
+            },
+            {
+              "w": "lock.",
+              "startMs": 43465,
+              "endMs": 43963
+            }
+          ]
+        },
+        {
+          "text": "One thread holds the lock, the other waits. Now two increments really give two.",
+          "phase": "explain",
+          "emphasis": true,
+          "startMs": 44136,
+          "endMs": 49356,
+          "words": [
+            {
+              "w": "One",
+              "startMs": 44136,
+              "endMs": 44368
+            },
+            {
+              "w": "thread",
+              "startMs": 44368,
+              "endMs": 44833
+            },
+            {
+              "w": "holds",
+              "startMs": 44833,
+              "endMs": 45220
+            },
+            {
+              "w": "the",
+              "startMs": 45220,
+              "endMs": 45453
+            },
+            {
+              "w": "lock,",
+              "startMs": 45453,
+              "endMs": 45855
+            },
+            {
+              "w": "the",
+              "startMs": 45855,
+              "endMs": 46088
+            },
+            {
+              "w": "other",
+              "startMs": 46088,
+              "endMs": 46475
+            },
+            {
+              "w": "waits.",
+              "startMs": 46475,
+              "endMs": 46986
+            },
+            {
+              "w": "Now",
+              "startMs": 46986,
+              "endMs": 47218
+            },
+            {
+              "w": "two",
+              "startMs": 47218,
+              "endMs": 47451
+            },
+            {
+              "w": "increments",
+              "startMs": 47451,
+              "endMs": 48225
+            },
+            {
+              "w": "really",
+              "startMs": 48225,
+              "endMs": 48690
+            },
+            {
+              "w": "give",
+              "startMs": 48690,
+              "endMs": 49000
+            },
+            {
+              "w": "two.",
+              "startMs": 49000,
+              "endMs": 49356
+            }
+          ]
+        },
+        {
+          "text": "Who's guarding your door? Send this to a Java friend who skips the lock.",
+          "phase": "explain",
+          "emphasis": false,
+          "startMs": 49724,
+          "endMs": 54944,
+          "words": [
+            {
+              "w": "Who's",
+              "startMs": 49724,
+              "endMs": 50071
+            },
+            {
+              "w": "guarding",
+              "startMs": 50071,
+              "endMs": 50765
+            },
+            {
+              "w": "your",
+              "startMs": 50765,
+              "endMs": 51111
+            },
+            {
+              "w": "door?",
+              "startMs": 51111,
+              "endMs": 51597
+            },
+            {
+              "w": "Send",
+              "startMs": 51597,
+              "endMs": 51944
+            },
+            {
+              "w": "this",
+              "startMs": 51944,
+              "endMs": 52291
+            },
+            {
+              "w": "to",
+              "startMs": 52291,
+              "endMs": 52464
+            },
+            {
+              "w": "a",
+              "startMs": 52464,
+              "endMs": 52637
+            },
+            {
+              "w": "Java",
+              "startMs": 52637,
+              "endMs": 52984
+            },
+            {
+              "w": "friend",
+              "startMs": 52984,
+              "endMs": 53505
+            },
+            {
+              "w": "who",
+              "startMs": 53505,
+              "endMs": 53765
+            },
+            {
+              "w": "skips",
+              "startMs": 53765,
+              "endMs": 54198
+            },
+            {
+              "w": "the",
+              "startMs": 54198,
+              "endMs": 54458
+            },
+            {
+              "w": "lock.",
+              "startMs": 54458,
+              "endMs": 54944
+            }
+          ]
+        }
+      ],
+      "visualElements": [
+        {
+          "id": "s2_el0",
+          "type": "code",
+          "slot": "a",
+          "props": {
+            "language": "java",
+            "lines": [
+              "int counter = 0;",
+              "",
+              "synchronized (lock) {",
+              "    counter++;",
+              "}"
+            ]
+          },
+          "enterMs": 34050,
+          "exitMs": 55364,
+          "events": [
+            {
+              "atMs": 35850,
+              "set": {
+                "active": 3
+              }
+            },
+            {
+              "atMs": 39943,
+              "set": {
+                "active": 2
+              }
+            },
+            {
+              "atMs": 46336,
+              "set": {
+                "active": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "s2_el1",
+          "type": "lock",
+          "slot": "b",
+          "props": {
+            "name": "lock"
+          },
+          "enterMs": 40643,
+          "exitMs": 55364,
+          "events": [
+            {
+              "atMs": 44136,
+              "set": {
+                "state": "held",
+                "holder": "T1",
+                "queue": "T2"
+              }
+            },
+            {
+              "atMs": 46536,
+              "set": {
+                "state": "free",
+                "holder": "",
+                "queue": ""
+              }
+            }
+          ]
+        },
+        {
+          "id": "s2_el2",
+          "type": "callout",
+          "slot": "c",
+          "props": {
+            "text": "Lock it. Always.",
+            "tone": "good"
+          },
+          "enterMs": 49724,
+          "exitMs": 55364,
+          "events": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 FROM node:20-bookworm AS build
 WORKDIR /build
-COPY package.json ./
-RUN npm install
+# Lockfile + npm ci: same dependency versions every build, and the layer caches
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build -- --configuration production
 
