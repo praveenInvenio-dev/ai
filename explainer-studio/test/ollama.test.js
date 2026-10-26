@@ -53,12 +53,13 @@ test('generateScript: streams, validates, repairs bad JSON, and returns clean sc
     topic: 'Java Multithreading Race Conditions', domain: DOMAINS.cs, platform: PLATFORMS.reel,
     log: (m, l) => logs.push([l, m]), progress: () => {},
   });
-  assert.equal(outline.scenes.length, 3);
+  assert.equal(outline.scenes.length, 4); // hook, analogy, demo, payoff
   assert.deepEqual(outline.hashtags, ['java', 'threads']);
-  assert.equal(scenes.length, 3);
+  assert.equal(scenes.length, 4);
   assert.ok(logs.some(([l, m]) => l === 'warn' && /rejected/.test(m)), 'repair attempt was logged');
   assert.equal(scenes[0].role, 'hook');
   assert.equal(scenes[0].sentences[0].phase, 'visualise');
-  assert.equal(scenes[1].sentences[0].phase, 'animate', 'phase coerced into the scene plan');
+  assert.equal(scenes[1].role, 'analogy');
+  assert.equal(scenes[2].sentences[0].phase, 'animate', 'phase coerced into the scene plan');
   assert.ok(calls.every((c) => c.format === 'object'), 'schema was sent as `format`');
 });

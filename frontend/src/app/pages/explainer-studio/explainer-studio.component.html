@@ -69,7 +69,7 @@
       <div class="selects">
         <label class="wide">Language
           <select [ngModel]="language" (ngModelChange)="setLanguage($event)">
-            @for (l of meta()?.languages ?? []; track l.id) { <option [value]="l.id">{{ l.id === 'en' ? l.label : l.label + ' · ' + l.native }}</option> }
+            @for (l of meta()?.languages ?? []; track l.id) { <option [value]="l.id">{{ l.label === l.native ? l.label : l.label + ' · ' + l.native }}{{ l.id === 'hinglish' ? ' (Roman captions, Hindi voice)' : '' }}</option> }
           </select>
         </label>
         <label>Subject

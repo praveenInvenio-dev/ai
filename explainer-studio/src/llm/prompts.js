@@ -46,7 +46,9 @@ Return JSON with:
 - title: specific, curiosity-driven, <= 60 chars, no clickbait lies
 - titleOptions: 3 alternative titles
 - onScreenHook, ctaLine
-- analogy: ONE everyday analogy to reuse across the whole video
+- analogy: ONE everyday analogy to reuse across the whole video (something every viewer has done: a post office, a cashier queue, a WhatsApp group, a train ticket)
+- analogyMap: 2-4 {real, analogy} pairs - which real part each analogy part stands for (e.g. {"real":"NPCI","analogy":"post office"})
+- keyPoints: the 3 facts a viewer MUST be able to repeat after watching (what it is, how it works, why it matters) - concrete, no fluff
 - logline: ONE sentence the whole video proves (concrete, testable — not "X is important")
 - hashtags: 5 relevant tags without '#'
 - scenes: array of exactly ${plan.length} objects {heading (<= 5 words, specific), goal (one sentence: what the viewer understands after this scene), keyVisual (one sentence: what is on screen and what moves)}`;
@@ -73,6 +75,8 @@ SYNC RULES (this is how narration and animation stay locked together):
 - Introduce the objects in the first sentence(s) of the scene so the viewer sees them BEFORE they are explained.
 - Use 1-3 elements per scene. Fewer, clearer, well-animated beats more clutter. Do not leave a scene without motion unless the role is "recap".
 - Numbers, ids, labels must be short. No emoji.
+- CLARITY: say the main idea in plain words - what it is, how it works, why it matters. Every scene must move a MUST-TEACH point forward; no filler, no vague drama ("magic", "boom") without the fact behind it.
+- Visual labels must be concrete nouns from THIS topic (UPI app, Bank A, ₹100, NPCI) - never generic placeholders like "Idea", "Result", "Step 1", "Concept", "Input", "Output".
 - VARIETY: every scene must LOOK different. Rotate primitives across the video: a concrete model of the thing (flow, threads, icons, molecule, plot…), a comparison (race), one memorable number (stat), a punchline card (kinetic), real code when the topic names a language/library/tool (code).
 - Pick the visual that PROVES the sentence, not one that decorates it. "Faster" → race. "4 times" → stat. A definition → kinetic. A process → flow/icons.
 - If the topic names a programming language, framework or tool, at least one scene must show a short REAL snippet in that language (code primitive, 3-7 lines) - the viewer came for that.
@@ -87,7 +91,8 @@ export function sceneUser({ topic, domain, platform, outline, index, plan, prev,
   return `TOPIC: ${topic}
 AUDIENCE: ${domain.audience}
 VIDEO LOGLINE: ${outline.logline}
-RECURRING ANALOGY: ${outline.analogy}
+RECURRING ANALOGY: ${outline.analogy}${Array.isArray(outline.analogyMap) && outline.analogyMap.length ? ` (${outline.analogyMap.map((m) => `${m.real} = ${m.analogy}`).join('; ')})` : ''}
+MUST-TEACH POINTS (the whole video): ${Array.isArray(outline.keyPoints) && outline.keyPoints.length ? outline.keyPoints.join(' | ') : outline.logline}
 SCENE ${index + 1} of ${plan.length}: role="${s.role}" heading="${o.heading}"
 GOAL: ${o.goal}
 KEY VISUAL: ${o.keyVisual}

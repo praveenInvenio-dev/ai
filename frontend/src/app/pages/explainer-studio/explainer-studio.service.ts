@@ -9,7 +9,7 @@ export interface ExMeta {
   platforms: { id: string; label: string; group: 'short' | 'long'; targetSec: number; defaultAspect: string; scenes: number }[];
   aspects: string[]; fps: number[]; themes: string[];
   domains: { id: string; label: string }[];
-  languages: { id: string; label: string; native: string; defaultVoice: string }[];
+  languages: { id: string; label: string; native: string; voiceLang?: string; defaultVoice: string }[];
   voices: { id: string; label: string; engine: string; lang: string; available: boolean }[];
   defaultVoice: string; primitives: string[]; model: string;
 }

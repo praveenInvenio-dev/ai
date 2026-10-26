@@ -18,7 +18,8 @@ export const PLATFORMS = {
     targetSec: 40, aspect: '9:16', wps: 2.3, captionChunk: 3, sentenceMaxWords: 13, pauseScale: 0.75,
     plan: [
       { role: 'hook', phases: ['visualise'], weight: 2, guide: 'Open ON the picture. First sentence is a bold claim, a surprising result, or a tight question. No greeting, no context-setting.' },
-      { role: 'demo', phases: ['animate'], weight: 4, guide: 'Run the mechanism live, one action per sentence. Narration describes what the viewer is literally seeing right now.' },
+      { role: 'analogy', phases: ['visualise', 'animate'], weight: 2.5, guide: 'Explain the idea with ONE everyday analogy the viewer already knows, SHOWN on screen (icons/flow of the analogy). Say explicitly which real part each analogy part stands for ("the post office = NPCI").' },
+      { role: 'demo', phases: ['animate'], weight: 3.5, guide: 'Now the real thing: run the actual mechanism step by step, one action per sentence, using the real names. Narration describes what the viewer is literally seeing right now.' },
       { role: 'payoff', phases: ['explain'], weight: 3, guide: 'Name the idea in plain words, give the one-line rule of thumb, then end with a line that loops back to the opening question and invites a send ("send this to the friend who...").' },
     ],
   },

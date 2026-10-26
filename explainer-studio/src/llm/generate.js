@@ -79,15 +79,22 @@ export async function generateScript({ topic, domain, platform, log, progress, s
 }
 
 /** A scene that reuses exactly the previous scene's visuals looks like a still frame to the viewer: ask for a change. */
+const GENERIC = /^(idea|result|results|step ?\d*|concept|input|output|start|end|thing|process|solution|problem)$/i;
 function varietyIssues(scene, lastTypes, role) {
-  if (role === 'recap' || !lastTypes.length) return [];
+  const generic = [];
+  for (const e of scene.elements || []) {
+    const labels = [...(e.props?.items || []).map((i) => i.label), ...(e.props?.nodes || []).map((n) => n.label), ...(e.props?.lanes || []).map((l) => l.label)];
+    if (labels.length && labels.filter((l) => GENERIC.test(String(l).trim())).length >= Math.ceil(labels.length / 2)) generic.push(e.type);
+  }
+  const out = generic.length ? [`Visuals use generic placeholder labels (${generic.join(', ')}): label them with concrete things from this topic.`] : [];
+  if (role === 'recap' || !lastTypes.length) return out;
   const types = (scene.elements || []).map((e) => e.type);
   const main = types[0];
   if (main && main === lastTypes[0] && types.length === lastTypes.length && types.every((t) => lastTypes.includes(t))) {
-    return [`Visuals repeat the previous scene (${types.join(', ')}). Show this beat with a DIFFERENT primitive as the main element (e.g. race, stat, kinetic, icons, flow, code) — keep the same narration.`];
+    return [...out, `Visuals repeat the previous scene (${types.join(', ')}). Show this beat with a DIFFERENT primitive as the main element (e.g. race, stat, kinetic, icons, flow, code) — keep the same narration.`];
   }
-  return [];
+  return out;
 }
 
-const SERIOUS = [/words \(max/, /not written in/, /markdown/, /Visuals repeat/];
+const SERIOUS = [/words \(max/, /not written in/, /markdown/, /Visuals repeat/, /generic placeholder/, /"speech"/];
 function isSerious(issue) { return SERIOUS.some((re) => re.test(issue)); }

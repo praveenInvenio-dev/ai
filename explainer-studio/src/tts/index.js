@@ -25,7 +25,10 @@ export async function synthesizeAll({ scenes, voiceId, platform, domain, workDir
     for (const [i, s] of scene.sentences.entries()) {
       signal?.throwIfAborted();
       const isLastOfScene = i === scene.sentences.length - 1;
-      const spoken = normalizeForSpeech(s.text, { pronunciations: lang === 'en' ? domain.pronunciations : {}, lang });
+      // Hinglish: captions are Roman, the Hindi voice reads the Devanagari copy ("speech").
+      const ttsLang = lang === 'hinglish' ? 'hi' : lang;
+      const source = lang === 'hinglish' && s.speech ? s.speech : s.text;
+      const spoken = normalizeForSpeech(source, { pronunciations: ttsLang === 'en' ? domain.pronunciations : {}, lang: ttsLang });
       const params = shapeSentence({ text: s.text, index: idx, isFirstOfVideo: si === 0 && i === 0, isLastOfScene, emphasis: s.emphasis, base: voice.base });
       const raw = path.join(workDir, `raw_${String(idx).padStart(3, '0')}.wav`);
       const clean = path.join(workDir, `s_${String(idx).padStart(3, '0')}.wav`);
@@ -33,7 +36,7 @@ export async function synthesizeAll({ scenes, voiceId, platform, domain, workDir
       let attempt = 0;
       for (;;) {
         try {
-          await synthesize(engine, { text: spoken, voice, params, outFile: raw, signal, lang });
+          await synthesize(engine, { text: spoken, voice, params, outFile: raw, signal, lang: lang === 'hinglish' ? 'hi' : lang });
           await cleanSpeech(raw, clean, { signal });
           break;
         } catch (e) {

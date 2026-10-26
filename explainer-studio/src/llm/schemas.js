@@ -17,6 +17,8 @@ export const outlineSchema = {
     ctaLine: { type: 'string', minLength: 3, maxLength: 120 },
     analogy: { type: 'string', minLength: 5 },
     logline: { type: 'string', minLength: 5 },
+    analogyMap: { type: 'array', items: { type: 'object', properties: { real: { type: 'string' }, analogy: { type: 'string' } } }, maxItems: 5 },
+    keyPoints: { type: 'array', items: { type: 'string' }, maxItems: 4 },
     hashtags: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 10 },
     scenes: {
       type: 'array',
@@ -43,6 +45,7 @@ export const sceneSchema = {
         required: ['text', 'phase'],
         properties: {
           text: { type: 'string', minLength: 2 },
+          speech: { type: 'string' },
           phase: { type: 'string', enum: PHASES },
           techNote: { type: 'string' },
           emphasis: { type: 'boolean' },

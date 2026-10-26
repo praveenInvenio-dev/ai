@@ -15,6 +15,7 @@ const EXAMPLES = [
   { topic: 'Why methane is tetrahedral', domain: 'chemistry_neet' },
   { topic: 'Volume of a cylinder, visually', domain: 'math_jee' },
   { topic: 'How UPI moves money in two seconds', domain: 'general' },
+  { topic: 'UPI payment kaise kaam karta hai', domain: 'general', language: 'hinglish' },
   { topic: 'Photosynthesis — explained in Hindi', domain: 'biology_neet', language: 'hi' },
 ];
 const STAGES = [
@@ -87,7 +88,8 @@ export class ExplainerStudioComponent implements OnInit, OnDestroy, AfterViewChe
   tp(id: string) { return THEMES[id] ?? THEMES['dracula']; }
   /** Voices that speak the selected language, available ones first. */
   voicesFor() {
-    const list = (this.meta()?.voices ?? []).filter((v) => v.lang === this.language);
+    const vl = this.meta()?.languages.find((l) => l.id === this.language)?.voiceLang || this.language;
+    const list = (this.meta()?.voices ?? []).filter((v) => v.lang === vl);
     return [...list.filter((v) => v.available), ...list.filter((v) => !v.available)];
   }
   setLanguage(id: string) {
@@ -108,7 +110,7 @@ export class ExplainerStudioComponent implements OnInit, OnDestroy, AfterViewChe
   }
   studioOk(name: string) { return this.health()?.tts?.studio?.[name]; }
   noVoice() { return this.language !== 'en' && !this.voicesFor().some((v) => v.available); }
-  langLabel(id?: string) { const l = this.meta()?.languages.find((x) => x.id === (id || 'en')); return l ? (l.id === 'en' ? l.label : `${l.label} · ${l.native}`) : 'English'; }
+  langLabel(id?: string) { const l = this.meta()?.languages.find((x) => x.id === (id || 'en')); return l ? (l.label === l.native ? l.label : `${l.label} · ${l.native}`) : 'English'; }
   serviceOk(name: string) { return this.health()?.tts?.services?.[name]; }
   short(l: string) { return l.replace(/\s*\(.*\)/, ''); }
   dur(s: number) { return s < 120 ? `${s}s` : `${Math.round(s / 60)} min`; }

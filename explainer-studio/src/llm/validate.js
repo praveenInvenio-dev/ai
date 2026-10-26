@@ -126,6 +126,7 @@ export function sanitizeScene(raw, { plan, heading }) {
   let sentences = arr(raw.sentences)
     .map((s) => ({
       text: cleanText(s.text),
+      speech: typeof s.speech === 'string' && s.speech.trim() ? cleanText(s.speech) : undefined,
       phase: PHASES.includes(s.phase) ? s.phase : plan.phases[0],
       techNote: s.techNote ? cleanText(s.techNote).slice(0, 70) : undefined,
       emphasis: !!s.emphasis,

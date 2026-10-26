@@ -120,7 +120,7 @@ export const VideoExplainer = ({ timeline, themeId = 'dracula' }) => {
         <HookOverlay L={L} text={timeline.meta.onScreenHook} nowMs={nowMs} />
         {!showCta && <TechNote L={L} text={techNote} sinceMs={nowMs - cur.startMs} durMs={cur.endMs - cur.startMs} />}
         <EndCard L={L} text={timeline.meta.ctaLine} nowMs={nowMs} totalMs={timeline.totalMs} />
-        {!(showCta && timeline.meta.ctaLine) && <Captions L={L} sentences={flatSentences} nowMs={nowMs} chunk={L.portrait ? Math.min(timeline.meta.captionChunk || 3, 3) : Math.max(timeline.meta.captionChunk || 9, 7)} />}
+        {!(showCta && timeline.meta.ctaLine) && hookVis < 0.2 && <Captions L={L} sentences={flatSentences} nowMs={nowMs} chunk={L.portrait ? Math.min(timeline.meta.captionChunk || 3, 3) : Math.max(timeline.meta.captionChunk || 9, 7)} />}
         <ProgressBar L={L} nowMs={nowMs} totalMs={timeline.totalMs} />
       </AbsoluteFill>
     </ThemeCtx.Provider>

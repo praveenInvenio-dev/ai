@@ -9,7 +9,7 @@ import { PLATFORMS, ASPECTS, FPS_OPTIONS, THEME_IDS } from './presets.js';
 import { DOMAINS, DOMAIN_IDS } from './domains/index.js';
 import { VOICES, allVoices, voiceAvailable, defaultVoiceId, startVoiceProbe, serviceUp } from './tts/voices.js';
 import { startStudioVoiceRefresh, studioStatus } from './tts/studio-voices.js';
-import { LANGUAGES, LANGUAGE_IDS } from './shared/languages.js';
+import { LANGUAGES, LANGUAGE_IDS, voiceLangOf } from './shared/languages.js';
 import { TYPES } from './shared/catalog.js';
 import { ollamaStatus } from './llm/ollama.js';
 import { JobStore } from './pipeline/jobs.js';
@@ -41,7 +41,7 @@ app.get('/api/meta', wrap(async (_req, res) => {
     platforms: Object.values(PLATFORMS).map((p) => ({ id: p.id, label: p.label, group: p.group, targetSec: p.targetSec, defaultAspect: p.aspect, scenes: p.plan.length })),
     aspects: Object.keys(ASPECTS), fps: FPS_OPTIONS, themes: THEME_IDS,
     domains: DOMAIN_IDS.map((id) => ({ id, label: DOMAINS[id].label })),
-    languages: LANGUAGE_IDS.map((id) => ({ id, label: LANGUAGES[id].label, native: LANGUAGES[id].native, defaultVoice: defaultVoiceId(id) })),
+    languages: LANGUAGE_IDS.map((id) => ({ id, label: LANGUAGES[id].label, native: LANGUAGES[id].native, voiceLang: voiceLangOf(id), defaultVoice: defaultVoiceId(voiceLangOf(id)) })),
     voices: allVoices().map((v) => ({ id: v.id, label: v.label, engine: v.kind || v.engine, lang: v.lang, available: voiceAvailable(v) })),
     defaultVoice: defaultVoiceId('en'),
     primitives: TYPES,
@@ -66,7 +66,7 @@ function parseRequest(b = {}) {
   const language = LANGUAGES[b.language] ? b.language : 'en';
   const want = allVoices().find((v) => v.id === b.voice);
   // A voice only speaks its own language (an IndicF5 Tamil voice cannot read Hindi): fall back to that language's default.
-  const voice = want && want.lang === language && voiceAvailable(want) ? want.id : defaultVoiceId(language);
+  const voice = want && want.lang === voiceLangOf(language) && voiceAvailable(want) ? want.id : defaultVoiceId(voiceLangOf(language));
   const model = typeof b.model === 'string' && /^[\w.:/-]{1,80}$/.test(b.model) ? b.model : undefined;
   return { topic, platform, aspect, fps, theme, domain, language, voice, mode: 'full', ...(model ? { model } : {}) };
 }

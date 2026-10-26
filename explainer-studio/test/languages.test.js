@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { normalizeForSpeech } from '../src/tts/normalize.js';
 import { wordTimings } from '../src/timeline/build.js';
 import { lintScene } from '../src/llm/lint.js';
-import { scriptShare, LANGUAGE_IDS, languageBlock } from '../src/shared/languages.js';
+import { scriptShare, LANGUAGE_IDS, languageBlock, voiceLangOf } from '../src/shared/languages.js';
 import { VOICES } from '../src/tts/voices.js';
 
 const HI = 'दो थ्रेड — एक ही काउंटर। दोनों 1 जोड़ते हैं... फिर क्या होगा?';
@@ -27,7 +27,15 @@ test('lint flags Latin-script narration in an Indian-language video, not English
 
 test('every Indian language has a voice and writer rules', () => {
   for (const id of LANGUAGE_IDS) {
-    assert.ok(VOICES.some((v) => v.lang === id), `no voice for ${id}`);
+    assert.ok(VOICES.some((v) => v.lang === voiceLangOf(id)), `no voice for ${id}`);
     if (id !== 'en') assert.match(languageBlock(id), /script/);
   }
+});
+
+test('Hinglish: Roman captions, Devanagari speech required', () => {
+  const ok = lintScene([{ text: 'Socho tum 100 rupaye bhejte ho.', speech: 'सोचो तुम 100 रुपये भेजते हो।' }], { sentenceMaxWords: 14, role: 'hook', lang: 'hinglish' });
+  assert.deepEqual(ok, []);
+  const bad = lintScene([{ text: 'सोचो तुम पैसे भेजते हो।' }], { sentenceMaxWords: 14, role: 'hook', lang: 'hinglish' });
+  assert.equal(bad.length, 2);
+  assert.equal(voiceLangOf('hinglish'), 'hi');
 });

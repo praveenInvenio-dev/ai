@@ -10,7 +10,7 @@ const BANNED = [
 ];
 const CONTRACTION = /\b(\w+)('s|'re|'ll|'ve|'d|n't|'m)\b/i;
 
-import { LANGUAGES, scriptShare } from '../shared/languages.js';
+import { LANGUAGES, scriptShare, latinShare, devanagariShare } from '../shared/languages.js';
 
 const words = (t) => t.trim().split(/\s+/).filter(Boolean);
 
@@ -22,7 +22,10 @@ export function lintScene(sentences, { sentenceMaxWords, role, lang = 'en' }) {
     if (n > sentenceMaxWords + 6) issues.push(`Sentence ${i} has ${n} words (max ${sentenceMaxWords}). Split it.`);
     if (english) for (const re of BANNED) if (re.test(s.text)) issues.push(`Sentence ${i} uses a stock phrase (${re.source.replace(/\\b/g, '')}). Say it like a person.`);
     // Indian-language voices cannot read Latin letters reliably: the narration must be in the language's own script.
-    if (!english && scriptShare(s.text, lang) < 0.85) issues.push(`Sentence ${i} is not written in ${LANGUAGES[lang].label} script (${LANGUAGES[lang].native}). Write it in ${LANGUAGES[lang].label}; transliterate English technical words into ${LANGUAGES[lang].native} script.`);
+    if (lang === 'hinglish') {
+      if (latinShare(s.text) < 0.85) issues.push(`Sentence ${i} "text" must be Hinglish in ROMAN letters (captions).`);
+      if (!s.speech || devanagariShare(s.speech) < 0.6) issues.push(`Sentence ${i} needs "speech": the same sentence in Devanagari for the Hindi voice.`);
+    } else if (!english && scriptShare(s.text, lang) < 0.85) issues.push(`Sentence ${i} is not written in ${LANGUAGES[lang].label} script (${LANGUAGES[lang].native}). Write it in ${LANGUAGES[lang].label}; transliterate English technical words into ${LANGUAGES[lang].native} script.`);
     if (/[*_`#]/.test(s.text)) issues.push(`Sentence ${i} contains markdown characters. Plain speech only.`);
     if (/\b(\w+)\s+\1\b/i.test(s.text)) issues.push(`Sentence ${i} repeats a word back-to-back.`);
   });
