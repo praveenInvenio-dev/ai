@@ -6,6 +6,7 @@ import { DOMAINS } from '../domains/index.js';
 import { ollamaStatus } from '../llm/ollama.js';
 import { generateScript } from '../llm/generate.js';
 import { synthesizeAll } from '../tts/index.js';
+import { generateBlueprint } from '../blueprint/generate.js';
 import { LANGUAGES } from '../shared/languages.js';
 import { buildTimeline, toSubtitles, toChapters } from '../timeline/build.js';
 import { assembleWav } from '../media/wav.js';
@@ -62,7 +63,9 @@ export async function runJob({ store, job, signal }) {
       log(`Ollama ready · model ${model}`, 'llm');
       const lang = req.language || 'en';
       if (lang !== 'en') log(`Language: ${LANGUAGES[lang]?.label || lang}`, 'llm');
-      const gen = await generateScript({ topic: req.topic, domain, platform, log, progress, signal, model, lang });
+      const gen = platform.style === 'blueprint'
+        ? await generateBlueprint({ topic: req.topic, platform, domain, log, progress, signal, model, lang })
+        : await generateScript({ topic: req.topic, domain, platform, log, progress, signal, model, lang });
       outline = gen.outline;
       await fs.writeFile(path.join(dir, 'script.json'), JSON.stringify(gen, null, 2));
 
@@ -74,6 +77,11 @@ export async function runJob({ store, job, signal }) {
       stage('timeline', 0.47);
       const built = buildTimeline({ outline, scenes: gen.scenes, platform, meta: { topic: req.topic, domain: domain.id, voice: req.voice, language: lang } });
       timeline = built.timeline;
+      if (platform.style === 'blueprint') {
+        const o = gen.outline;
+        timeline.style = 'blueprint';
+        timeline.blueprint = { series: o.series, journey: o.journey, question: o.question, brand: config.brandHandle, number: (await nextEpisodeNumber()) };
+      }
       const spliced = path.join(tmp, 'narration_spliced.wav');
       const { totalMs } = await assembleWav(built.segments, spliced);
       await masterVoice(spliced, masterWav, { signal });
@@ -146,4 +154,14 @@ export async function runJob({ store, job, signal }) {
     // Always remove temp chunks (raw/clean WAVs, silent video, spliced audio) — they can be hundreds of MB.
     await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+/** Running episode number for the corner label ("SYSTEM DESIGN · 004"), kept in the data folder. */
+async function nextEpisodeNumber() {
+  const f = path.join(config.dataDir, 'episode-counter.json');
+  let n = 0;
+  try { n = JSON.parse(await fs.readFile(f, 'utf8')).n || 0; } catch { /* first one */ }
+  n += 1;
+  try { await fs.writeFile(f, JSON.stringify({ n })); } catch { /* best effort */ }
+  return n;
 }

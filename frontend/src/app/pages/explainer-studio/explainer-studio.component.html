@@ -57,6 +57,9 @@
       </div>
     </div>
     <div class="col-look">
+      @if (platform === 'blueprint') {
+        <p class="hint">Blueprint style: navy diagram paper, a new diagram for every sentence, question → chapters → answer. Themes below apply to the other formats.</p>
+      }
       <h3>Animation theme</h3>
       <div class="themes">
         @for (id of meta()?.themes ?? []; track id) {

@@ -16,6 +16,10 @@ const EXAMPLES = [
   { topic: 'Volume of a cylinder, visually', domain: 'math_jee' },
   { topic: 'How UPI moves money in two seconds', domain: 'general' },
   { topic: 'UPI payment kaise kaam karta hai', domain: 'general', language: 'hinglish' },
+  { topic: 'How JioHotstar streams the IPL final to 5 crore people', domain: 'cs', language: 'hinglish', platform: 'blueprint' },
+  { topic: 'How does a 400-tonne plane fly?', domain: 'physics_jee', language: 'hinglish', platform: 'blueprint' },
+  { topic: "Newton's laws of motion", domain: 'physics_jee', language: 'hinglish', platform: 'blueprint' },
+  { topic: 'Photosynthesis — how a leaf makes food', domain: 'biology_neet', language: 'hinglish', platform: 'blueprint' },
   { topic: 'Photosynthesis — explained in Hindi', domain: 'biology_neet', language: 'hi' },
 ];
 const STAGES = [
@@ -115,8 +119,16 @@ export class ExplainerStudioComponent implements OnInit, OnDestroy, AfterViewChe
   short(l: string) { return l.replace(/\s*\(.*\)/, ''); }
   dur(s: number) { return s < 120 ? `${s}s` : `${Math.round(s / 60)} min`; }
   tag(l: ExLog) { return TAGS[l.level] ?? 'job'; }
-  pick(e: { topic: string; domain: string; language?: string }) { this.topic = e.topic; this.domain = e.domain; if (e.language) this.setLanguage(e.language); }
-  setPlatform(id: string, aspect: string) { this.platform = id; this.aspect = aspect; }
+  pick(e: { topic: string; domain: string; language?: string; platform?: string }) {
+    this.topic = e.topic; this.domain = e.domain;
+    if (e.platform) { const p = this.meta()?.platforms.find((x) => x.id === e.platform); if (p) this.setPlatform(p.id, p.defaultAspect); }
+    if (e.language) this.setLanguage(e.language);
+  }
+  setPlatform(id: string, aspect: string) {
+    this.platform = id; this.aspect = aspect;
+    // The blueprint diagram story is written for Hinglish narration (like the channels it is modelled on).
+    if (id === 'blueprint' && this.language === 'en') this.setLanguage('hinglish');
+  }
 
   stageClass(id: string) {
     const s = this.state();

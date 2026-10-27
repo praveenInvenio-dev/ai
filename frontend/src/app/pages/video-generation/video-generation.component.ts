@@ -24,8 +24,8 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
       <h1>Video generation</h1>
       <p class="muted">
         Animate a still image, generate a single scene from text, or create a complete story.
-        Story mode reuses the Story Engine and MiniMax H3 pipeline to plan narration, dialogue,
-        camera directions, SFX and music, render scene clips, and merge the final video.
+        Text-to-video supports both a single H3 clip and automatic full-story production.
+        Full-story mode writes the story, renders consecutive five-second H3 scenes, and merges them into one video.
       </p>
     </header>
 
@@ -39,7 +39,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
     </section>
 
     <section class="panel" *ngIf="statusLoaded">
-      <div class="field workflow-field" *ngIf="mode !== 'story'">
+      <div class="field workflow-field">
         <label for="workflow">Generation workflow</label>
         <select id="workflow" [(ngModel)]="workflow" (ngModelChange)="clampDuration()">
           <option value="WAN_2_2">Wan 2.2 (ComfyUI)</option>
@@ -54,32 +54,32 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
         <div class="mode-toggle">
           <button type="button" class="pill" [class.selected]="mode === 'i2v'" (click)="setMode('i2v')">Image to video</button>
           <button type="button" class="pill" [class.selected]="mode === 't2v'" (click)="setMode('t2v')">Text to video</button>
-          <button type="button" class="pill story-pill" [class.selected]="mode === 'story'" (click)="setMode('story')">Story to video · H3</button>
         </div>
       </div>
 
-      <section class="story-production" *ngIf="mode === 'story'">
+      <div class="field auto-story-toggle" *ngIf="mode === 't2v' && workflow === 'MINIMAX_H3'">
+        <label class="check">
+          <input type="checkbox" [(ngModel)]="autoStoryMode" />
+          <span><strong>Generate a complete story automatically</strong><br><span class="muted small">Enter only a story idea. AI writes the full story, creates five-second H3 scenes in order, reuses the selected character references in every scene, and merges everything into one video. No Storyboard page or manual scene-by-scene prompting.</span></span>
+        </label>
+      </div>
+
+      <section class="story-production" *ngIf="isAutoStory()">
         <div class="story-production-head">
           <strong>AI story production</strong>
           <span class="muted small">Story idea + named character references → 5-second H3 shots → automatic merge</span>
         </div>
-        <p class="warning" *ngIf="showStoryProviderWarning">Story drafting and character-reference planning are available independently. H3 rendering will require the local video provider to be available after you review the story.</p>
+        <p class="warning" *ngIf="showStoryProviderWarning">The story can be planned, but rendering requires the local H3 video provider to be available.</p>
         <p class="muted">
-          Enter a story idea and add your characters (name + image + master prompt, up to 2 per scene). AI Story Studio writes the complete story internally, creates short scenes with narration/dialogue, camera movement, ambience, timed SFX and music, renders each as a 5-second MiniMax H3 clip, then merges the clips automatically. You do not need to open Create Story, approve keyframes, or start rendering a second time.
+          Enter a story idea, choose duration, language and visual style, and select your character references in the existing Text-to-video character panel. The AI writes the complete story internally, then renders one five-second MiniMax H3 clip at a time with the selected reference images attached to every clip. All clips are merged automatically into one complete video. You never navigate to Storyboard or manually enter each scene.
         </p>
-        <app-h3-cast-panel [startOpen]="true" (castChange)="storyCast = $event"></app-h3-cast-panel>
-        <p class="muted small" *ngIf="storyCast.length">
-          Story will star: <strong>{{ castNames() }}</strong>. The writer is told to use these exact names, and every 5-second H3 clip that names them gets their locked reference image (up to 2 per clip).
-        </p>
+        <p class="muted small">Choose the main character and any secondary character in the existing <strong>Character references</strong> panel below. The selected locked references are reused for every H3 scene; select the main character's “in every clip (hero)” option for the strongest continuity.</p>
         <div class="story-options">
           <div class="field">
-            <label for="storyDuration">Story length</label>
-            <select id="storyDuration" [(ngModel)]="storyDurationSeconds">
-              <option [ngValue]="30">30-second story · about 6 scenes</option>
-              <option [ngValue]="60">1-minute story · about 12 scenes</option>
-              <option [ngValue]="180">3-minute story · about 36 scenes</option>
-              <option [ngValue]="300">5-minute story · about 60 scenes</option>
-            </select>
+            <label for="storyDuration">Story duration (seconds)</label>
+            <input id="storyDuration" type="number" min="10" max="360" step="5"
+                   [(ngModel)]="storyDurationSeconds" (ngModelChange)="clampStoryDuration()">
+            <p class="muted small">{{ storyDurationSeconds / 60 | number:'1.0-1' }} min · exactly {{ storySceneCount() }} scenes planned at 5 seconds per scene (10–360 seconds).</p>
           </div>
           <div class="field">
             <label for="storyGenre">Story genre</label>
@@ -174,15 +174,15 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
       </div>
 
       <div class="field">
-        <label for="prompt">{{ mode === 'story' ? 'Story idea / premise' : mode === 't2v' ? 'Scene description' : 'Motion prompt' }}</label>
+        <label for="prompt">{{ isAutoStory() ? 'Story idea / premise' : mode === 't2v' ? 'Scene description' : 'Motion prompt' }}</label>
         <textarea id="prompt" rows="3" [(ngModel)]="prompt"
-                  [placeholder]="mode === 'story'
+                  [placeholder]="isAutoStory()
                     ? 'Describe the characters, goal, conflict, setting and emotional ending. Example: Two siblings at a festival rescue a lost child with help from a mysterious guardian.'
                     : mode === 't2v'
                       ? 'e.g. a small cartoon rabbit waving in a sunny forest clearing, butterflies drifting past'
                       : 'e.g. the character waves and smiles, gentle camera push-in'"></textarea>
-        <p class="muted small" *ngIf="mode === 'story'">This is the premise, not a full script. The system expands it internally into a complete story and starts H3 rendering automatically after using your character reference.</p>
-        <ng-container *ngIf="mode !== 'story'">
+        <p class="muted small" *ngIf="isAutoStory()">This is the premise, not a full script. The system expands it internally into a complete story and starts H3 rendering automatically after using your character reference.</p>
+        <ng-container *ngIf="!isAutoStory()">
         <label for="cameraPreset" style="margin-top:.5rem">Camera preset <span class="muted small">(Motion &amp; effects studio)</span></label>
         <select id="cameraPreset" [(ngModel)]="cameraPresetId">
           <option value="">None - use only the prompt</option>
@@ -193,13 +193,13 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
         </ng-container>
       </div>
 
-      <div class="field" *ngIf="mode !== 'story'">
+      <div class="field" *ngIf="!isAutoStory()">
         <label for="negative">Negative prompt (optional)</label>
         <input id="negative" type="text" [(ngModel)]="negativePrompt"
                placeholder="e.g. blurry, distorted, extra limbs">
       </div>
 
-      <div class="field" *ngIf="mode !== 'story'">
+      <div class="field" *ngIf="!isAutoStory()">
         <label for="duration">
           Duration &mdash; {{ durationSeconds.toFixed(1) }}s
           (max {{ maxSeconds().toFixed(1) }}s for this engine)
@@ -209,7 +209,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
                step="0.5" [(ngModel)]="durationSeconds">
       </div>
 
-      <div class="field" *ngIf="workflow === 'MINIMAX_H3' && mode !== 'story'">
+      <div class="field" *ngIf="workflow === 'MINIMAX_H3'">
         <app-h3-cast-panel (castChange)="onH3Cast($event)"></app-h3-cast-panel>
         <div class="cast-pick" *ngIf="h3Cast.length">
           <strong class="small">Use as reference in this video (max 2):</strong>
@@ -218,7 +218,7 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
         <p class="muted small" *ngIf="!h3Cast.length">Add a character above (image + name). Its locked reference is then sent to H3 with this video.</p>
         <p class="muted small" *ngIf="h3Cast.length && !castPicked.size">No character ticked: H3 will invent the character from the prompt.</p>
       </div>
-      <div class="field audio-panel" *ngIf="workflow === 'MINIMAX_H3' && mode !== 'story'">
+      <div class="field audio-panel" *ngIf="workflow === 'MINIMAX_H3' && !isAutoStory()">
         <label>Native H3 speech &amp; sound</label>
         <label class="check" style="display:flex;gap:.5rem;align-items:flex-start">
           <input type="checkbox" [(ngModel)]="useIndicTts">
@@ -234,11 +234,11 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
         <textarea id="audioDirection" rows="4" [(ngModel)]="audioDirection" placeholder="Ambience: ...&#10;Sound effects: ...&#10;Music: mood, intensity 0.3"></textarea>
         <p class="muted small" *ngIf="loadedSceneId && !sceneAudioEdited">Using the scene's original line order (narration and dialogue interleaved).</p>
       </div>
-      <div class="field" *ngIf="workflow !== 'MINIMAX_H3' && mode !== 'story'">
+      <div class="field" *ngIf="workflow !== 'MINIMAX_H3' && !isAutoStory()">
         <label for="narration">Narration (optional)</label>
         <textarea id="narration" rows="2" [(ngModel)]="narrationText" placeholder="Add a voiceover track to the generated video"></textarea>
       </div>
-      <div class="field" *ngIf="narrationText && workflow !== 'MINIMAX_H3' && mode !== 'story'">
+      <div class="field" *ngIf="narrationText && workflow !== 'MINIMAX_H3' && !isAutoStory()">
         <label for="voice">Voice</label>
         <select id="voice" [(ngModel)]="voiceProfileId">
           <option value="">Default voice</option>
@@ -247,8 +247,8 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
       </div>
 
       <button class="btn btn-primary" (click)="submit()"
-              [disabled]="submitting || (mode !== 'story' && !status?.available) || (mode === 'i2v' && !selectedFile) || (mode === 'story' && !storyCast.length) || !prompt.trim()">
-        {{ submitting ? (mode === 'story' ? storyStatusText || 'Starting story production…' : 'Working...') : (mode === 'story' ? 'Generate full H3 story video' : 'Generate video') }}
+              [disabled]="submitting || (!isAutoStory() && !status?.available) || (mode === 'i2v' && !selectedFile) || (isAutoStory() && !selectedStoryCastCount()) || !prompt.trim()">
+        {{ submitting ? (isAutoStory() ? storyStatusText || 'Starting story production…' : 'Working...') : (isAutoStory() ? 'Generate complete story video' : 'Generate video') }}
       </button>
 
       <p class="error" *ngIf="error">{{ error }}</p>
@@ -291,6 +291,8 @@ import { Project, Episode, SceneDto, VoiceProfile } from '../../models/models';
     .field { display: flex; flex-direction: column; gap: 0.4em; }
     .mode-toggle { display: flex; gap: 0.4rem; flex-wrap: wrap; }
     .story-pill { border-color: rgba(73,201,189,.4); }
+    .auto-story-toggle { padding:.85rem; border:1px solid rgba(73,201,189,.35); border-radius:12px; background:rgba(73,201,189,.04); }
+    .check { display:flex; gap:.55rem; align-items:flex-start; }
     .story-production { display:flex; flex-direction:column; gap:.9rem; padding:1rem; border:1px solid rgba(73,201,189,.35); border-radius:14px; background:linear-gradient(135deg,rgba(73,201,189,.07),rgba(183,94,255,.05)); }
     .story-production-head { display:flex; flex-direction:column; gap:.25rem; }
     .story-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.85rem; }
@@ -327,7 +329,8 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
 
   selectedFile?: File;
   previewUrl?: string;
-  mode: 'i2v' | 't2v' | 'story' = 'i2v';
+  mode: 'i2v' | 't2v' = 'i2v';
+  autoStoryMode = false;
   workflow: 'WAN_2_2' | 'WAN_2_2_14B' | 'MINIMAX_H3' = 'WAN_2_2';
   prompt = '';
   negativePrompt = '';
@@ -382,7 +385,12 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     else if (this.castPicked.size < 2) this.castPicked.add(id);
   }
   private readonly cast = inject(CharacterCastService);
-  castNames(): string { return this.storyCast.map((c) => c.name).join(', '); }
+  storySceneCount(): number { return Math.max(2, Math.min(72, Math.round(this.storyDurationSeconds / 5))); }
+  clampStoryDuration(): void {
+    const value = Number(this.storyDurationSeconds);
+    if (!Number.isFinite(value)) { this.storyDurationSeconds = 60; return; }
+    this.storyDurationSeconds = Math.max(10, Math.min(360, Math.round(value / 5) * 5));
+  }
   storyCharacterFile?: File;
   storyCharacterPreviewUrl?: string;
   storyGenre = 'Cinematic adventure';
@@ -629,26 +637,23 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     this.storyCharacterPreviewUrl = URL.createObjectURL(file);
   }
 
-  setMode(mode: 'i2v' | 't2v' | 'story'): void {
+  isAutoStory(): boolean { return this.mode === 't2v' && this.workflow === 'MINIMAX_H3' && this.autoStoryMode; }
+  selectedStoryCastCount(): number { return this.h3Cast.filter(c => this.castPicked.has(c.id)).length; }
+
+  setMode(mode: 'i2v' | 't2v'): void {
     this.mode = mode;
     if (mode !== 'i2v') {
       this.selectedFile = undefined;
       if (this.previewUrl) { URL.revokeObjectURL(this.previewUrl); }
       this.previewUrl = undefined;
     }
-    if (mode === 'story') {
-      this.workflow = 'MINIMAX_H3';
-      this.durationSeconds = 5;
-      this.stopPolling();
-      this.job = undefined;
-      this.storyStatusText = '';
-    }
+    if (mode === 'i2v') this.autoStoryMode = false;
   }
 
   submit(): void {
     if (this.mode === 'i2v' && !this.selectedFile) { return; }
     if (!this.prompt.trim()) { return; }
-    if (this.mode === 'story') {
+    if (this.isAutoStory()) {
       this.submitStoryVideo();
       return;
     }
@@ -685,6 +690,8 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
   }
 
   private submitStoryVideo(): void {
+    this.clampStoryDuration();
+    this.storyCast = this.h3Cast.filter(c => this.castPicked.has(c.id));
     if (!this.storyCast.length) {
       this.error = 'Add at least one character with a ready reference first.';
       return;
@@ -731,7 +738,7 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
 
   /** Story-to-H3 is a one-click production flow, not the Create Story approval workflow. */
   private createAndRenderStoryDraft(projectId: string, characterIds: string[]): void {
-    const sceneCount = Math.max(6, Math.round(this.storyDurationSeconds / 5));
+    const sceneCount = this.storySceneCount();
     const styleDirections: Record<string, string> = {
       HUMOROUS_EXPLAINER: 'Narration style: humorous and playful with tasteful character-appropriate humor, expressive timing and short pauses after comic beats. At most one small joke per scene.',
       LOGIC_FIRST_ANALYST: 'Narration style: clear cause and effect, explicit goals, obstacles, decisions and consequences. No forced jokes or hype.',
@@ -742,12 +749,13 @@ export class VideoGenerationComponent implements OnInit, OnDestroy {
     };
     const style = styleDirections[this.storyNarrationTrack] || styleDirections.STORY_DRIVEN_MENTOR;
     const productionBrief = [
+      `[H3_STORY_MODE:FIXED_5S]`,
       `STORY PREMISE (expand this into a complete original story): ${this.prompt.trim()}`,
-      `Create a complete ${this.storyDurationSeconds}-second ${this.storyGenre.toLowerCase()} story in ${this.storyLanguage}; visual style ${this.storyVisualStyle}. Plan exactly about ${sceneCount} story beats, one per five-second H3 clip.`,
+      `Create a complete ${this.storyDurationSeconds}-second ${this.storyGenre.toLowerCase()} story in ${this.storyLanguage}; visual style ${this.storyVisualStyle}. Return EXACTLY ${sceneCount} scenes in chronological order, one scene for each consecutive five-second interval. Do not return an outline instead of scenes and do not combine multiple intervals into one scene.`,
       `CHARACTERS (use these EXACT names every time a character appears, acts or speaks - never a nickname, pronoun-only reference or a new name for them; each name is bound to a locked reference image): ${this.storyCast.map((c) => `${c.name}${c.masterPrompt ? ' - ' + c.masterPrompt : ''}`).join(' | ')}. ${this.storyCast[0].name} is the main character. Name the on-screen character(s) in every scene's visual and motion prompt. Keep at most two of these characters in any one scene. Other supporting characters may appear only when the plot needs them.`,
       'STRUCTURE: beginning, goal, conflict, escalating complication, climax, consequence and satisfying resolution. Every scene must advance the plot; no disconnected montage.',
       style,
-      'FIVE-SECOND SCENE CONTRACT: Each scene must fit one five-second H3 shot. Keep each scene to one clear visual action and at most one short spoken line of about 6-9 words. Do not put long narration paragraphs into a five-second scene. If the requested story length is 30, 60, 180 or 300 seconds, plan the corresponding 6, 12, 36 or 60 scenes.',
+      `FIVE-SECOND SCENE CONTRACT: Return exactly ${sceneCount} scenes, with one scene per five-second clip, for a total target duration of ${this.storyDurationSeconds} seconds. Each scene must fit one five-second H3 shot. Keep each scene to one clear visual action and at most one short spoken line of about 6-9 words. Do not put long narration paragraphs into a five-second scene. Scene 1 must establish the hook; later scenes must continue the same plot; the final scene must resolve the story.`,
       'FOR EACH SCENE provide: visual opening composition and character blocking; one concise motion prompt with shot size, angle and a single camera movement; short narration/dialogue with speaker, language and delivery; ambience; one or two timed sound effects tied to visible action; music mood/intensity and how it develops across scenes.',
       'H3 PROMPT FORMAT: use production directions in English. Describe timed visual action and camera movement, put exact spoken words in <d>[Language]spoken line</d>, describe ambience and physical SFX separately from non-diegetic music. Keep music below speech; no SFX may mask words.',
       'CONTINUITY: preserve character identity, wardrobe, props, geography, time of day and visual style. Vary shot composition while maintaining continuity. Avoid text overlays, subtitles, watermarks and abrupt resets.',

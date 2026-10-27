@@ -41,6 +41,8 @@ export const config = {
   port: int(env.PORT, 4000),
   dataDir: path.resolve(env.DATA_DIR || path.join(ROOT, 'data')),
   // URL prefix the browser uses for finished files. Behind the AI Story Studio nginx this is /explainer-media.
+  // Handle shown top-right in the blueprint style (e.g. "@yourchannel").
+  brandHandle: env.BRAND_HANDLE || '',
   publicMediaBase: (env.PUBLIC_MEDIA_BASE || '/media').replace(/\/$/, ''),
   retentionDays: int(env.RETENTION_DAYS, 14),
 

@@ -536,8 +536,11 @@ public class StoryEngineService {
                 }
               ]
             }
-            Choose the number of scenes based on pacing and story beats, not a fixed count -
-            roughly one scene per 8-12 seconds of narration.
+            SCENE COUNT RULE: Normally choose the number of scenes based on pacing and story beats,
+            roughly one scene per 8-12 seconds of narration. EXCEPTION: if the user prompt contains
+            [H3_STORY_MODE:FIXED_5S], obey the explicit fixed-five-second production contract in the
+            user prompt and return exactly the requested number of scenes, one scene per five-second
+            interval. In fixed-five-second mode, do not merge beats or return a shorter outline.
             Every scene MUST also contain voiceSegments. Use a Narrator segment for descriptive
             narration and separate character segments for spoken dialogue. Keep character names
             consistent with the characters array. Put natural pauses into pauseBeforeMs/pauseAfterMs
@@ -628,8 +631,19 @@ public class StoryEngineService {
 
     private String buildUserPrompt(Episode episode, List<Character> characters, String continuityContext) {
         StringBuilder sb = new StringBuilder();
-        sb.append("User idea: ").append(episode.getUserPrompt()).append("\n");
+        String rawIdea = episode.getUserPrompt() == null ? "" : episode.getUserPrompt();
+        boolean fixedH3FiveSecondMode = rawIdea.contains("[H3_STORY_MODE:FIXED_5S]");
+        String cleanIdea = rawIdea.replace("[H3_STORY_MODE:FIXED_5S]", "").trim();
+        sb.append("User idea: ").append(cleanIdea).append("\n");
         sb.append("Target duration (seconds): ").append(episode.getDurationTargetSec()).append("\n");
+        if (fixedH3FiveSecondMode) {
+            int targetScenes = Math.max(2, Math.min(72, (int) Math.round(episode.getDurationTargetSec() / 5.0)));
+            sb.append("FIXED H3 STORY MODE: return EXACTLY ").append(targetScenes)
+                    .append(" scenes, each designed for one five-second clip; total target duration ")
+                    .append(targetScenes * 5).append(" seconds. Every scene must be a distinct chronological beat, not a summary. ")
+                    .append("Keep spoken dialogue/narration brief enough for five seconds, use one clear visual action, and maintain character/location/prop continuity. ")
+                    .append("Do not add or omit scenes. The final scene must deliver a clear resolution.\n");
+        }
         if (episode.getTargetAge() != null) sb.append("Target age: ").append(episode.getTargetAge()).append("\n");
         if (episode.getGenre() != null) sb.append("Genre: ").append(episode.getGenre()).append("\n");
         if (episode.getTone() != null) sb.append("Tone: ").append(episode.getTone()).append("\n");

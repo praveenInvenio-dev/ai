@@ -13,6 +13,13 @@ const concept = (n) => ({ role: `concept_${n}`, phases: ['visualise', 'animate',
   guide: 'Teach ONE idea: show the picture, run the animation step by step, then name it and give the intuition.' });
 
 export const PLATFORMS = {
+  // Narrated-diagram format (navy blueprint, a new diagram for every sentence, question -> chapters -> answer).
+  // Uses its own script generator (src/blueprint) and renderer (remotion/blueprint).
+  blueprint: {
+    id: 'blueprint', label: 'Blueprint explainer — diagram story (≈2 min)', group: 'short', style: 'blueprint',
+    targetSec: 110, aspect: '9:16', wps: 2.4, captionChunk: 3, sentenceMaxWords: 16, pauseScale: 0.7,
+    plan: [{ role: 'question', phases: ['explain'], weight: 1 }, { role: 'chapter', phases: ['explain'], weight: 1 }, { role: 'answer', phases: ['explain'], weight: 1 }],
+  },
   reel: {
     id: 'reel', label: 'Instagram Reel / YouTube Short', group: 'short',
     targetSec: 40, aspect: '9:16', wps: 2.3, captionChunk: 3, sentenceMaxWords: 13, pauseScale: 0.75,

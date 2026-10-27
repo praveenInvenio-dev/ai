@@ -1,6 +1,6 @@
 import React from 'react';
 import { Composition } from 'remotion';
-import { VideoExplainer } from './VideoExplainer.jsx';
+import { ExplainerRoot } from './VideoExplainer.jsx';
 import sample from '../samples/sample-timeline.json';
 
 /**
@@ -10,7 +10,7 @@ import sample from '../samples/sample-timeline.json';
 export const Root = () => (
   <Composition
     id="Explainer"
-    component={VideoExplainer}
+    component={ExplainerRoot}
     durationInFrames={900}
     fps={30}
     width={1920}

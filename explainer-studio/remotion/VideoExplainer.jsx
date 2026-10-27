@@ -7,6 +7,7 @@ import { PRIMITIVES } from './primitives/index.jsx';
 import { TimingCtx } from './hooks/cue.js';
 import { Header, Captions, TechNote, HookOverlay, EndCard, ProgressBar } from './components/Overlays.jsx';
 import { Atmosphere, SceneSweep } from './fx/Atmosphere.jsx';
+import { BlueprintExplainer } from './blueprint/Blueprint.jsx';
 
 /**
  * Generic timeline → video. No topic-specific code lives here: every scene is a list of
@@ -126,3 +127,6 @@ export const VideoExplainer = ({ timeline, themeId = 'dracula' }) => {
     </ThemeCtx.Provider>
   );
 };
+
+/** Picks the renderer for the timeline's style (classic primitives vs. blueprint diagram story). */
+export const ExplainerRoot = (props) => (props.timeline?.style === 'blueprint' ? <BlueprintExplainer {...props} /> : <VideoExplainer {...props} />);

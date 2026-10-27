@@ -28,7 +28,7 @@ export function buildTimeline({ outline, scenes, platform, meta = {} }) {
       segments.push({ silenceMs: s.pauseMs });
       cursor = sEnd + s.pauseMs;
       return {
-        text: s.text, spoken: s.spoken, phase: s.phase, techNote: s.techNote, emphasis: !!s.emphasis,
+        text: s.text, spoken: s.spoken, phase: s.phase, techNote: s.techNote, emphasis: !!s.emphasis, ...(s.beat ? { beat: s.beat } : {}),
         startMs: sStart, endMs: sEnd, words: wordTimings(s.text, sStart, s.speechMs),
       };
     });
@@ -46,7 +46,7 @@ export function buildTimeline({ outline, scenes, platform, meta = {} }) {
     }));
 
     out.push({
-      id: `scene_${si}`, index: si, role: scene.role, heading: scene.heading, phases: scene.phases,
+      id: `scene_${si}`, index: si, role: scene.role, heading: scene.heading, phases: scene.phases, ...(scene.milestone != null ? { milestone: scene.milestone } : {}),
       startMs, endMs, startSecond: +(startMs / 1000).toFixed(3), endSecond: +(endMs / 1000).toFixed(3),
       narrativeScript: sentences.map((s) => s.text).join(' '),
       sentences, visualElements,
