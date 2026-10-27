@@ -51,7 +51,11 @@ public class H3SceneRenderer {
     private static final Pattern VOICE_OVER_SPEAKER = Pattern.compile(
             "^(narrator|narration|voice ?over|v\\.?o\\.?|storyteller|sutradhar|सूत्रधार|ನಿರೂಪಕ|கதைசொல்லி)$",
             Pattern.CASE_INSENSITIVE);
-    private static final String NEGATIVE = "blurry, deformed face, identity drift, extra limbs, duplicate character, subtitles, captions, text, watermark, logo";
+    private static final String NEGATIVE = "blurry, deformed face, identity drift, extra limbs, duplicate character, duplicate version of the same character, "
+            + "split screen, split-screen, side-by-side panels, diptych, triptych, collage, montage, contact sheet, picture-in-picture, "
+            + "comic panels, storyboard panels, borders, frames, letterboxing, pillarboxing, white bars, black bars, "
+            + "wardrobe change, outfit change, different clothes, changed shirt, changed vest, changed trousers, costume redesign, "
+            + "subtitles, captions, text, watermark, logo";
 
     public enum ShotKind { DIALOGUE, VOICE_OVER, SILENT }
 

@@ -162,6 +162,14 @@ public final class H3ScenePrompts {
                     ? "<Picture 1> is the approved scene frame. Animate it faithfully and preserve the exact identity, face, age, clothing, colours, proportions, environment and composition. "
                     : "<Picture 1> is the last frame of the previous shot. Continue from it with no cut, no reset and no change of location, lighting, wardrobe, props or character identity. ");
         }
+        // Story clips are rendered independently by a generative video model. Repeat the
+        // continuity contract in every clip so wardrobe and composition do not drift.
+        p.append("IDENTITY AND WARDROBE LOCK: the supplied character reference and previous frame are authoritative. "
+                + "Keep the exact same character face, age, hair, skin tone, body proportions, outfit, garment colours, "
+                + "fabric patterns, jewellery, footwear and accessories for the entire story. Never change or reinterpret clothing. "
+                + "Only pose, expression and action may change. Continue the same physical scene and story moment. ");
+        p.append("COMPOSITION LOCK: create one single full-frame continuous cinematic shot. Never create split-screen, side-by-side views, "
+                + "a collage, montage, storyboard/contact-sheet layout, picture-in-picture, inset panels, borders, frames, captions or text. ");
         if (c.visualDirection() != null && !c.visualDirection().isBlank()) {
             p.append("Action and camera: ").append(clean(c.visualDirection())).append(". ");
         } else {

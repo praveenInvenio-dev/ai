@@ -70,6 +70,33 @@ public final class ClipMerger {
         }
     }
 
+    /**
+     * Fit one generated clip to an exact target duration. H3 can return a few frames
+     * short even when asked for five seconds; clone the final frame and pad audio with
+     * silence rather than allowing every scene to shave time off the complete story.
+     */
+    public static Path fitDuration(Path input, Path output, double targetSeconds) {
+        if (input == null || output == null || targetSeconds <= 0) {
+            throw new IllegalArgumentException("A clip and positive target duration are required.");
+        }
+        try {
+            double actual = probeDuration(input);
+            if (actual <= 0.1) throw new IllegalArgumentException("Cannot fit an empty video clip.");
+            double pad = Math.max(0.0, targetSeconds - actual + 0.05);
+            Files.createDirectories(output.toAbsolutePath().getParent());
+            List<String> args = new ArrayList<>(List.of("ffmpeg", "-nostdin", "-y", "-i", input.toString(),
+                    "-vf", "tpad=stop_mode=clone:stop_duration=" + fmt(pad) + ",setpts=PTS-STARTPTS",
+                    "-af", "apad=whole_dur=" + fmt(targetSeconds), "-t", fmt(targetSeconds),
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart",
+                    output.toString()));
+            run(args);
+            return output;
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException("Could not fit generated clip to its target duration", e);
+        }
+    }
+
     // ---- argument builders (package-private for tests) ----
 
     static List<String> normalizeArgs(Path in, Path out, int w, int h, boolean hasAudio) {

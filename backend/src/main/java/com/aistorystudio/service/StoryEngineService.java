@@ -641,8 +641,15 @@ public class StoryEngineService {
             sb.append("FIXED H3 STORY MODE: return EXACTLY ").append(targetScenes)
                     .append(" scenes, each designed for one five-second clip; total target duration ")
                     .append(targetScenes * 5).append(" seconds. Every scene must be a distinct chronological beat, not a summary. ")
-                    .append("Keep spoken dialogue/narration brief enough for five seconds, use one clear visual action, and maintain character/location/prop continuity. ")
-                    .append("Do not add or omit scenes. The final scene must deliver a clear resolution.\n");
+                    .append("Create a compelling mini-film rather than a generic montage: immediate visual hook and concrete goal, obstacle, ")
+                    .append("escalating complications, a meaningful midpoint reveal/reversal, a decisive climax and a satisfying on-screen resolution. ")
+                    .append("Each scene must cause or motivate the next; no filler, repeated reactions or unrelated scenic shots. ")
+                    .append("Keep spoken dialogue/narration brief enough for five seconds and use one dominant visible action per scene. ")
+                    .append("The selected character reference image is the exact identity AND wardrobe source: preserve the same garments, colours, ")
+                    .append("patterns, accessories and footwear in every scene; never redesign or change the outfit. ")
+                    .append("Every visual prompt must demand one full-frame cinematic shot only, never split-screen, side-by-side panels, collage, ")
+                    .append("montage, storyboard/contact sheet, picture-in-picture, borders, letterboxing, subtitles or text overlays. ")
+                    .append("Do not add or omit scenes. The final scene must visibly resolve the central story question.\n");
         }
         if (episode.getTargetAge() != null) sb.append("Target age: ").append(episode.getTargetAge()).append("\n");
         if (episode.getGenre() != null) sb.append("Genre: ").append(episode.getGenre()).append("\n");

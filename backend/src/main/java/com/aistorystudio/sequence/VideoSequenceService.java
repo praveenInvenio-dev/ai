@@ -282,7 +282,10 @@ public class VideoSequenceService {
         s.secondsPerScene = Math.max(2.0, max > 0 ? Math.min(wanted, max) : wanted);
         s.fixedFiveSecondShots = fixedFiveSecondShots;
         s.orientation = "horizontal".equalsIgnoreCase(orientation) ? "horizontal" : "vertical";
-        s.crossfadeSeconds = Math.max(0, Math.min(1.5, crossfadeSeconds == null ? 0.4 : crossfadeSeconds));
+        // Fixed five-second story clips must add up to the requested runtime; overlapping
+        // crossfades shorten the film and can make scene beats feel rushed. Keep hard cuts here.
+        s.crossfadeSeconds = fixedFiveSecondShots ? 0.0
+                : Math.max(0, Math.min(1.5, crossfadeSeconds == null ? 0.4 : crossfadeSeconds));
         s.continuity = "CHAIN".equalsIgnoreCase(continuity) ? "CHAIN" : "KEYFRAMES";
         s.reviewKeyframes = false; s.status = SequenceStatus.AWAITING_APPROVAL;
         s.speechEngine = H3SceneRenderer.SpeechEngine.parse(speechEngine).name();
@@ -693,6 +696,14 @@ public class VideoSequenceService {
                                     s.horizontal() ? 1080 : 1920, work, () -> s.cancelRequested));
                     Files.copy(r.video(), finalH3, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                     seconds = r.seconds();
+                    if (s.fixedFiveSecondShots) {
+                        // H3 commonly returns ~4.7-4.9s for a requested 5s shot. Pad the
+                        // final frames/audio to exactly 5s so the complete story matches its plan.
+                        Path exact = dir(s).resolve(String.format(Locale.ROOT, "scene-%02d-exact.mp4", sc.index + 1));
+                        ClipMerger.fitDuration(finalH3, exact, 5.0);
+                        Files.move(exact, finalH3, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        seconds = 5.0;
+                    }
                     if (!r.warnings().isEmpty()) log.info("Sequence {} scene {} H3 notes: {}", s.id, sc.index + 1, r.warnings());
                 } finally {
                     deleteDir(work);
@@ -989,7 +1000,13 @@ public class VideoSequenceService {
                 : H3SceneRenderer.linesFromText(sc.narration, sc.dialogue);
         String motion = sc.motion == null || sc.motion.isBlank()
                 ? "Natural, subtle character motion and a slow, smooth camera move" : sc.motion.trim();
-        if (s.chain() && sc.index > 0) motion = sc.visual.trim() + ". " + motion;
+        if (s.chain() && sc.index > 0) {
+            motion = "CONTINUE DIRECTLY FROM THE PREVIOUS SCENE'S LAST FRAME. This is the same uninterrupted story, "
+                    + "same character and same wardrobe. Preserve the exact face, hair, age, skin tone, outfit, garment colours, "
+                    + "patterns, jewellery and accessories visible in the starting frame; do not change clothes or redesign the character. "
+                    + "Keep one full-frame cinematic composition with no split screen, collage, panels, borders or text. "
+                    + "Advance the plot with this scene's next action: " + sc.visual.trim() + ". " + motion;
+        }
         String key = s.episodeId != null ? s.episodeId.toString() : s.id.toString();
         return new H3SceneRenderer.SceneSpec(motion, sc.location, sc.emotion, s.style, sc.language, lines,
                 sc.audioSpecJson, null, silentSeconds, key, H3SceneRenderer.SpeechEngine.parse(s.speechEngine),
